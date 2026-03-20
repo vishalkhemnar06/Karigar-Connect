@@ -28,6 +28,7 @@ const PublicProfile = () => {
     const fetchProfile = async () => {
       try {
         const { data } = await api.getPublicWorkerProfile(workerId);
+        // Backend returns worker object directly (unchanged shape)
         setWorker(data);
       } catch (err) {
         setError("Could not find this worker's profile.");
@@ -49,14 +50,14 @@ const PublicProfile = () => {
     return age >= 0 ? age : null;
   };
 
-  const age = getAge(worker?.dob);
+  const age        = getAge(worker?.dob);
   const addressText = worker?.address
     ? [worker.address.houseNumber, worker.address.locality, worker.address.city, worker.address.pincode]
         .filter(Boolean)
         .join(', ')
     : '';
-  const skills = worker?.skills || [];
-  const ratings = worker?.ratings || [];
+  const skills     = worker?.skills     || [];
+  const ratings    = worker?.ratings    || [];
   const workPhotos = worker?.workPhotos || worker?.portfolioPhotos || [];
 
   if (loading) {
@@ -97,13 +98,13 @@ const PublicProfile = () => {
           <div className="relative px-6 pb-6">
             <div className="absolute -top-16 left-6 flex items-end gap-4">
               <img
-                src={
-                  getImageUrl(worker.photo, `https://ui-avatars.com/api/?name=${worker?.name}&background=ea580c&color=fff&size=200`)
-                }
+                src={getImageUrl(
+                  worker.photo,
+                  `https://ui-avatars.com/api/?name=${worker?.name}&background=ea580c&color=fff&size=200`
+                )}
                 alt={worker.name}
                 className="w-32 h-32 rounded-2xl border-4 border-white object-cover shadow-xl"
               />
-
               <div className="mb-2">
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{worker.name}</h1>
@@ -115,27 +116,31 @@ const PublicProfile = () => {
           </div>
 
           <div className="px-6 pt-20 pb-8 space-y-8">
+
+            {/* Stats row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Stat label="Rank" value={worker.rank ? `#${worker.rank}` : '-'} />
-              <Stat label="Points" value={worker.points || 0} />
+              <Stat label="Rank"           value={worker.rank ? `#${worker.rank}` : '-'} />
+              <Stat label="Points"         value={worker.points || 0} />
               <Stat label="Average Rating" value={worker.avgStars > 0 ? `${worker.avgStars}★` : 'New'} />
               <Stat label="Jobs Completed" value={worker.completedJobs || 0} />
             </div>
 
+            {/* Info grid */}
             <div className="grid md:grid-cols-2 gap-4">
-              {worker.mobile && <Info icon={<Phone />} text={`Contact: ${worker.mobile}`} />}
-              {addressText && <Info icon={<MapPin />} text={addressText} />}
-              {worker.dob && (
+              {worker.mobile            && <Info icon={<Phone />}           text={`Contact: ${worker.mobile}`} />}
+              {addressText              && <Info icon={<MapPin />}           text={addressText} />}
+              {worker.dob               && (
                 <Info
                   icon={<Calendar />}
                   text={`DOB: ${new Date(worker.dob).toLocaleDateString('en-IN')}${age !== null ? ` (${age} years)` : ''}`}
                 />
               )}
-              {worker.overallExperience && <Info icon={<Briefcase />} text={`Experience Level: ${worker.overallExperience}`} />}
-              {worker.gender && <Info icon={<ShieldCheck />} text={`Gender: ${worker.gender}`} />}
-              {worker.karigarId && <Info icon={<BadgeIndianRupee />} text={`ID: ${worker.karigarId}`} />}
+              {worker.overallExperience  && <Info icon={<Briefcase />}      text={`Experience Level: ${worker.overallExperience}`} />}
+              {worker.gender             && <Info icon={<ShieldCheck />}     text={`Gender: ${worker.gender}`} />}
+              {worker.karigarId          && <Info icon={<BadgeIndianRupee />} text={`ID: ${worker.karigarId}`} />}
             </div>
 
+            {/* Skills */}
             <Section title="Skills" icon={<Award />}>
               <div className="flex flex-wrap gap-2">
                 {skills.length ? (
@@ -150,6 +155,7 @@ const PublicProfile = () => {
               </div>
             </Section>
 
+            {/* Previous Work Images */}
             <Section title="Previous Work Images" icon={<Image />}>
               {workPhotos.length ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -167,6 +173,7 @@ const PublicProfile = () => {
               )}
             </Section>
 
+            {/* Client Feedback */}
             <Section title="Feedback From Clients" icon={<ThumbsUp />}>
               {ratings.length ? (
                 <div className="space-y-4">
@@ -175,7 +182,10 @@ const PublicProfile = () => {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <img
-                            src={getImageUrl(r?.client?.photo, `https://ui-avatars.com/api/?name=${r?.client?.name || 'Client'}&background=f97316&color=fff`)}
+                            src={getImageUrl(
+                              r?.client?.photo,
+                              `https://ui-avatars.com/api/?name=${r?.client?.name || 'Client'}&background=f97316&color=fff`
+                            )}
                             alt={r?.client?.name || 'Client'}
                             className="w-8 h-8 rounded-full object-cover"
                           />
@@ -183,7 +193,11 @@ const PublicProfile = () => {
                         </div>
                         <div className="flex items-center gap-1">
                           {[1, 2, 3, 4, 5].map((s) => (
-                            <Star key={s} size={14} className={s <= (r.stars || 0) ? 'text-yellow-500 fill-current' : 'text-gray-300'} />
+                            <Star
+                              key={s}
+                              size={14}
+                              className={s <= (r.stars || 0) ? 'text-yellow-500 fill-current' : 'text-gray-300'}
+                            />
                           ))}
                         </div>
                       </div>
@@ -196,6 +210,7 @@ const PublicProfile = () => {
               )}
             </Section>
 
+            {/* Verification badge */}
             {worker.verificationStatus === 'approved' && (
               <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-sm text-green-700 flex items-center gap-2">
                 <CheckCircle size={16} /> This worker is verified on KarigarConnect.

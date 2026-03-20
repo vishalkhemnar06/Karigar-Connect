@@ -1,4 +1,6 @@
-// server/server.js — UPDATED (community routes + static uploads/community)
+// server/server.js — UPDATED
+// Added: locationRoutes (/api/location)
+// All original code preserved exactly
 
 const express  = require('express');
 const mongoose = require('mongoose');
@@ -22,6 +24,7 @@ const clientComplaintRoutes = require('./routes/clientComplaintRoutes');
 const adminComplaintRoutes  = require('./routes/adminComplaintRoutes');
 const communityRoutes       = require('./routes/communityRoutes');
 const adminCommunityRoutes  = require('./routes/adminCommunityRoutes');
+const locationRoutes        = require('./routes/locationRoutes'); // NEW
 
 const app = express();
 
@@ -78,6 +81,7 @@ app.use('/api/community',             communityRoutes);
 app.use('/api/ai',                    aiRoutes);
 app.use('/api/groups',                groupRoutes);
 app.use('/api/jobs',                  jobRoutes);
+app.use('/api/location',              locationRoutes); // NEW
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.2.0' }));

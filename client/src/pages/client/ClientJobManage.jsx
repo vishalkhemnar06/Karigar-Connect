@@ -5,8 +5,11 @@
 //  2. Repost modal: shows skill info + client enters new start time
 //  3. Sub-task management section: shows open sub-tasks, accept/reject applicants
 //  4. Sub-task "Mark Done" + rating in completion flow
+//  5. NEW: "📍 See Live Location" button for scheduled/running jobs with assigned workers
+//  6. NEW: Captures client's static location automatically when a worker is accepted
 
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom'; // NEW
 import {
     getClientJobs, deleteClientJob, cancelJob, updateJobStatus,
     uploadCompletionPhotos, startJob, toggleJobApplications,
@@ -14,6 +17,7 @@ import {
     submitRating, toggleStarWorker, getWorkerFullProfile, getImageUrl,
     repostMissingSkill, dismissMissingSkill, respondToSubTaskApplicant,
     completeSubTask,
+    initClientLocation, // NEW
 } from '../../api/index';
 import toast from 'react-hot-toast';
 
@@ -119,7 +123,6 @@ function RepostModal({ job, slot, onClose, onReposted }) {
                 <h3 className="text-lg font-bold text-gray-900 mb-1">Repost Missing Skill</h3>
                 <p className="text-sm text-gray-500 mb-5">Create a sub-task for the unfilled <strong className="capitalize text-orange-600">{slot.skill}</strong> position.</p>
 
-                {/* Skill info */}
                 <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-5">
                     <div className="flex items-center justify-between mb-2">
                         <span className="font-bold text-orange-700 capitalize text-base">{slot.skill}</span>
@@ -159,7 +162,6 @@ function RepostModal({ job, slot, onClose, onReposted }) {
 
 // ── Slot Rating Modal ──────────────────────────────────────────────────────────
 function SlotRatingModal({ job, onClose, onSlotRated }) {
-    // Includes sub-task slots too
     const unratedSlots = [
         ...(job.workerSlots||[]).filter(s=>s.assignedWorker&&!s.ratingSubmitted&&!['open','cancelled','not_required','reposted'].includes(s.status)).map(s=>({...s, _source:'slot'})),
         ...(job.subTasks||[]).filter(s=>s.assignedWorker&&!s.ratingSubmitted&&!['cancelled'].includes(s.status)).map(s=>({...s, _source:'subtask'})),
@@ -296,12 +298,10 @@ function CancelModal({ job, onClose, onCancelled }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRE-START ALERT PANEL
-// Shown when: job is 'scheduled', < 30 min to start, and unfilled slots exist
 // ─────────────────────────────────────────────────────────────────────────────
 function PreStartAlert({ job, onRepost, onDismiss }) {
     const unfilledSlots = (job.workerSlots||[]).filter(s => s.status === 'open');
     if (!unfilledSlots.length) return null;
-
     if (!job.scheduledDate || !job.scheduledTime) return null;
     const [h,m] = job.scheduledTime.split(':').map(Number);
     const sched = new Date(job.scheduledDate); sched.setHours(h,m,0,0);
@@ -317,7 +317,6 @@ function PreStartAlert({ job, onRepost, onDismiss }) {
                     <p className="text-xs text-red-600 mt-0.5">Job starts in ~{Math.max(1,Math.floor(minsLeft))} min. The following skills have no worker assigned:</p>
                 </div>
             </div>
-
             <div className="space-y-2">
                 {unfilledSlots.map(slot => (
                     <div key={slot._id?.toString()} className="bg-white border border-red-100 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -326,17 +325,12 @@ function PreStartAlert({ job, onRepost, onDismiss }) {
                             <span className="text-xs text-gray-400 ml-2">~{slot.hoursEstimated}h</span>
                         </div>
                         <div className="flex gap-1.5 flex-shrink-0">
-                            <button onClick={() => onRepost(slot)} className="text-xs px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold transition-colors">
-                                📤 Repost
-                            </button>
-                            <button onClick={() => onDismiss(slot._id?.toString(), slot.skill)} className="text-xs px-3 py-1.5 border border-gray-300 text-gray-500 rounded-lg hover:bg-gray-50 font-bold transition-colors">
-                                ✕ Not Needed
-                            </button>
+                            <button onClick={() => onRepost(slot)} className="text-xs px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold transition-colors">📤 Repost</button>
+                            <button onClick={() => onDismiss(slot._id?.toString(), slot.skill)} className="text-xs px-3 py-1.5 border border-gray-300 text-gray-500 rounded-lg hover:bg-gray-50 font-bold transition-colors">✕ Not Needed</button>
                         </div>
                     </div>
                 ))}
             </div>
-
             <p className="text-xs text-red-500">
                 <strong>Repost</strong> — creates a sub-task with a new start time so workers can still apply. <br/>
                 <strong>Not Needed</strong> — mark this skill as not required and proceed without it.
@@ -346,7 +340,7 @@ function PreStartAlert({ job, onRepost, onDismiss }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUB-TASKS PANEL — shown in expanded job card
+// SUB-TASKS PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 function SubTasksPanel({ job, onViewProfile, onAlert, onMarkDone, onRate }) {
     const subTasks = (job.subTasks||[]).filter(s => s.status !== 'cancelled');
@@ -365,7 +359,6 @@ function SubTasksPanel({ job, onViewProfile, onAlert, onMarkDone, onRate }) {
 
                     return (
                         <div key={sub._id?.toString()||si} className="border border-purple-100 rounded-xl bg-purple-50/30 overflow-hidden">
-                            {/* Sub-task header */}
                             <div className="flex items-center justify-between px-3 py-2.5 bg-purple-50 border-b border-purple-100">
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-bold text-purple-700 capitalize">{sub.skill}</span>
@@ -377,9 +370,7 @@ function SubTasksPanel({ job, onViewProfile, onAlert, onMarkDone, onRate }) {
                                     {sub.status === 'open' ? 'Open' : sub.status === 'scheduled' ? 'Scheduled' : sub.status === 'running' ? 'Running' : sub.status === 'task_completed' ? '✓ Done' : sub.status}
                                 </span>
                             </div>
-
                             <div className="px-3 py-2 space-y-2">
-                                {/* Assigned worker */}
                                 {w && (
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => onViewProfile(wid)} className="flex items-center gap-2 flex-1 min-w-0 hover:opacity-80 text-left">
@@ -387,7 +378,6 @@ function SubTasksPanel({ job, onViewProfile, onAlert, onMarkDone, onRate }) {
                                             <span className="text-xs font-semibold text-gray-700 truncate">{w?.name||'Worker'}</span>
                                         </button>
                                         <div className="flex gap-1 flex-shrink-0">
-                                            {/* Rate then mark done */}
                                             {['running','scheduled'].includes(sub.status) && !sub.ratingSubmitted && job.completionPhotos?.length > 0 && (
                                                 <button onClick={() => onRate(sub)} className="text-[10px] px-2 py-1 bg-yellow-400 hover:bg-yellow-500 text-white rounded font-bold">Rate</button>
                                             )}
@@ -398,12 +388,9 @@ function SubTasksPanel({ job, onViewProfile, onAlert, onMarkDone, onRate }) {
                                         </div>
                                     </div>
                                 )}
-
                                 {!w && sub.status === 'open' && (
                                     <p className="text-xs text-gray-400 italic">Waiting for worker applications…</p>
                                 )}
-
-                                {/* Pending applicants for this sub-task */}
                                 {pendingApps.length > 0 && (
                                     <div>
                                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">{pendingApps.length} applicant{pendingApps.length>1?'s':''}</p>
@@ -443,6 +430,7 @@ const TABS    = ['open','scheduled','running','completed','cancelled','favourite
 const TLABELS = { open:'Open', scheduled:'Scheduled', running:'Running', completed:'Completed', cancelled:'Cancelled', favourites:'⭐ Favourites' };
 
 export default function ClientJobManage() {
+    const navigate = useNavigate(); // NEW
     const [jobs,        setJobs]       = useState([]);
     const [loading,     setLoading]    = useState(true);
     const [tab,         setTab]        = useState('open');
@@ -453,12 +441,35 @@ export default function ClientJobManage() {
     const [ratingJob,   setRatingJob]  = useState(null);
     const [cancelModal, setCancelModal]= useState(null);
     const [removeData,  setRemoveData] = useState(null);
-    const [repostData,  setRepostData] = useState(null); // { job, slot }
+    const [repostData,  setRepostData] = useState(null);
     const [uploadingPhotos, setUploadingPhotos] = useState({});
     const photoRef = useRef({});
 
     const setAlert   = (id, msg, type='error') => setCardAlerts(p=>({...p, [id]: { msg, type }}));
     const clearAlert = id => setCardAlerts(p=>{ const n={...p}; delete n[id]; return n; });
+
+    // ── NEW: Capture client static location when a worker is accepted ──────────
+    const captureClientLocationForJob = async (jobId) => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                try {
+                    let address = '';
+                    try {
+                        const r = await fetch(
+                            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
+                            { headers: { 'Accept-Language': 'en' } }
+                        );
+                        const g = await r.json();
+                        address = g.display_name || '';
+                    } catch {}
+                    await initClientLocation(jobId, pos.coords.latitude, pos.coords.longitude, address);
+                } catch {}
+            },
+            () => {}, // Silent — tracking is optional, don't interrupt UX
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+    };
 
     const fetchJobs = async () => {
         try {
@@ -483,7 +494,10 @@ export default function ClientJobManage() {
         try {
             const { data } = await respondToApplicant(jobId, { workerId, status, skill });
             setJobs(p=>p.map(j=>j._id===jobId?data.job:j));
-            if (status==='accepted') setAlert(jobId, `Worker accepted as ${skill}! Slot assigned.`, 'success');
+            if (status==='accepted') {
+                captureClientLocationForJob(jobId); // NEW: capture client location silently
+                setAlert(jobId, `Worker accepted as ${skill}! Slot assigned.`, 'success');
+            }
         } catch (err) { setAlert(jobId, err?.response?.data?.message||'Failed.', err?.response?.status===409?'warning':'error'); }
     };
 
@@ -546,7 +560,6 @@ export default function ClientJobManage() {
         catch (err) { setAlert(id, err?.response?.data?.message||'Failed.'); }
     };
 
-    // Dismiss a missing skill slot
     const handleDismissSkill = async (jobId, slotId, skillName) => {
         if (!window.confirm(`Mark "${skillName}" as not required? This slot will be closed.`)) return;
         try {
@@ -599,7 +612,6 @@ export default function ClientJobManage() {
                         const isExp        = expanded===job._id;
                         const cAlert       = cardAlerts[job._id];
                         const hasPhotos    = job.completionPhotos?.length>0;
-                        const startInfo    = { canStart: true }; // useStartCountdown is inside JobCard
 
                         const assignedSlots = (job.workerSlots||[]).filter(s=>s.assignedWorker&&!['open','cancelled','not_required','reposted'].includes(s.status));
                         const subTaskSlots  = (job.subTasks||[]).filter(s=>s.assignedWorker&&!['cancelled'].includes(s.status));
@@ -750,7 +762,6 @@ export default function ClientJobManage() {
                                                         <p className={`text-sm font-semibold ${allRated?'text-green-700':'text-gray-700'}`}>Rate Each Worker <span className="text-red-500">*</span></p>
                                                         <div className="mt-2 space-y-1.5">
                                                             {[...assignedSlots,...subTaskSlots].map((slot,i)=>{
-                                                                const w=(slot.assignedWorker?._id||slot.assignedWorker);
                                                                 return(
                                                                     <div key={slot._id?.toString()||i} className="flex items-center gap-2">
                                                                         <img src={getImageUrl(slot.assignedWorker?.photo)} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" onError={e=>{e.target.src='/admin.png'}}/>
@@ -775,6 +786,17 @@ export default function ClientJobManage() {
                                         {/* ── ACTIONS ── */}
                                         <div className="flex flex-wrap gap-2 pt-2">
                                             {job.status==='scheduled'&&<StartButton job={job} onStart={handleStartJob}/>}
+
+                                            {/* NEW: Live Location Tracking button */}
+                                            {['scheduled','running'].includes(job.status) && (job.assignedTo||[]).length > 0 && (
+                                                <button
+                                                    onClick={() => navigate(`/client/live-tracking/${job._id}`)}
+                                                    className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors shadow-sm"
+                                                >
+                                                    📍 See Live Location
+                                                </button>
+                                            )}
+
                                             {['open','scheduled'].includes(job.status)&&<button onClick={()=>setCancelModal(job)} className="px-4 py-2.5 border-2 border-red-200 text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-colors">✕ Cancel</button>}
                                             {job.status==='open'&&<button onClick={()=>handleDelete(job._id)} className="px-4 py-2.5 border-2 border-red-200 text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-colors">🗑 Delete</button>}
                                         </div>
@@ -820,7 +842,6 @@ function JobCardHeader({ job, isExpanded, onExpand, openSlots, filledSlots, done
                         {pending.length>0&&<span className="text-orange-500">👥 {pending.length} pending</span>}
                         {job.status==='running'&&unratedSlots.length>0&&<span className="text-purple-500">⭐ {unratedSlots.length} to rate</span>}
                         {job.status==='scheduled'&&!startInfo.canStart&&<span className="text-blue-400 font-mono">⏰ {startInfo.remaining}</span>}
-                        {/* Pre-start alert indicator */}
                         {job.status==='scheduled'&&(job.workerSlots||[]).some(s=>s.status==='open')&&!startInfo.canStart&&startInfo.remaining!=='00:00:00'&&(
                             <span className="text-red-500 font-bold text-[10px] bg-red-50 px-2 py-0.5 rounded-full">⚠️ Unfilled slots</span>
                         )}

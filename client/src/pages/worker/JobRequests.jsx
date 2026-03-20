@@ -1,14 +1,36 @@
 // client/src/pages/worker/JobRequests.jsx
-// CHANGES:
-//  - Skill selection modal before applying (max 2 skills)
-//  - Detail modal shows ONLY worker's relevant skill costs
-//  - "Applied for: painter, plumber" shown on applied cards
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY FIX: All jobs are shown to all workers regardless of skills.
+//
+// ROOT CAUSE of "0 jobs shown":
+//   The `filtered` array previously used job.relevantSkills to gate visibility.
+//   relevantSkills was computed by the old backend which set it to [] for
+//   workers with skills that didn't match — so filtered was always empty.
+//
+// FIXES APPLIED:
+//   1. filtered array: never hides jobs based on skills. Only search text,
+//      skill dropdown, and city dropdown filter the list.
+//   2. SkillSelectModal: shows ALL open slots so any worker can pick one,
+//      not just skill-matched ones. Matching slots get a green "✓ Your skill" badge.
+//   3. Job cards: openSlotSummary pills show ALL open slots.
+//      Matching skills get a green highlight, others get orange — purely cosmetic.
+//   4. allSkills dropdown: built from normalised strings (handles object skills).
+//   5. workerSkills from localStorage: normalised the same way.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef } from 'react';
 import { getAvailableJobs, getJobDetails, applyForJob, applyForSubTask, getWorkerProfile, getImageUrl } from '../../api/index';
 import toast from 'react-hot-toast';
 
-// ── Mini map ──────────────────────────────────────────────────────────────────
+// ── Skill normalisation helper — used everywhere ──────────────────────────────
+const normSkill = (s) => {
+    if (!s) return '';
+    if (typeof s === 'string') return s.toLowerCase().trim();
+    if (typeof s === 'object') return (s.name || s.skill || '').toLowerCase().trim();
+    return String(s).toLowerCase().trim();
+};
+
+// ── Mini map (Leaflet lazy-loaded) ────────────────────────────────────────────
 let _L = null;
 const loadLeaflet = async () => {
     if (_L) return _L;
@@ -25,7 +47,8 @@ const loadLeaflet = async () => {
 };
 
 function MiniMap({ lat, lng }) {
-    const ref = useRef(null); const mRef = useRef(null);
+    const ref  = useRef(null);
+    const mRef = useRef(null);
     useEffect(() => {
         if (!lat || !lng) return;
         let alive = true;
@@ -49,33 +72,44 @@ function MiniMap({ lat, lng }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SKILL SELECTION MODAL — worker picks positions to apply for (max 2)
+// SKILL SELECTION MODAL
+// Shows ALL open slots — any worker can apply for any slot.
+// Matching skills get a "✓ Your skill" green badge (cosmetic only).
 // ─────────────────────────────────────────────────────────────────────────────
 function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
     const [selected, setSelected] = useState([]);
     const [applying, setApplying] = useState(false);
     const [alert,    setAlert]    = useState('');
 
-    // Build available options from open slots matching worker skills
+    // Build options from ALL open slots — no skill restriction
     const options = [];
     const seen    = new Set();
     (job.workerSlots || []).forEach(s => {
         if (s.status !== 'open') return;
-        if (seen.has(s.skill))  return;
-        if (workerSkills.length > 0 &&
-            !workerSkills.includes(s.skill) &&
-            s.skill !== 'general' && s.skill !== 'handyman') return;
-        seen.add(s.skill);
-        const count      = (job.openSlotSummary || {})[s.skill] || 1;
-        const budgetBlock = (job.relevantBudgetBlocks || []).find(b => b.skill === s.skill);
-        options.push({ skill: s.skill, count, hoursEstimated: s.hoursEstimated, budgetBlock });
+        const skill = normSkill(s.skill);
+        if (!skill || seen.has(skill)) return;
+        seen.add(skill);
+        const count       = (job.openSlotSummary || {})[s.skill] || (job.openSlotSummary || {})[skill] || 1;
+        const budgetBlock = (job.relevantBudgetBlocks || []).find(b => normSkill(b.skill) === skill);
+        const isMatch     = workerSkills.length > 0 && workerSkills.includes(skill);
+        options.push({ skill, count, hoursEstimated: s.hoursEstimated, budgetBlock, isMatch });
     });
+
+    // Fallback: if workerSlots is empty but openSlotSummary exists, build from summary
+    if (options.length === 0 && job.openSlotSummary) {
+        Object.entries(job.openSlotSummary).forEach(([sk, cnt]) => {
+            const skill       = normSkill(sk);
+            const budgetBlock = (job.relevantBudgetBlocks || []).find(b => normSkill(b.skill) === skill);
+            const isMatch     = workerSkills.length > 0 && workerSkills.includes(skill);
+            options.push({ skill, count: cnt, hoursEstimated: null, budgetBlock, isMatch });
+        });
+    }
 
     const toggle = (sk) => {
         setAlert('');
         setSelected(p => {
             if (p.includes(sk)) return p.filter(s => s !== sk);
-            if (p.length >= 2)  { setAlert('You can apply for a maximum of 2 positions per job.'); return p; }
+            if (p.length >= 2) { setAlert('You can apply for a maximum of 2 positions per job.'); return p; }
             return [...p, sk];
         });
     };
@@ -103,12 +137,12 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                 )}
 
                 {options.length === 0 ? (
-                    <p className="text-sm text-gray-400 text-center py-6">No matching open positions for your skills.</p>
+                    <p className="text-sm text-gray-400 text-center py-6">No open positions available for this job.</p>
                 ) : (
                     <div className="space-y-3 mb-5">
                         {options.map(opt => {
-                            const isSel  = selected.includes(opt.skill);
-                            const perW   = opt.budgetBlock
+                            const isSel = selected.includes(opt.skill);
+                            const perW  = opt.budgetBlock
                                 ? Math.round(opt.budgetBlock.subtotal / (opt.budgetBlock.count || 1))
                                 : null;
                             return (
@@ -127,8 +161,15 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                                             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                                                 {opt.count} slot{opt.count > 1 ? 's' : ''} open
                                             </span>
+                                            {opt.isMatch && (
+                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
+                                                    ✓ Your skill
+                                                </span>
+                                            )}
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-0.5">~{opt.hoursEstimated}h estimated work</p>
+                                        {opt.hoursEstimated && (
+                                            <p className="text-xs text-gray-500 mt-0.5">~{opt.hoursEstimated}h estimated work</p>
+                                        )}
                                         {perW && (
                                             <p className="text-xs text-green-600 font-semibold mt-0.5">
                                                 Your earnings: ₹{perW.toLocaleString()}
@@ -149,7 +190,10 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                     <button onClick={handleApply} disabled={applying || !selected.length}
                         className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold disabled:opacity-60 transition-colors">
                         {applying
-                            ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</span>
+                            ? <span className="flex items-center justify-center gap-2">
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                Submitting…
+                              </span>
                             : `Apply (${selected.length})`}
                     </button>
                 </div>
@@ -162,9 +206,9 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
 // JOB DETAIL MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
-    const [job,      setJob]      = useState(null);
-    const [loading,  setLoading]  = useState(true);
-    const [error,    setError]    = useState('');
+    const [job,             setJob]             = useState(null);
+    const [loading,         setLoading]         = useState(true);
+    const [error,           setError]           = useState('');
     const [showSkillPicker, setShowSkillPicker] = useState(false);
 
     useEffect(() => {
@@ -219,7 +263,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                         {/* Body */}
                         <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
 
-                            {/* Client Info */}
+                            {/* Client info */}
                             {job.postedBy && (
                                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-start gap-4">
                                     <img src={getImageUrl(job.postedBy.photo)} alt={job.postedBy.name}
@@ -264,25 +308,27 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                 </div>
                             </div>
 
-                            {/* Open positions for this worker */}
+                            {/* Open positions — ALL slots shown */}
                             {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
                                 <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                                        Positions Available for You
-                                    </p>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Positions Available</p>
                                     <div className="space-y-2">
                                         {Object.entries(job.openSlotSummary).map(([sk, count]) => {
-                                            const slotEx = (job.workerSlots || []).find(s => s.skill === sk && s.status === 'open');
-                                            const bBlock = (job.relevantBudgetBlocks || []).find(b => b.skill === sk);
-                                            const perW   = bBlock ? Math.round(bBlock.subtotal / (bBlock.count || 1)) : null;
+                                            const slotEx  = (job.workerSlots || []).find(s => normSkill(s.skill) === normSkill(sk) && s.status === 'open');
+                                            const bBlock  = (job.relevantBudgetBlocks || []).find(b => normSkill(b.skill) === normSkill(sk));
+                                            const perW    = bBlock ? Math.round(bBlock.subtotal / (bBlock.count || 1)) : null;
+                                            const isMatch = workerSkills.length > 0 && workerSkills.includes(normSkill(sk));
                                             return (
                                                 <div key={sk} className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="font-bold text-orange-700 capitalize text-sm">{sk}</span>
-                                                        <span className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-full font-bold">{count} position{count > 1 ? 's' : ''}</span>
+                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-orange-700 capitalize text-sm">{sk}</span>
+                                                            {isMatch && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">✓ Your skill</span>}
+                                                        </div>
+                                                        <span className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-full font-bold flex-shrink-0">{count} position{count > 1 ? 's' : ''}</span>
                                                     </div>
                                                     <div className="flex items-center gap-4 mt-1.5 text-xs">
-                                                        {slotEx && <span className="text-orange-500">~{slotEx.hoursEstimated}h per worker</span>}
+                                                        {slotEx?.hoursEstimated && <span className="text-orange-500">~{slotEx.hoursEstimated}h per worker</span>}
                                                         {perW   && <span className="text-green-600 font-semibold">Your earnings: ₹{perW.toLocaleString()}</span>}
                                                     </div>
                                                 </div>
@@ -292,24 +338,20 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                 </div>
                             )}
 
-                            {/* Worker-relevant budget ONLY */}
+                            {/* Budget breakdown */}
                             {(job.relevantBudgetBlocks || []).length > 0 && (
                                 <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                                        Your Skill — Cost Details
-                                    </p>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cost Details</p>
                                     <div className="border border-gray-200 rounded-xl overflow-hidden">
                                         {job.relevantBudgetBlocks.map((b, i) => {
                                             const count = b.count || 1;
                                             const perW  = Math.round(b.subtotal / count);
                                             return (
                                                 <div key={i}>
-                                                    {/* Skill header */}
                                                     <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex justify-between items-center">
                                                         <span className="text-xs font-bold text-gray-700 capitalize">{b.skill}</span>
                                                         <span className="text-xs text-gray-400">{b.hours}h total · {count} worker{count > 1 ? 's' : ''}</span>
                                                     </div>
-                                                    {/* Per-worker rows */}
                                                     {Array.from({ length: count }).map((_, wi) => (
                                                         <div key={wi} className="flex justify-between px-4 py-2.5 border-b border-gray-50 last:border-0 bg-white text-sm">
                                                             <span className="text-gray-600 capitalize">{b.skill} Worker {count > 1 ? wi + 1 : ''}</span>
@@ -324,9 +366,6 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                             );
                                         })}
                                     </div>
-                                    <p className="text-[10px] text-gray-400 mt-1.5">
-                                        💡 Only costs for your matching skills are shown.
-                                    </p>
                                 </div>
                             )}
 
@@ -408,21 +447,18 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                 <div className="w-full text-center py-3 bg-green-100 text-green-700 rounded-xl font-bold">
                                     ✓ You're Assigned
                                 </div>
+                            ) : isAvailable ? (
+                                <button onClick={() => setShowSkillPicker(true)}
+                                    className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl text-base flex items-center justify-center gap-2 transition-colors">
+                                    📋 Select Position & Apply
+                                </button>
                             ) : (
-                                isAvailable ? (
-                                    <button onClick={() => setShowSkillPicker(true)}
-                                        className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl text-base flex items-center justify-center gap-2 transition-colors">
-                                        📋 Select Position & Apply
-                                    </button>
-                                ) : (
-                                    <div className="w-full text-center py-3 bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold text-sm">
-                                        🔴 Turn ON availability to apply
-                                    </div>
-                                )
+                                <div className="w-full text-center py-3 bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold text-sm">
+                                    🔴 Turn ON availability to apply
+                                </div>
                             )}
                         </div>
 
-                        {/* Skill picker overlay */}
                         {showSkillPicker && (
                             <SkillSelectModal
                                 job={job}
@@ -439,7 +475,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUB-TASK CARD — standalone card for reposted missing-skill sub-tasks
+// SUB-TASK CARD
 // ─────────────────────────────────────────────────────────────────────────────
 function SubTaskCard({ job, isAvailable, applying, onApply }) {
     const earnings = (job.relevantBudgetBlocks || []).reduce((s, b) => s + (b.subtotal || 0), 0);
@@ -453,9 +489,7 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">⚡ Urgent Sub-task</span>
                         </div>
-                        <h3 className="font-bold text-gray-900 leading-snug capitalize">
-                            {job.subTaskSkill} Task
-                        </h3>
+                        <h3 className="font-bold text-gray-900 leading-snug capitalize">{job.subTaskSkill} Task</h3>
                         <p className="text-xs text-gray-400 mt-0.5 truncate">{job.parentJobTitle || job.title}</p>
                     </div>
                     {earnings > 0 && (
@@ -465,24 +499,12 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
                         </div>
                     )}
                 </div>
-
                 <div className="flex flex-wrap gap-2 text-xs">
-                    {job.scheduledTime && (
-                        <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full font-semibold">🕐 {job.scheduledTime}</span>
-                    )}
-                    {hours && (
-                        <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">~{hours}h</span>
-                    )}
-                    {job.location?.city && (
-                        <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">📍 {job.location.city}</span>
-                    )}
-                    {job.scheduledDate && (
-                        <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-                            📅 {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                        </span>
-                    )}
+                    {job.scheduledTime  && <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full font-semibold">🕐 {job.scheduledTime}</span>}
+                    {hours             && <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">~{hours}h</span>}
+                    {job.location?.city && <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">📍 {job.location.city}</span>}
+                    {job.scheduledDate  && <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">📅 {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>}
                 </div>
-
                 <div className="flex items-center justify-end mt-4 pt-3 border-t border-gray-50">
                     {job.hasApplied ? (
                         <span className="text-xs px-4 py-2 bg-green-100 text-green-600 rounded-xl font-bold">Applied ✓</span>
@@ -493,9 +515,7 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
                             onClick={() => isAvailable ? onApply(job) : toast.error('Turn ON availability to apply.')}
                             disabled={applying[job._id]}
                             className={`text-xs px-4 py-2 rounded-xl font-bold disabled:opacity-60 transition-colors ${
-                                isAvailable
-                                    ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                isAvailable ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             }`}>
                             {applying[job._id] ? '…' : '⚡ Apply Now'}
                         </button>
@@ -507,7 +527,7 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAIN — Job listing
+// MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function JobRequests() {
     const [jobs,        setJobs]        = useState([]);
@@ -516,24 +536,28 @@ export default function JobRequests() {
     const [filterSkill, setFilterSkill] = useState('all');
     const [filterCity,  setFilterCity]  = useState('all');
     const [detailId,    setDetailId]    = useState(null);
-    const [applyModal,  setApplyModal]  = useState(null); // job for quick apply
+    const [applyModal,  setApplyModal]  = useState(null);
     const [applying,    setApplying]    = useState({});
     const [isAvailable, setIsAvailable] = useState(true);
 
-    // Get worker skills from localStorage user
+    // Normalise worker skills — handle plain strings AND objects
     const localUser    = JSON.parse(localStorage.getItem('user') || '{}');
-    const workerSkills = (localUser?.skills || [])
-        .map(s => (typeof s === 'string' ? s : s?.name || '').toLowerCase().trim())
-        .filter(Boolean);
+    const workerSkills = (localUser?.skills || []).map(normSkill).filter(Boolean);
 
     const loadJobs = async () => {
         try {
             setLoading(true);
-            const [jobsRes, profileRes] = await Promise.all([getAvailableJobs(), getWorkerProfile()]);
+            const [jobsRes, profileRes] = await Promise.all([
+                getAvailableJobs(),
+                getWorkerProfile(),
+            ]);
             setJobs(Array.isArray(jobsRes.data) ? jobsRes.data : []);
             setIsAvailable(profileRes.data?.availability !== false);
-        } catch { toast.error('Failed to load jobs.'); }
-        finally { setLoading(false); }
+        } catch {
+            toast.error('Failed to load jobs.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => { loadJobs(); }, []);
@@ -541,7 +565,6 @@ export default function JobRequests() {
     const handleApplied = (jobId) =>
         setJobs(p => p.map(j => j._id === jobId ? { ...j, hasApplied: true } : j));
 
-    // Sub-task direct apply
     const handleSubTaskApply = async (job) => {
         try {
             setApplying(p => ({ ...p, [job._id]: true }));
@@ -556,7 +579,6 @@ export default function JobRequests() {
         }
     };
 
-    // Quick apply — opens skill picker
     const handleQuickApplySkills = async (job, selectedSkills) => {
         try {
             setApplying(p => ({ ...p, [job._id]: true }));
@@ -571,23 +593,53 @@ export default function JobRequests() {
         }
     };
 
-    // Filters
-    const allSkills = [...new Set(jobs.flatMap(j => j.relevantSkills || j.skills || []))].filter(Boolean).slice(0, 15);
-    const allCities = [...new Set(jobs.map(j => j.location?.city).filter(Boolean))].slice(0, 10);
+    // Build skill dropdown — normalise ALL skill sources (handles object skills)
+    const allSkills = [...new Set(
+        jobs.flatMap(j => [
+            ...(j.relevantSkills || []).map(normSkill),
+            ...(j.skills         || []).map(normSkill),
+            ...(j.workerSlots    || []).map(s => normSkill(s.skill)),
+            ...Object.keys(j.openSlotSummary || {}).map(normSkill),
+        ]).filter(Boolean)
+    )].slice(0, 30);
 
+    const allCities = [...new Set(jobs.map(j => j.location?.city).filter(Boolean))].slice(0, 15);
+
+    // ── Filter — NEVER hides jobs based on worker skills ─────────────────────
     const filtered = jobs.filter(j => {
-        const s          = search.toLowerCase();
-        const matchSearch = !s || j.title.toLowerCase().includes(s) || j.description.toLowerCase().includes(s) || j.location?.city?.toLowerCase().includes(s);
-        const matchSkill  = filterSkill === 'all' || (j.relevantSkills || j.skills || []).includes(filterSkill);
-        const matchCity   = filterCity  === 'all' || j.location?.city === filterCity;
-        return matchSearch && matchSkill && matchCity;
+        // Text search
+        if (search) {
+            const q = search.toLowerCase();
+            const ok = j.title?.toLowerCase().includes(q)
+                || j.description?.toLowerCase().includes(q)
+                || j.location?.city?.toLowerCase().includes(q)
+                || Object.keys(j.openSlotSummary || {}).some(sk => sk.toLowerCase().includes(q))
+                || (j.skills || []).some(s => normSkill(s).includes(q));
+            if (!ok) return false;
+        }
+        // Skill filter — compare normalised strings
+        if (filterSkill !== 'all') {
+            const needle    = normSkill(filterSkill);
+            const jobSkills = [
+                ...(j.relevantSkills || []).map(normSkill),
+                ...(j.skills         || []).map(normSkill),
+                ...(j.workerSlots    || []).map(s => normSkill(s.skill)),
+                ...Object.keys(j.openSlotSummary || {}).map(normSkill),
+            ];
+            if (!jobSkills.includes(needle)) return false;
+        }
+        // City filter
+        if (filterCity !== 'all' && j.location?.city !== filterCity) return false;
+        return true;
     });
 
-    if (loading) return (
-        <div className="flex items-center justify-center h-64">
-            <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-    );
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-3xl mx-auto p-4 space-y-4 pb-20">
@@ -596,7 +648,10 @@ export default function JobRequests() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-black text-gray-900">Available Jobs</h1>
-                    <p className="text-xs text-gray-400 mt-0.5">{filtered.length} matching your skills</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                        {jobs.length} total · {filtered.length} showing
+                        {workerSkills.length > 0 && ` · Your skills: ${workerSkills.slice(0, 2).join(', ')}${workerSkills.length > 2 ? '…' : ''}`}
+                    </p>
                 </div>
                 <button onClick={loadJobs}
                     className="text-xs text-orange-500 border border-orange-200 px-3 py-1.5 rounded-lg hover:bg-orange-50 font-semibold transition-colors">
@@ -617,30 +672,58 @@ export default function JobRequests() {
 
             {/* Search + filters */}
             <div className="space-y-2">
-                <input value={search} onChange={e => setSearch(e.target.value)}
+                <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
                     placeholder="🔍 Search jobs, skills, city…"
                     className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-400 transition-colors"
                 />
                 <div className="flex gap-2">
-                    <select value={filterSkill} onChange={e => setFilterSkill(e.target.value)}
-                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-400 bg-white transition-colors">
+                    <select
+                        value={filterSkill}
+                        onChange={e => setFilterSkill(e.target.value)}
+                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-400 bg-white transition-colors"
+                    >
                         <option value="all">All Skills</option>
                         {allSkills.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
                     </select>
-                    <select value={filterCity} onChange={e => setFilterCity(e.target.value)}
-                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-400 bg-white transition-colors">
+                    <select
+                        value={filterCity}
+                        onChange={e => setFilterCity(e.target.value)}
+                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-400 bg-white transition-colors"
+                    >
                         <option value="all">All Cities</option>
                         {allCities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                 </div>
+                {(search || filterSkill !== 'all' || filterCity !== 'all') && (
+                    <button
+                        onClick={() => { setSearch(''); setFilterSkill('all'); setFilterCity('all'); }}
+                        className="text-xs text-orange-500 underline font-semibold"
+                    >
+                        Clear all filters
+                    </button>
+                )}
             </div>
 
             {/* Job cards */}
-            {filtered.length === 0 ? (
+            {jobs.length === 0 ? (
+                <div className="text-center py-20 text-gray-400">
+                    <div className="text-5xl mb-3">📭</div>
+                    <p className="font-bold text-base">No jobs posted yet</p>
+                    <p className="text-sm mt-1 text-gray-300">Check back later for new opportunities</p>
+                </div>
+            ) : filtered.length === 0 ? (
                 <div className="text-center py-20 text-gray-400">
                     <div className="text-5xl mb-3">🔍</div>
-                    <p className="font-bold text-base">No jobs match your skills</p>
-                    <p className="text-sm mt-1 text-gray-300">Try adjusting filters or check back later</p>
+                    <p className="font-bold text-base">No jobs match your filters</p>
+                    <p className="text-sm mt-1 text-gray-300">Try adjusting or clearing filters</p>
+                    <button
+                        onClick={() => { setSearch(''); setFilterSkill('all'); setFilterCity('all'); }}
+                        className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl text-sm font-bold hover:bg-orange-600 transition-colors"
+                    >
+                        Show All Jobs
+                    </button>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -654,115 +737,145 @@ export default function JobRequests() {
                                 onApply={handleSubTaskApply}
                             />
                         ) : (
-                        <div key={job._id}
-                            className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden"
-                            onClick={() => setDetailId(job._id)}>
+                            <div
+                                key={job._id}
+                                className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden"
+                                onClick={() => setDetailId(job._id)}
+                            >
+                                <div className={`h-1 ${job.urgent ? 'bg-orange-500' : 'bg-gray-100'}`} />
 
-                            {/* Urgency accent */}
-                            <div className={`h-1 ${job.urgent ? 'bg-orange-500' : 'bg-gray-100'}`} />
-
-                            <div className="p-5">
-                                {/* Top row */}
-                                <div className="flex items-start gap-3">
-                                    <img src={getImageUrl(job.postedBy?.photo)} alt=""
-                                        className="w-10 h-10 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                                        onError={e => { e.target.src = '/admin.png'; }} />
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <h3 className="font-bold text-gray-900 leading-snug truncate">{job.title}</h3>
-                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                    <span className="text-xs text-gray-400">{job.postedBy?.name}</span>
-                                                    {job.postedBy?.verificationStatus === 'approved' && (
-                                                        <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded font-bold">✓</span>
-                                                    )}
+                                <div className="p-5">
+                                    {/* Top row */}
+                                    <div className="flex items-start gap-3">
+                                        <img
+                                            src={getImageUrl(job.postedBy?.photo)}
+                                            alt=""
+                                            className="w-10 h-10 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                                            onError={e => { e.target.src = '/admin.png'; }}
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <h3 className="font-bold text-gray-900 leading-snug truncate">{job.title}</h3>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-xs text-gray-400">{job.postedBy?.name}</span>
+                                                        {job.postedBy?.verificationStatus === 'approved' && (
+                                                            <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded font-bold">✓</span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                                {job.urgent     && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">⚡ Urgent</span>}
-                                                {job.negotiable && <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-semibold">🤝 Nego</span>}
+                                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                                    {job.urgent     && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">⚡ Urgent</span>}
+                                                    {job.negotiable && <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-semibold">🤝 Nego</span>}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Description */}
-                                <p className="text-sm text-gray-500 mt-3 line-clamp-2 leading-relaxed">
-                                    {job.shortDescription || job.description}
-                                </p>
+                                    {/* Description */}
+                                    <p className="text-sm text-gray-500 mt-3 line-clamp-2 leading-relaxed">
+                                        {job.shortDescription || job.description}
+                                    </p>
 
-                                {/* Open slots relevant to this worker */}
-                                {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mt-3">
-                                        {Object.entries(job.openSlotSummary).map(([sk, cnt]) => (
-                                            <span key={sk} className="text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-bold capitalize">
-                                                {sk} × {cnt}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
+                                    {/* Open slots — ALL shown with match highlights */}
+                                    {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-3">
+                                            {Object.entries(job.openSlotSummary).map(([sk, cnt]) => {
+                                                const isMatch = workerSkills.length > 0 && workerSkills.includes(normSkill(sk));
+                                                return (
+                                                    <span key={sk} className={`text-xs px-2.5 py-1 rounded-full font-bold capitalize ${
+                                                        isMatch ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                                                    }`}>
+                                                        {sk} × {cnt}{isMatch ? ' ✓' : ''}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
 
-                                {/* Applied skills */}
-                                {job.hasApplied && job.myAppliedSkills?.length > 0 && (
-                                    <div className="flex items-center gap-1.5 mt-2">
-                                        <span className="text-xs text-green-600 font-medium">✓ Applied for:</span>
-                                        {job.myAppliedSkills.map(sk => (
-                                            <span key={sk} className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium capitalize">{sk}</span>
-                                        ))}
-                                    </div>
-                                )}
+                                    {/* Fallback: skills listed on job when no openSlotSummary */}
+                                    {(!job.openSlotSummary || Object.keys(job.openSlotSummary).length === 0) && (job.skills || []).length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-3">
+                                            {(job.skills || []).slice(0, 3).map((sk, i) => (
+                                                <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full font-medium capitalize">
+                                                    {normSkill(sk)}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
 
-                                {/* Meta row */}
-                                <div className="flex items-center gap-3 mt-3 flex-wrap text-xs text-gray-400">
-                                    {job.scheduledDate && <span>📅 {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>}
-                                    {job.shift         && <span>{job.shift.split('(')[0].trim()}</span>}
-                                    {job.location?.city && <span>📍 {job.location.city}</span>}
-                                    {job.duration      && <span>⏱ {job.duration}</span>}
-                                    {job.applicantCount > 0 && <span>👤 {job.applicantCount} applied</span>}
-                                </div>
+                                    {/* Applied skills */}
+                                    {job.hasApplied && job.myAppliedSkills?.length > 0 && (
+                                        <div className="flex items-center gap-1.5 mt-2">
+                                            <span className="text-xs text-green-600 font-medium">✓ Applied for:</span>
+                                            {job.myAppliedSkills.map(sk => (
+                                                <span key={sk} className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium capitalize">{sk}</span>
+                                            ))}
+                                        </div>
+                                    )}
 
-                                {/* Footer */}
-                                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
-                                    <div>
-                                        {(() => {
-                                            const totalEarnings = (job.relevantBudgetBlocks || []).reduce((sum, b) =>
-                                                sum + Math.round(b.subtotal / (b.count || 1)), 0);
-                                            return totalEarnings > 0 ? (
-                                                <>
-                                                    <div className="text-base font-black text-green-600">₹{totalEarnings.toLocaleString()}</div>
-                                                    <div className="text-xs text-gray-400">Your total earnings</div>
-                                                </>
-                                            ) : (
-                                                <div className="text-xs text-gray-400">Tap Details for pay info</div>
-                                            );
-                                        })()}
+                                    {/* Meta row */}
+                                    <div className="flex items-center gap-3 mt-3 flex-wrap text-xs text-gray-400">
+                                        {job.scheduledDate   && <span>📅 {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>}
+                                        {job.shift           && <span>{job.shift.split('(')[0].trim()}</span>}
+                                        {job.location?.city  && <span>📍 {job.location.city}</span>}
+                                        {job.duration        && <span>⏱ {job.duration}</span>}
+                                        {job.applicantCount > 0 && <span>👤 {job.applicantCount} applied</span>}
                                     </div>
 
-                                    <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                                        <button onClick={() => setDetailId(job._id)}
-                                            className="text-xs px-3 py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-colors">
-                                            Details
-                                        </button>
-                                        {!job.hasApplied ? (
+                                    {/* Footer */}
+                                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
+                                        <div>
+                                            {(() => {
+                                                const total = (job.relevantBudgetBlocks || []).reduce(
+                                                    (sum, b) => sum + Math.round(b.subtotal / (b.count || 1)), 0
+                                                );
+                                                return total > 0 ? (
+                                                    <>
+                                                        <div className="text-base font-black text-green-600">₹{total.toLocaleString()}</div>
+                                                        <div className="text-xs text-gray-400">Total budget</div>
+                                                    </>
+                                                ) : job.payment > 0 ? (
+                                                    <>
+                                                        <div className="text-base font-black text-green-600">₹{job.payment.toLocaleString()}</div>
+                                                        <div className="text-xs text-gray-400">Total budget</div>
+                                                    </>
+                                                ) : (
+                                                    <div className="text-xs text-gray-400">Tap Details for pay info</div>
+                                                );
+                                            })()}
+                                        </div>
+
+                                        <div className="flex gap-2" onClick={e => e.stopPropagation()}>
                                             <button
-                                                onClick={() => isAvailable ? setApplyModal(job) : toast.error('Turn ON availability to apply.')}
-                                                disabled={applying[job._id]}
-                                                className={`text-xs px-3 py-2 rounded-xl font-bold disabled:opacity-60 transition-colors ${
-                                                    isAvailable
-                                                        ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                                }`}>
-                                                {applying[job._id] ? '…' : 'Apply'}
+                                                onClick={() => setDetailId(job._id)}
+                                                className="text-xs px-3 py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-colors"
+                                            >
+                                                Details
                                             </button>
-                                        ) : (
-                                            <span className="text-xs px-3 py-2 bg-green-100 text-green-600 rounded-xl font-bold">
-                                                Applied ✓
-                                            </span>
-                                        )}
+                                            {!job.hasApplied ? (
+                                                <button
+                                                    onClick={() => isAvailable
+                                                        ? setApplyModal(job)
+                                                        : toast.error('Turn ON availability to apply.')}
+                                                    disabled={applying[job._id]}
+                                                    className={`text-xs px-3 py-2 rounded-xl font-bold disabled:opacity-60 transition-colors ${
+                                                        isAvailable
+                                                            ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                    }`}
+                                                >
+                                                    {applying[job._id] ? '…' : 'Apply'}
+                                                </button>
+                                            ) : (
+                                                <span className="text-xs px-3 py-2 bg-green-100 text-green-600 rounded-xl font-bold">
+                                                    Applied ✓
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
                         )
                     ))}
                 </div>

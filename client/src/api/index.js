@@ -1,5 +1,7 @@
-// client/src/api/index.js — FULL FILE
-// All original exports preserved + browseGroups + getGroupPublic added
+// client/src/api/index.js — UPDATED
+// Added: initClientLocation, updateWorkerLocation, toggleWorkerLocationSharing,
+//        getWorkerTrackingJobs, getJobLocationData
+// All original exports preserved exactly
 
 import axios from 'axios';
 
@@ -143,7 +145,7 @@ export const addMemberAPI   = (gId, kId) => API.put(`/api/groups/${gId}/add`,   
 export const deleteGroupAPI = (gId)      => API.delete(`/api/groups/${gId}`);
 export const leaveGroupAPI  = (gId)      => API.put(`/api/groups/${gId}/leave`, {});
 export const hireGroupJob   = (d)        => API.post('/api/jobs/group/hire',     d);
-// NEW — client group browsing
+// Client group browsing
 export const browseGroups   = (params = {}) => API.get('/api/groups/browse',            { params });
 export const getGroupPublic = (groupId)     => API.get(`/api/groups/${groupId}/public`);
 
@@ -155,6 +157,54 @@ export const deleteCommunityPost    = (id)        => API.delete(`/api/community/
 export const likeCommunityPost      = (id)        => API.post(`/api/community/${id}/like`);
 export const commentOnCommunityPost = (id, text)  => API.post(`/api/community/${id}/comments`, { text });
 export const deleteCommunityComment = (pId, cId)  => API.delete(`/api/community/${pId}/comments/${cId}`);
+
+// ── LOCATION TRACKING ─────────────────────────────────────────────────────────
+// NEW: Live location tracking for booked jobs
+
+/**
+ * CLIENT: Capture static client location when a worker booking is confirmed.
+ * Call this from ClientJobManage after a worker is accepted / job scheduled.
+ * @param {string} jobId
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} address  - optional reverse-geocoded address string
+ */
+export const initClientLocation = (jobId, lat, lng, address = '') =>
+    API.post('/api/location/init', { jobId, lat, lng, address });
+
+/**
+ * WORKER: Push the worker's live GPS position to the server.
+ * Called every 5 seconds while a job is scheduled/running.
+ * @param {string} jobId
+ * @param {number} lat
+ * @param {number} lng
+ * @param {object} extras  - { accuracy, heading, speed } — all optional
+ */
+export const updateWorkerLocation = (jobId, lat, lng, extras = {}) =>
+    API.put('/api/location/worker/update', { jobId, lat, lng, ...extras });
+
+/**
+ * WORKER: Enable or disable live sharing for a job.
+ * @param {string}  jobId
+ * @param {boolean} active
+ */
+export const toggleWorkerLocationSharing = (jobId, active) =>
+    API.put('/api/location/worker/toggle', { jobId, active });
+
+/**
+ * WORKER: Get all jobs for which location tracking is active.
+ * Used on the worker dashboard to show the tracking widget.
+ */
+export const getWorkerTrackingJobs = () =>
+    API.get('/api/location/worker/jobs');
+
+/**
+ * CLIENT + WORKER: Get the current location snapshot for a specific job.
+ * Returns { clientLocation, workers[], isClient, isWorker }
+ * @param {string} jobId
+ */
+export const getJobLocationData = (jobId) =>
+    API.get(`/api/location/${jobId}`);
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 export const getImageUrl = (path, fallback = '/admin.png') => {

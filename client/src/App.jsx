@@ -1,5 +1,6 @@
 // src/App.jsx — UPDATED
-// Added: ClientGroups page (/client/groups)
+// Added: ClientLiveTracking (/client/live-tracking/:jobId)
+//        WorkerLiveTracking (/worker/live-tracking/:jobId)
 // All original routes, imports, and logic preserved exactly
 
 import React from 'react';
@@ -54,6 +55,7 @@ import WorkerProposals from './pages/worker/WorkerProposals';
 import AcceptInvites from './pages/worker/AcceptInvites';
 import Groups from './pages/worker/Groups';
 import Community from './pages/worker/Community';
+import WorkerLiveTracking from './pages/worker/WorkerLiveTracking'; // NEW
 
 // Client Pages
 import ClientDashboard from './pages/client/ClientDashboard';
@@ -63,7 +65,8 @@ import ClientProfile from './pages/client/ClientProfile';
 import ClientJobManage from './pages/client/ClientJobManage';
 import ClientSettings from './pages/client/Settings';
 import ClientComplaints from './pages/client/ClientComplaints';
-import ClientGroups from './pages/client/ClientGroups'; // NEW
+import ClientGroups from './pages/client/ClientGroups';
+import ClientLiveTracking from './pages/client/ClientLiveTracking'; // NEW
 
 // ── Layout wrappers ───────────────────────────────────────────────────────────
 
@@ -145,14 +148,15 @@ function App() {
                         }
                     >
                         <Route index element={<Navigate to="dashboard" replace />} />
-                        <Route path="dashboard"  element={<ClientDashboard />} />
-                        <Route path="ai-assist"  element={<ClientAIAssist />} />
-                        <Route path="job-manage" element={<ClientJobManage />} />
-                        <Route path="job-post"   element={<ClientJobPost />} />
-                        <Route path="profile"    element={<ClientProfile />} />
-                        <Route path="settings"   element={<ClientSettings />} />
-                        <Route path="complaints" element={<ClientComplaints />} />
-                        <Route path="groups"     element={<ClientGroups />} /> {/* NEW */}
+                        <Route path="dashboard"               element={<ClientDashboard />} />
+                        <Route path="ai-assist"               element={<ClientAIAssist />} />
+                        <Route path="job-manage"              element={<ClientJobManage />} />
+                        <Route path="job-post"                element={<ClientJobPost />} />
+                        <Route path="profile"                 element={<ClientProfile />} />
+                        <Route path="settings"                element={<ClientSettings />} />
+                        <Route path="complaints"              element={<ClientComplaints />} />
+                        <Route path="groups"                  element={<ClientGroups />} />
+                        <Route path="live-tracking/:jobId"    element={<ClientLiveTracking />} /> {/* NEW */}
                     </Route>
 
                     {/* ── WORKER ROUTES ── */}
@@ -164,24 +168,25 @@ function App() {
                             </ProtectedRoute>
                         }
                     >
-                        <Route path="dashboard"            element={<WorkerDashboard />} />
-                        <Route path="job-requests"         element={<JobRequests />} />
-                        <Route path="job-bookings"         element={<JobBookings />} />
-                        <Route path="leaderboard"          element={<Leaderboard />} />
-                        <Route path="feedback"             element={<Feedback />} />
-                        <Route path="complaints"           element={<Complaints />} />
-                        <Route path="history"              element={<History />} />
-                        <Route path="profile"              element={<ViewProfile />} />
-                        <Route path="id-card"              element={<ViewIdCard />} />
-                        <Route path="settings"             element={<Settings />} />
-                        <Route path="create-group"         element={<CreateGroup />} />
-                        <Route path="my-groups"            element={<MyGroups />} />
-                        <Route path="groups"               element={<Groups />} />
-                        <Route path="active-group-jobs"    element={<ActiveGroupJobs />} />
-                        <Route path="completed-group-jobs" element={<CompletedGroupJobs />} />
-                        <Route path="proposals"            element={<WorkerProposals />} />
-                        <Route path="accept-invites"       element={<AcceptInvites />} />
-                        <Route path="community"            element={<Community />} />
+                        <Route path="dashboard"               element={<WorkerDashboard />} />
+                        <Route path="job-requests"            element={<JobRequests />} />
+                        <Route path="job-bookings"            element={<JobBookings />} />
+                        <Route path="leaderboard"             element={<Leaderboard />} />
+                        <Route path="feedback"                element={<Feedback />} />
+                        <Route path="complaints"              element={<Complaints />} />
+                        <Route path="history"                 element={<History />} />
+                        <Route path="profile"                 element={<ViewProfile />} />
+                        <Route path="id-card"                 element={<ViewIdCard />} />
+                        <Route path="settings"                element={<Settings />} />
+                        <Route path="create-group"            element={<CreateGroup />} />
+                        <Route path="my-groups"               element={<MyGroups />} />
+                        <Route path="groups"                  element={<Groups />} />
+                        <Route path="active-group-jobs"       element={<ActiveGroupJobs />} />
+                        <Route path="completed-group-jobs"    element={<CompletedGroupJobs />} />
+                        <Route path="proposals"               element={<WorkerProposals />} />
+                        <Route path="accept-invites"          element={<AcceptInvites />} />
+                        <Route path="community"               element={<Community />} />
+                        <Route path="live-tracking/:jobId"    element={<WorkerLiveTracking />} /> {/* NEW */}
                     </Route>
                 </Route>
 

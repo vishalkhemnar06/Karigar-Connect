@@ -21,6 +21,10 @@
 //
 //   6. skills array entries can be objects {name, proficiency} OR plain strings.
 //      FIX: (sk.name || sk) used everywhere for safe skill name access.
+//
+//   7. "View Profile" link used karigar._id (MongoDB ObjectId) but the public
+//      profile route /profile/public/:workerId expects a karigarId string
+//      like "K736300". FIX: Changed to karigar.karigarId.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -117,10 +121,10 @@ const StatCard = ({ icon: Icon, grad, label, value, sub }) => (
 ════════════════════════════════════════════ */
 const KarigarCard = ({ karigar, idx }) => {
   const [imgErr, setImgErr] = useState(false);
-  const initials = (karigar.name || 'K').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const initials  = (karigar.name || 'K').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const isAvailable = karigar.availability !== false;
-  const rating = karigar.avgStars || 0;
-  const skills = karigar.skills || [];
+  const rating    = karigar.avgStars || 0;
+  const skills    = karigar.skills || [];
 
   return (
     <div style={{
@@ -238,7 +242,8 @@ const KarigarCard = ({ karigar, idx }) => {
               Contact Now
             </a>
           )}
-          <Link to={`/profile/public/${karigar._id}`}
+          {/* FIX 7: was karigar._id (MongoDB ObjectId) — route expects karigarId like "K736300" */}
+          <Link to={`/profile/public/${karigar.karigarId}`}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff',
@@ -280,8 +285,8 @@ const ClientDashboard = () => {
     if (!silent) setLoading(true); else setRefreshing(true);
     try {
       const [clientRes, karigarRes] = await Promise.allSettled([
-        api.getClientProfile(), // GET /client/profile
-        api.getAllKarigars(),   // GET /worker/all
+        api.getClientProfile(),
+        api.getAllKarigars(),
       ]);
       if (clientRes.status  === 'fulfilled') setClientData(clientRes.value?.data || null);
       if (karigarRes.status === 'fulfilled') {
@@ -379,9 +384,9 @@ const ClientDashboard = () => {
         ? <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>{[1,2,3,4].map(i => <Skel key={i} h={84} r={16} />)}</div>
         : (
           <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-            <StatCard icon={Users}       grad="linear-gradient(135deg,#f97316,#fbbf24)" label="Total Karigars"  value={karigars.length}          sub="On the platform" />
-            <StatCard icon={CheckCircle} grad="linear-gradient(135deg,#22c55e,#4ade80)" label="Available Now"   value={availCount}               sub="Ready for hire" />
-            <StatCard icon={Briefcase}   grad="linear-gradient(135deg,#3b82f6,#60a5fa)" label="Showing"         value={filteredKarigars.length}  sub={hasFilters ? 'After filters' : 'All results'} />
+            <StatCard icon={Users}       grad="linear-gradient(135deg,#f97316,#fbbf24)" label="Total Karigars"   value={karigars.length}         sub="On the platform" />
+            <StatCard icon={CheckCircle} grad="linear-gradient(135deg,#22c55e,#4ade80)" label="Available Now"    value={availCount}              sub="Ready for hire" />
+            <StatCard icon={Briefcase}   grad="linear-gradient(135deg,#3b82f6,#60a5fa)" label="Showing"          value={filteredKarigars.length} sub={hasFilters ? 'After filters' : 'All results'} />
             <StatCard icon={TrendingUp}  grad="linear-gradient(135deg,#8b5cf6,#a78bfa)" label="Skill Categories" value={SKILLS.length}           sub="Available" />
           </div>
         )
@@ -476,9 +481,9 @@ const ClientDashboard = () => {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10, alignItems: 'center' }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active:</span>
             {[
-              { label: searchTerm,                         clear: () => setSearchTerm('')        },
-              { label: skillFilter,                        clear: () => setSkillFilter('')       },
-              { label: locationFilter,                     clear: () => setLocationFilter('')    },
+              { label: searchTerm,                                    clear: () => setSearchTerm('')        },
+              { label: skillFilter,                                    clear: () => setSkillFilter('')       },
+              { label: locationFilter,                                 clear: () => setLocationFilter('')    },
               { label: experienceFilter && `${experienceFilter}+ yrs`, clear: () => setExperienceFilter('') },
             ].filter(f => f.label).map((f, i) => (
               <span key={i} style={{ background: '#ffedd5', color: '#c2410c', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, display: 'flex', alignItems: 'center', gap: 5, border: '1px solid #fed7aa' }}>

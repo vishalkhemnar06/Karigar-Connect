@@ -11,6 +11,14 @@
 //  3. Photo URL was built as `http://localhost:5000/${user.photo}` which breaks for
 //     Cloudinary URLs (https://res.cloudinary.com/...) — prepending localhost made it 404.
 //     FIX: If photo already starts with http/https, use it directly.
+//
+//  4. fetchUserData used raw fetch() without Authorization header → 401 on protected routes.
+//     FIX: Use api.getPublicWorkerProfile(karigarId) which uses the axios instance
+//          with the token interceptor already set up.
+//
+//  5. Backend now queries by karigarId (not _id) and returns the worker object directly
+//     (same shape as before with completedJobs, ratings, rank, avgStars, workPhotos merged in).
+//     No data shape change needed — setUser(data) still works.
 
 import React, { useRef, useState, useEffect } from "react";
 import QRCode from "react-qr-code";
@@ -18,6 +26,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { BASE_URL } from "../../constants/config";
+import * as api from "../../api";
 
 const ViewIdCard = () => {
   const [user, setUser] = useState(null);
@@ -37,11 +46,12 @@ const ViewIdCard = () => {
         return;
       }
 
-      const res = await fetch(
-        `${BASE_URL}/api/worker/public/${localUser.karigarId}`
-      );
+      // FIX 4: Use the api module which attaches the Bearer token automatically.
+      // This replaces the raw fetch() that was missing Authorization header.
+      // The backend now looks up by karigarId (not _id) — no URL change needed.
+      const { data } = await api.getPublicWorkerProfile(localUser.karigarId);
 
-      const data = await res.json();
+      // FIX 5: Backend returns the worker object directly (same shape as before)
       setUser(data);
     } catch (err) {
       console.error(err);
@@ -69,15 +79,14 @@ const ViewIdCard = () => {
       const imgData = canvas.toDataURL("image/png", 1.0);
       const pdf = new jsPDF("l", "mm", "a6");
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfWidth  = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
 
-      const ratio =
-        Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height) * 0.95;
+      const ratio = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height) * 0.95;
 
-      const finalWidth = canvas.width * ratio;
+      const finalWidth  = canvas.width  * ratio;
       const finalHeight = canvas.height * ratio;
-      const x = (pdfWidth - finalWidth) / 2;
+      const x = (pdfWidth  - finalWidth)  / 2;
       const y = (pdfHeight - finalHeight) / 2;
 
       pdf.addImage(imgData, "PNG", x, y, finalWidth, finalHeight);
@@ -103,13 +112,13 @@ const ViewIdCard = () => {
       ? user.photo
       : `${BASE_URL}/${user.photo.replace(/\\/g, "/")}`;
 
-  const skills = user.skills?.map((s) => s.name) || [];
+  const skills    = user.skills?.map((s) => s.name || s) || [];
   const issueDate = new Date().toLocaleDateString("en-IN");
   const publicURL = `${window.location.origin}/profile/public/${user.karigarId}`;
 
   // FIX 1+2: address is a nested object — extract the parts we need as strings
-  const city    = user.address?.city     || user.city     || "";
-  const pincode = user.address?.pincode  || user.pincode  || "";
+  const city     = user.address?.city    || user.city     || "";
+  const pincode  = user.address?.pincode || user.pincode  || "";
   const locality = user.address?.locality || user.locality || "";
 
   // Full address string for bottom of card (safe — just string concat)
