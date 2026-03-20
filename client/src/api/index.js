@@ -1,5 +1,5 @@
 // client/src/api/index.js — FULL FILE
-// All original exports preserved + updated community exports
+// All original exports preserved + browseGroups + getGroupPublic added
 
 import axios from 'axios';
 
@@ -45,13 +45,13 @@ export const getAdminComplaintById      = (id)      => API.get(`/api/admin/compl
 export const takeAdminActionOnComplaint = (id, b)   => API.post(`/api/admin/complaints/${id}/action`, b);
 
 // ── ADMIN COMMUNITY ───────────────────────────────────────────────────────────
-export const adminGetCommunityPosts    = (page = 1)   => API.get('/api/admin/community/posts',            { params: { page } });
-export const adminGetCommunityStats    = ()            => API.get('/api/admin/community/stats');
-export const adminCreateCommunityPost  = (fd)          => API.post('/api/admin/community/posts',           fd, mp);
-export const adminEditCommunityPost    = (id, fd)      => API.put(`/api/admin/community/posts/${id}`,      fd, mp);
-export const adminDeleteCommunityPost  = (id, reason)  => API.delete(`/api/admin/community/posts/${id}`,   { data: { reason } });
-export const adminHardDeleteCommunityPost = (id)       => API.delete(`/api/admin/community/posts/${id}/hard`);
-export const adminRestoreCommunityPost = (id)          => API.post(`/api/admin/community/posts/${id}/restore`);
+export const adminGetCommunityPosts       = (page = 1)  => API.get('/api/admin/community/posts',          { params: { page } });
+export const adminGetCommunityStats       = ()           => API.get('/api/admin/community/stats');
+export const adminCreateCommunityPost     = (fd)         => API.post('/api/admin/community/posts',          fd, mp);
+export const adminEditCommunityPost       = (id, fd)     => API.put(`/api/admin/community/posts/${id}`,     fd, mp);
+export const adminDeleteCommunityPost     = (id, reason) => API.delete(`/api/admin/community/posts/${id}`,  { data: { reason } });
+export const adminHardDeleteCommunityPost = (id)         => API.delete(`/api/admin/community/posts/${id}/hard`);
+export const adminRestoreCommunityPost    = (id)         => API.post(`/api/admin/community/posts/${id}/restore`);
 
 // ── WORKER ────────────────────────────────────────────────────────────────────
 export const getAvailableJobs               = ()              => API.get('/api/worker/jobs');
@@ -143,6 +143,9 @@ export const addMemberAPI   = (gId, kId) => API.put(`/api/groups/${gId}/add`,   
 export const deleteGroupAPI = (gId)      => API.delete(`/api/groups/${gId}`);
 export const leaveGroupAPI  = (gId)      => API.put(`/api/groups/${gId}/leave`, {});
 export const hireGroupJob   = (d)        => API.post('/api/jobs/group/hire',     d);
+// NEW — client group browsing
+export const browseGroups   = (params = {}) => API.get('/api/groups/browse',            { params });
+export const getGroupPublic = (groupId)     => API.get(`/api/groups/${groupId}/public`);
 
 // ── COMMUNITY (Worker) ────────────────────────────────────────────────────────
 export const getCommunityPosts      = (page = 1) => API.get('/api/community/',               { params: { page } });

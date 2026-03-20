@@ -1,30 +1,31 @@
 // src/components/ClientLayout.jsx — UPDATED
-// Changes from original:
-//  ✅ Added 'Complaints' nav item pointing to /client/complaints
-//  (All other code is unchanged from the original)
+// Added: 'Browse Groups' nav item pointing to /client/groups
+// All original code preserved exactly
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { getImageUrl } from '../constants/config';
 import * as api from '../api';
 import {
-    LayoutDashboard, Search, PlusSquare, Briefcase, Bot,
-    User, LogOut, X, Menu, ChevronRight, Sparkles, AlertTriangle
+    LayoutDashboard, PlusSquare, Briefcase, Bot,
+    User, LogOut, X, Menu, ChevronRight, Sparkles,
+    AlertTriangle, Users
 } from 'lucide-react';
 
 const navItems = [
-    { to: '/client/dashboard',  label: 'Dashboard',     icon: LayoutDashboard,  desc: 'Overview & stats' },
-    { to: '/client/job-post',   label: 'Post a Job',    icon: PlusSquare,       desc: 'Create new listing' },
-    { to: '/client/job-manage', label: 'Manage Jobs',   icon: Briefcase,        desc: 'Track all postings' },
-    { to: '/client/ai-assist',  label: 'AI Scope Tool', icon: Bot,              desc: 'Smart project planner' },
-    { to: '/client/complaints', label: 'Complaints',    icon: AlertTriangle,    desc: 'Report worker issues' }, // ← NEW
-    { to: '/client/profile',    label: 'My Profile',    icon: User,             desc: 'Account settings' },
+    { to: '/client/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, desc: 'Overview & stats' },
+    { to: '/client/job-post',   label: 'Post a Job',      icon: PlusSquare,      desc: 'Create new listing' },
+    { to: '/client/job-manage', label: 'Manage Jobs',     icon: Briefcase,       desc: 'Track all postings' },
+    { to: '/client/ai-assist',  label: 'AI Scope Tool',   icon: Bot,             desc: 'Smart project planner' },
+    { to: '/client/groups',     label: 'Browse Groups',   icon: Users,           desc: 'Find worker teams' },   // NEW
+    { to: '/client/complaints', label: 'Complaints',      icon: AlertTriangle,   desc: 'Report worker issues' },
+    { to: '/client/profile',    label: 'My Profile',      icon: User,            desc: 'Account settings' },
 ];
 
 export default function ClientLayout() {
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [profile, setProfile] = useState(null);
+    const [profile, setProfile]   = useState(null);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -125,20 +126,17 @@ export default function ClientLayout() {
 
     return (
         <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30">
-            {/* ── Desktop Sidebar ── */}
+            {/* Desktop Sidebar */}
             <aside className="hidden md:flex flex-col w-64 bg-white border-r border-orange-100 shadow-sm fixed top-0 left-0 h-full z-20">
                 <SidebarContent onNavClick={undefined} />
             </aside>
 
-            {/* ── Mobile Overlay ── */}
+            {/* Mobile Overlay */}
             {menuOpen && (
-                <div
-                    className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
-                    onClick={() => setMenuOpen(false)}
-                />
+                <div className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={() => setMenuOpen(false)} />
             )}
 
-            {/* ── Mobile Drawer ── */}
+            {/* Mobile Drawer */}
             <aside className={`md:hidden fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="absolute top-4 right-4 z-10">
                     <button onClick={() => setMenuOpen(false)} className="p-2 bg-white/20 rounded-lg text-white hover:bg-white/30 transition-all">
@@ -148,12 +146,9 @@ export default function ClientLayout() {
                 <SidebarContent onNavClick={() => setMenuOpen(false)} />
             </aside>
 
-            {/* ── Mobile Top Bar ── */}
+            {/* Mobile Top Bar */}
             <div className="md:hidden fixed top-0 left-0 right-0 z-30 bg-white border-b border-orange-100 px-4 py-3 flex items-center justify-between shadow-sm">
-                <button
-                    onClick={() => setMenuOpen(true)}
-                    className="p-2 rounded-xl text-gray-600 hover:bg-orange-50 transition-all"
-                >
+                <button onClick={() => setMenuOpen(true)} className="p-2 rounded-xl text-gray-600 hover:bg-orange-50 transition-all">
                     <Menu size={22} />
                 </button>
                 <div className="flex items-center gap-2">
@@ -165,7 +160,7 @@ export default function ClientLayout() {
                 <div className="w-9" />
             </div>
 
-            {/* ── Page Content ── */}
+            {/* Page Content */}
             <main className="flex-1 md:ml-64 min-h-screen pt-14 md:pt-0">
                 <Outlet />
             </main>

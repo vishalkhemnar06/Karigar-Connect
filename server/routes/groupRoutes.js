@@ -1,24 +1,35 @@
-// routes/groupRoutes.js
-// FIXES:
-//  1. Added worker role guard — groups are only for workers.
-//     Original had protect but no role check, so clients could create worker groups.
+// server/routes/groupRoutes.js
+// Added: public group browse routes (for clients)
+// All original routes preserved exactly
 
 const express = require('express');
 const router  = express.Router();
-const { protect, worker } = require('../middleware/authMiddleware');
+const { protect, worker, client } = require('../middleware/authMiddleware');
 const {
-    createGroup, getMyGroups, addMember,
-    leaveGroup, editGroup, deleteGroup,
+    createGroup,
+    getMyGroups,
+    addMember,
+    leaveGroup,
+    editGroup,
+    deleteGroup,
+    getAllGroupsPublic,
+    getGroupByIdPublic,
 } = require('../controllers/groupController');
 
-// All group routes: must be authenticated AND be a worker
-router.use(protect, worker);
+// ── PUBLIC BROWSE (clients) ────────────────────────────────────────────────
+// GET /api/groups/browse?search=&skill=&page=1
+router.get('/browse',              protect, client, getAllGroupsPublic);
 
-router.post('/',                createGroup);
-router.get('/my',               getMyGroups);
-router.put('/:groupId/add',     addMember);
-router.put('/:groupId/leave',   leaveGroup);
-router.put('/:groupId',         editGroup);
-router.delete('/:groupId',      deleteGroup);
+// GET /api/groups/:groupId/public
+router.get('/:groupId/public',     protect, client, getGroupByIdPublic);
+
+// ── WORKER ROUTES (unchanged) ──────────────────────────────────────────────
+// All group management routes: authenticated workers only
+router.post('/',                   protect, worker, createGroup);
+router.get('/my',                  protect, worker, getMyGroups);
+router.put('/:groupId/add',        protect, worker, addMember);
+router.put('/:groupId/leave',      protect, worker, leaveGroup);
+router.put('/:groupId',            protect, worker, editGroup);
+router.delete('/:groupId',         protect, worker, deleteGroup);
 
 module.exports = router;

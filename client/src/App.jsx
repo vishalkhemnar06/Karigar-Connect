@@ -1,6 +1,5 @@
 // src/App.jsx — UPDATED
-// Added: Community worker page (/worker/community)
-//        AdminCommunity page (/admin/community)
+// Added: ClientGroups page (/client/groups)
 // All original routes, imports, and logic preserved exactly
 
 import React from 'react';
@@ -34,7 +33,7 @@ import ResetPassword from './pages/auth/ResetPassword';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import FraudMonitor from './pages/admin/FraudMonitor';
 import AdminComplaints from './pages/admin/AdminComplaints';
-import AdminCommunity from './pages/admin/AdminCommunity';       // NEW
+import AdminCommunity from './pages/admin/AdminCommunity';
 
 // Worker Pages
 import WorkerDashboard from './pages/worker/WorkerDashboard';
@@ -54,7 +53,7 @@ import CompletedGroupJobs from './pages/worker/CompletedGroupJobs';
 import WorkerProposals from './pages/worker/WorkerProposals';
 import AcceptInvites from './pages/worker/AcceptInvites';
 import Groups from './pages/worker/Groups';
-import Community from './pages/worker/Community';                // NEW
+import Community from './pages/worker/Community';
 
 // Client Pages
 import ClientDashboard from './pages/client/ClientDashboard';
@@ -64,6 +63,7 @@ import ClientProfile from './pages/client/ClientProfile';
 import ClientJobManage from './pages/client/ClientJobManage';
 import ClientSettings from './pages/client/Settings';
 import ClientComplaints from './pages/client/ClientComplaints';
+import ClientGroups from './pages/client/ClientGroups'; // NEW
 
 // ── Layout wrappers ───────────────────────────────────────────────────────────
 
@@ -117,7 +117,6 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
-                {/* NEW */}
                 <Route
                     path="/admin/community"
                     element={
@@ -136,7 +135,7 @@ function App() {
                     <Route path="/register/client" element={<ClientRegister />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
 
-                    {/* ── CLIENT ROUTES (all protected, all have sidebar via ClientLayout) ── */}
+                    {/* ── CLIENT ROUTES ── */}
                     <Route
                         path="/client"
                         element={
@@ -153,9 +152,10 @@ function App() {
                         <Route path="profile"    element={<ClientProfile />} />
                         <Route path="settings"   element={<ClientSettings />} />
                         <Route path="complaints" element={<ClientComplaints />} />
+                        <Route path="groups"     element={<ClientGroups />} /> {/* NEW */}
                     </Route>
 
-                    {/* ── WORKER ROUTES (all protected via WorkerLayout) ── */}
+                    {/* ── WORKER ROUTES ── */}
                     <Route
                         path="/worker"
                         element={
@@ -174,7 +174,6 @@ function App() {
                         <Route path="profile"              element={<ViewProfile />} />
                         <Route path="id-card"              element={<ViewIdCard />} />
                         <Route path="settings"             element={<Settings />} />
-                        {/* Group routes */}
                         <Route path="create-group"         element={<CreateGroup />} />
                         <Route path="my-groups"            element={<MyGroups />} />
                         <Route path="groups"               element={<Groups />} />
@@ -182,7 +181,6 @@ function App() {
                         <Route path="completed-group-jobs" element={<CompletedGroupJobs />} />
                         <Route path="proposals"            element={<WorkerProposals />} />
                         <Route path="accept-invites"       element={<AcceptInvites />} />
-                        {/* NEW */}
                         <Route path="community"            element={<Community />} />
                     </Route>
                 </Route>

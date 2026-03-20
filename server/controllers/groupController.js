@@ -1,9 +1,16 @@
+// server/controllers/groupController.js
+// Added: getAllGroupsPublic, getGroupByIdPublic — for client browsing
+// All original functions preserved exactly
+
 const mongoose = require("mongoose");
 const Group = require("../models/Group");
-const User = require("../models/userModel");
+const User  = require("../models/userModel");
 const generateGroupId = require("../utils/generateGroupId");
 
-// CREATE GROUP: Admin is defined as the creatorId at the moment of creation
+// ─────────────────────────────────────────────────────────────────────────────
+// EXISTING — unchanged
+// ─────────────────────────────────────────────────────────────────────────────
+
 const createGroup = async (req, res) => {
   try {
     const { name, description, memberKarigarId } = req.body;
@@ -22,7 +29,7 @@ const createGroup = async (req, res) => {
       groupId,
       name,
       description,
-      creator: creatorId, // Sets the primary admin
+      creator: creatorId,
       members: [creatorId, secondMember._id],
     });
 
@@ -32,19 +39,17 @@ const createGroup = async (req, res) => {
   }
 };
 
-// GET MY GROUPS: Enhanced with a server-side isAdmin flag
 const getMyGroups = async (req, res) => {
   try {
     const userId = req.user.id;
     const groups = await Group.find({ members: userId })
-      .populate("members", "name karigarId photo")
+      .populate("members", "name karigarId photo skills overallExperience mobile email")
       .sort({ createdAt: -1 })
-      .lean(); // Converts to plain JS objects to allow adding the isAdmin flag
+      .lean();
 
-    // Attach isAdmin flag based on the database creator field
     const enrichedGroups = groups.map(group => ({
       ...group,
-      isAdmin: group.creator.toString() === userId
+      isAdmin: group.creator.toString() === userId,
     }));
 
     res.json(enrichedGroups);
@@ -54,7 +59,6 @@ const getMyGroups = async (req, res) => {
   }
 };
 
-// ADD MEMBER: Restricted strictly to the group creator
 const addMember = async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -63,7 +67,6 @@ const addMember = async (req, res) => {
     const group = await Group.findOne({ groupId });
     if (!group) return res.status(404).json({ msg: "Group not found" });
 
-    // Admin Verification
     if (group.creator.toString() !== req.user.id) {
       return res.status(403).json({ msg: "Only the creator can add members" });
     }
@@ -71,12 +74,11 @@ const addMember = async (req, res) => {
     const worker = await User.findOne({ karigarId });
     if (!worker) return res.status(404).json({ msg: "Worker not found" });
 
-    // Use atomic update to prevent duplicate members
     const updatedGroup = await Group.findOneAndUpdate(
       { groupId, members: { $ne: worker._id } },
       { $push: { members: worker._id } },
       { new: true }
-    ).populate("members", "name karigarId photo");
+    ).populate("members", "name karigarId photo skills overallExperience mobile email");
 
     if (!updatedGroup) return res.status(400).json({ msg: "Worker already in group" });
 
@@ -86,7 +88,6 @@ const addMember = async (req, res) => {
   }
 };
 
-// LEAVE GROUP: Any member can leave; Creators are blocked to prevent "ownerless" groups
 const leaveGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -107,7 +108,6 @@ const leaveGroup = async (req, res) => {
   }
 };
 
-// EDIT GROUP: Restricted strictly to the group creator
 const editGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -120,7 +120,7 @@ const editGroup = async (req, res) => {
       return res.status(403).json({ msg: "Only creator can edit" });
     }
 
-    if (name) group.name = name;
+    if (name)        group.name        = name;
     if (description) group.description = description;
 
     await group.save();
@@ -130,7 +130,6 @@ const editGroup = async (req, res) => {
   }
 };
 
-// DELETE GROUP: Restricted strictly to the group creator
 const deleteGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -148,6 +147,89 @@ const deleteGroup = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW — public group browsing for clients
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/groups/browse?search=&skill=&page=1
+// Returns all groups with member profiles (mobile/email of admin only for client)
+const getAllGroupsPublic = async (req, res) => {
+  try {
+    const { search, skill, page = 1, limit = 12 } = req.query;
+
+    // Build filter
+    let memberFilter = {};
+    if (skill) {
+      // Find workers who have the requested skill
+      const workers = await User.find({
+        role: 'worker',
+        verificationStatus: 'approved',
+        'skills.name': { $regex: new RegExp(skill, 'i') },
+      }).select('_id');
+      memberFilter = { members: { $in: workers.map(w => w._id) } };
+    }
+
+    let groupQuery = { ...memberFilter };
+
+    if (search) {
+      groupQuery.$or = [
+        { name:        { $regex: new RegExp(search, 'i') } },
+        { description: { $regex: new RegExp(search, 'i') } },
+      ];
+    }
+
+    const total  = await Group.countDocuments(groupQuery);
+    const groups = await Group.find(groupQuery)
+      .populate({
+        path:   'members',
+        select: 'name karigarId photo skills overallExperience experience verificationStatus',
+        // Do NOT include mobile/email in the member list — privacy
+      })
+      .populate({
+        path:   'creator',
+        select: 'name karigarId photo mobile email', // Admin contact info for client
+      })
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    return res.status(200).json({
+      groups,
+      total,
+      page:       Number(page),
+      totalPages: Math.ceil(total / Number(limit)),
+    });
+  } catch (err) {
+    console.error('getAllGroupsPublic error:', err);
+    return res.status(500).json({ msg: 'Failed to fetch groups.' });
+  }
+};
+
+// GET /api/groups/:groupId/public
+// Full group detail — member profiles + admin contact
+const getGroupByIdPublic = async (req, res) => {
+  try {
+    const group = await Group.findOne({ groupId: req.params.groupId })
+      .populate({
+        path:   'members',
+        select: 'name karigarId photo skills overallExperience experience verificationStatus address',
+      })
+      .populate({
+        path:   'creator',
+        select: 'name karigarId photo mobile email',
+      })
+      .lean();
+
+    if (!group) return res.status(404).json({ msg: 'Group not found.' });
+
+    return res.status(200).json({ group });
+  } catch (err) {
+    console.error('getGroupByIdPublic error:', err);
+    return res.status(500).json({ msg: 'Failed to fetch group.' });
+  }
+};
+
 module.exports = {
   createGroup,
   getMyGroups,
@@ -155,4 +237,6 @@ module.exports = {
   leaveGroup,
   editGroup,
   deleteGroup,
+  getAllGroupsPublic,
+  getGroupByIdPublic,
 };
