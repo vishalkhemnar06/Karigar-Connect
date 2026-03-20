@@ -1,0 +1,16 @@
+# server/fraud_service/requirements.txt
+# Install: pip install -r requirements.txt
+
+flask==3.0.3
+flask-socketio==5.3.6
+flask-cors==4.0.1
+pymongo==4.7.2
+python-dotenv==1.0.1
+xgboost==2.0.3
+scikit-learn==1.5.0
+shap==0.45.1
+pandas==2.2.2
+numpy==1.26.4
+APScheduler==3.10.4
+requests==2.32.3
+eventlet==0.36.1

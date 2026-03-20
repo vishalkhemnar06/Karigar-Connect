@@ -1,0 +1,679 @@
+// client/src/pages/auth/WorkerRegister.jsx
+// CHANGE: Added Section 4 — "Face Verification" (between References and Submit).
+// All other fields, OTP flow, and references are UNCHANGED.
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import * as api from '../../api';
+import toast from 'react-hot-toast';
+import FaceVerification, { dataURLtoBlob } from './FaceVerification';
+import {
+    Calendar, Smartphone, User, Shield, Mail, MapPin, Award, Users,
+    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon,
+} from 'lucide-react';
+
+const skillList = [
+    "Plumber","Electrician","Carpenter","Painter","Mason","Welder","Mechanic",
+    "Cook","Driver","Gardener","AC Technician","Appliance Repair","Roofer",
+    "Flooring Installer","Tiler","Landscaper","Pest Control","Housekeeper",
+    "Mover","Security Guard","Handyman","Other",
+];
+const documentTypes = ["Aadhar Card","PAN Card","Voter ID","Driving License","Passport"];
+const DRAFT_KEY = 'worker_register_draft_v1';
+
+const WorkerRegister = () => {
+    const [formData, setFormData] = useState({
+        name:'', dob:'', phoneType:'Smartphone', mobile:'', email:'', password:'', confirmPassword:'',
+        city:'', pincode:'', locality:'', overallExperience:'Beginner', experience:'',
+        aadharNumber:'', gender:'Male', eShramNumber:'', otherSkill:'',
+        emergencyContactName:'', emergencyContactMobile:'', idDocumentType:'Aadhar Card',
+    });
+    const [files, setFiles] = useState({
+        photo:null, idProof:null, eShramCard:null, skillCertificates:[], portfolioPhotos:[],
+    });
+    const [skills,       setSkills]        = useState({});
+    const [references,   setReferences]    = useState([{ name:'', contact:'' }]);
+    const [otp,          setOtp]           = useState('');
+    const [mobileVerified, setMobileVerified] = useState(false);
+    const [otpSent,      setOtpSent]       = useState(false);
+    const [otpTimer,     setOtpTimer]      = useState(0);
+    const [activeSection,setActiveSection] = useState(0);
+    const [agreedToTerms,setAgreedToTerms] = useState(false);
+
+    // ── Face verification state ───────────────────────────────────────────────
+    const [showFaceVerification, setShowFaceVerification] = useState(false);
+    const [livePhotoData,        setLivePhotoData]        = useState(null); // dataURL
+    const [checkingSimilarity,   setCheckingSimilarity]   = useState(false);
+    const [similarity,           setSimilarity]           = useState(null);
+    const [similarityThreshold,  setSimilarityThreshold]  = useState(0.5);
+    const [faceMatchPassed,      setFaceMatchPassed]      = useState(false);
+    const [faceMessage,          setFaceMessage]          = useState('');
+
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        let interval;
+        if (otpTimer > 0) interval = setInterval(() => setOtpTimer(p => p - 1), 1000);
+        return () => clearInterval(interval);
+    }, [otpTimer]);
+
+    useEffect(() => {
+        try {
+            const raw = sessionStorage.getItem(DRAFT_KEY);
+            if (!raw) return;
+            const draft = JSON.parse(raw);
+
+            if (draft.formData) setFormData((prev) => ({ ...prev, ...draft.formData }));
+            if (draft.skills) setSkills(draft.skills);
+            if (Array.isArray(draft.references) && draft.references.length) setReferences(draft.references);
+            if (typeof draft.mobileVerified === 'boolean') setMobileVerified(draft.mobileVerified);
+            if (typeof draft.otpSent === 'boolean') setOtpSent(draft.otpSent);
+            if (typeof draft.activeSection === 'number') setActiveSection(draft.activeSection);
+            if (typeof draft.agreedToTerms === 'boolean') setAgreedToTerms(draft.agreedToTerms);
+            if (draft.livePhotoData) setLivePhotoData(draft.livePhotoData);
+            if (typeof draft.similarity === 'number') setSimilarity(draft.similarity);
+            if (typeof draft.similarityThreshold === 'number') setSimilarityThreshold(draft.similarityThreshold);
+            if (typeof draft.faceMatchPassed === 'boolean') setFaceMatchPassed(draft.faceMatchPassed);
+            if (draft.faceMessage) setFaceMessage(draft.faceMessage);
+        } catch {
+            sessionStorage.removeItem(DRAFT_KEY);
+        }
+    }, []);
+
+    useEffect(() => {
+        const draft = {
+            formData,
+            skills,
+            references,
+            mobileVerified,
+            otpSent,
+            activeSection,
+            agreedToTerms,
+            livePhotoData,
+            similarity,
+            similarityThreshold,
+            faceMatchPassed,
+            faceMessage,
+        };
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }, [
+        formData,
+        skills,
+        references,
+        mobileVerified,
+        otpSent,
+        activeSection,
+        agreedToTerms,
+        livePhotoData,
+        similarity,
+        similarityThreshold,
+        faceMatchPassed,
+        faceMessage,
+    ]);
+
+    const handleChange     = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleFileChange = e => {
+        const { name, files: sel } = e.target;
+        if (!sel) return;
+        if (name === 'skillCertificates' || name === 'portfolioPhotos') {
+            setFiles(p => ({ ...p, [name]: Array.from(sel) }));
+        } else {
+            setFiles(p => ({ ...p, [name]: sel[0] }));
+        }
+
+        if (name === 'idProof') {
+            setSimilarity(null);
+            setFaceMatchPassed(false);
+            setFaceMessage('ID proof changed. Please run face verification again.');
+        }
+    };
+
+    const handleSkillCheckbox = e => {
+        const { name, checked } = e.target;
+        if (checked) setSkills(p => ({ ...p, [name]: { name, proficiency: 'Medium' } }));
+        else         setSkills(p => { const n = { ...p }; delete n[name]; return n; });
+    };
+    const handleSkillProficiency = (sk, prof) => setSkills(p => ({ ...p, [sk]: { ...p[sk], proficiency: prof } }));
+
+    const handleReferenceChange = (i, e) => {
+        const v = [...references]; v[i][e.target.name] = e.target.value; setReferences(v);
+    };
+    const addReference    = () => setReferences([...references, { name:'', contact:'' }]);
+    const removeReference = i  => { if (references.length > 1) { const v = [...references]; v.splice(i,1); setReferences(v); } };
+
+    const handleSendOtp = async () => {
+        if (!formData.mobile || formData.mobile.length !== 10) return toast.error('Valid 10-digit mobile required');
+        const id = toast.loading('Sending OTP…');
+        try { await api.sendOtp({ mobile: formData.mobile }); setOtpSent(true); setOtpTimer(59); toast.success('OTP sent!', { id }); }
+        catch { toast.error('Failed to send OTP', { id }); }
+    };
+    const handleVerifyOtp = async () => {
+        if (!otp) return toast.error('Enter OTP');
+        const id = toast.loading('Verifying…');
+        try { await api.verifyOtp({ identifier: formData.mobile, otp }); setMobileVerified(true); setOtpTimer(0); toast.success('Mobile verified!', { id }); }
+        catch { toast.error('Invalid OTP', { id }); }
+    };
+
+    const formatTime = s => `0:${s < 10 ? '0' : ''}${s}`;
+
+    const runFaceSimilarityCheck = async (photoDataUrl) => {
+        if (!files.idProof || !photoDataUrl) return;
+
+        setCheckingSimilarity(true);
+        setFaceMessage('Checking similarity with your uploaded ID...');
+        setFaceMatchPassed(false);
+
+        try {
+            const fd = new FormData();
+            fd.append('idProof', files.idProof);
+            fd.append('livePhoto', dataURLtoBlob(photoDataUrl), 'live_face.jpg');
+
+            const { data } = await api.previewFaceSimilarity(fd);
+            setSimilarity(typeof data.similarity === 'number' ? data.similarity : null);
+            setSimilarityThreshold(typeof data.threshold === 'number' ? data.threshold : 0.5);
+            setFaceMatchPassed(!!data.passed);
+            setFaceMessage(data.message || (data.passed ? 'Face match passed.' : 'Face match failed.'));
+            if (data.passed) toast.success('Face match passed. You can submit now.');
+            else toast.error('Face match below threshold. Please retry verification.');
+        } catch (err) {
+            setFaceMessage(err.response?.data?.message || 'Could not check face similarity right now.');
+            toast.error(err.response?.data?.message || 'Failed to check face similarity.');
+            setFaceMatchPassed(false);
+        } finally {
+            setCheckingSimilarity(false);
+        }
+    };
+
+    // ── Face verification callback ────────────────────────────────────────────
+    const handleFaceComplete = async ({ photoDataUrl }) => {
+        setLivePhotoData(photoDataUrl);
+        setShowFaceVerification(false);
+        await runFaceSimilarityCheck(photoDataUrl);
+    };
+
+    // ── Final submit ──────────────────────────────────────────────────────────
+    const handleSubmit = async e => {
+        e.preventDefault();
+        if (!mobileVerified)    return toast.error('Verify mobile first');
+        if (!agreedToTerms)     return toast.error('Agree to Terms and Conditions');
+        if (!livePhotoData)     return toast.error('Complete face verification first');
+        if (!faceMatchPassed)   return toast.error('Face similarity is below threshold. Please retry face verification.');
+        if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
+        if (new Date().getFullYear() - new Date(formData.dob).getFullYear() < 18)
+            return toast.error('Must be at least 18 years old');
+
+        const data = new FormData();
+        Object.keys(formData).forEach(k => data.append(k, formData[k]));
+        data.append('skills',     JSON.stringify(Object.values(skills)));
+        data.append('references', JSON.stringify(references));
+        if (files.photo)     data.append('photo',     files.photo);
+        if (files.idProof)   data.append('idProof',   files.idProof);
+        if (files.eShramCard)data.append('eShramCard',files.eShramCard);
+        files.skillCertificates.forEach(f => data.append('skillCertificates', f));
+        files.portfolioPhotos.forEach(f   => data.append('portfolioPhotos',   f));
+
+        // Attach live face photo
+        const blob = dataURLtoBlob(livePhotoData);
+        data.append('livePhoto', blob, 'live_face.jpg');
+
+        const id = toast.loading('Submitting your profile…');
+        try {
+            await api.registerWorker(data);
+            toast.success('Registration submitted! Your profile is under review.', { id });
+            sessionStorage.removeItem(DRAFT_KEY);
+            navigate('/notification');
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Registration failed', { id });
+        }
+    };
+
+    // ── Sections ──────────────────────────────────────────────────────────────
+    const sections = [
+        { title:'Personal Details',   icon:User,   completed: formData.name && formData.dob && formData.mobile && mobileVerified },
+        { title:'Skills & Experience',icon:Award,  completed: Object.keys(skills).length > 0 },
+        { title:'Address & Documents',icon:MapPin,  completed: formData.city && formData.pincode && files.photo && files.idProof },
+        { title:'References',         icon:Users,  completed: true },
+        { title:'Face Verification',  icon:Camera, completed: !!livePhotoData && faceMatchPassed },
+    ];
+
+    return (
+        <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white py-8 px-4">
+            <div className="max-w-6xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-orange-200">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-8 text-white relative overflow-hidden">
+                    <div className="absolute inset-0 bg-black/10"/>
+                    <div className="relative">
+                        <Link to="/register" className="inline-flex items-center text-white/90 hover:text-white mb-4">
+                            <ArrowLeft className="h-5 w-5 mr-2"/>Back
+                        </Link>
+                        <div className="flex items-center justify-center mb-4">
+                            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mr-4 backdrop-blur-sm">
+                                <User className="h-8 w-8 text-white"/>
+                            </div>
+                            <div>
+                                <h1 className="text-4xl font-bold mb-2">Create Your Karigar Profile</h1>
+                                <p className="text-orange-100 text-lg">Join India's most trusted platform for skilled professionals</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Progress */}
+                <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-6 border-b border-orange-200">
+                    <div className="flex justify-between items-center">
+                        {sections.map((s, i) => (
+                            <div key={i} className="flex flex-col items-center flex-1">
+                                <button type="button" onClick={() => setActiveSection(i)}
+                                    className={`flex flex-col items-center px-3 py-3 rounded-xl transition-all ${
+                                        activeSection === i
+                                            ? 'bg-white text-orange-600 shadow-lg font-semibold border-2 border-orange-500'
+                                            : s.completed
+                                            ? 'bg-green-100 text-green-700 border-2 border-green-400 hover:bg-green-200'
+                                            : 'bg-white text-orange-800 border-2 border-orange-200 hover:bg-orange-50'
+                                    }`}>
+                                    <s.icon className="h-5 w-5 mb-1"/>
+                                    <span className="text-xs font-medium">{s.title}</span>
+                                    {s.completed && <CheckCircle className="h-3 w-3 mt-1 text-green-600"/>}
+                                </button>
+                                {i < sections.length - 1 && (
+                                    <div className="w-full h-1 bg-orange-200 mt-3 relative">
+                                        <div className={`absolute inset-0 bg-orange-500 transition-all ${s.completed ? 'w-full' : 'w-0'}`}/>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="p-8">
+                    <form onSubmit={handleSubmit} className="space-y-8">
+
+                        {/* ── Section 0: Personal Details (UNCHANGED) ── */}
+                        {activeSection === 0 && (
+                            <div className="space-y-8">
+                                <div className="text-center">
+                                    <h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><User className="h-8 w-8 mr-3"/>Personal & Login Details</h2>
+                                    <p className="text-gray-600 mt-2">Tell us about yourself and create your login credentials</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name *</label>
+                                        <input name="name" value={formData.name} placeholder="Name as per Aadhar" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-orange-50/50"/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Date of Birth *</label>
+                                        <div className="relative"><Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
+                                        <input name="dob" type="date" value={formData.dob} onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-orange-50/50"/></div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Type</label>
+                                        <div className="relative"><Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
+                                        <select name="phoneType" value={formData.phoneType} onChange={handleChange} className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"><option>Smartphone</option><option>Feature Phone</option></select></div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Gender *</label>
+                                        <select name="gender" value={formData.gender} onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"><option>Male</option><option>Female</option><option>Other</option></select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Mobile Number *</label>
+                                        <div className="flex flex-col sm:flex-row gap-4">
+                                            <div className="relative flex-1">
+                                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><span className="text-gray-600 font-semibold">+91</span></div>
+                                                <input name="mobile" value={formData.mobile} placeholder="10-digit mobile" onChange={handleChange} required disabled={mobileVerified} className="w-full pl-14 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50 disabled:bg-gray-100"/>
+                                            </div>
+                                            <button type="button" onClick={handleSendOtp} disabled={(otpSent && otpTimer > 0) || mobileVerified} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl disabled:from-gray-400 disabled:to-gray-500 min-w-32">
+                                                {otpTimer > 0 ? <div className="flex items-center justify-center"><Clock className="h-4 w-4 mr-2"/>{formatTime(otpTimer)}</div> : otpSent ? 'Resend OTP' : 'Send OTP'}
+                                            </button>
+                                        </div>
+                                        {otpSent && !mobileVerified && (
+                                            <div className="mt-4 flex gap-4">
+                                                <input placeholder="Enter 6-digit OTP" value={otp} onChange={e => setOtp(e.target.value)} className="flex-1 px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50" maxLength={6}/>
+                                                <button type="button" onClick={handleVerifyOtp} className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl">Verify OTP</button>
+                                            </div>
+                                        )}
+                                        {mobileVerified && <div className="mt-4 flex items-center justify-center text-green-600 font-semibold bg-green-50 p-4 rounded-xl border-2 border-green-200"><CheckCircle className="h-6 w-6 mr-3"/>Mobile Number Verified!</div>}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
+                                        <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
+                                        <input type="email" name="email" value={formData.email} placeholder="For notifications" onChange={handleChange} className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Aadhar Number *</label>
+                                        <input name="aadharNumber" value={formData.aadharNumber} placeholder="12-digit Aadhar" onChange={handleChange} required maxLength={12} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Create Password *</label>
+                                        <div className="relative"><Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
+                                        <input type="password" name="password" value={formData.password} placeholder="Strong password" onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm Password *</label>
+                                        <div className="relative"><Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
+                                        <input type="password" name="confirmPassword" value={formData.confirmPassword} placeholder="Confirm password" onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end pt-6">
+                                    <button type="button" onClick={() => setActiveSection(1)} disabled={!formData.name || !formData.dob || !formData.mobile || !mobileVerified} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl disabled:from-gray-400 disabled:to-gray-500 flex items-center">
+                                        Next: Skills & Experience <Award className="h-5 w-5 ml-2"/>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Section 1: Skills (UNCHANGED) ── */}
+                        {activeSection === 1 && (
+                            <div className="space-y-8">
+                                <div className="text-center">
+                                    <h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><Award className="h-8 w-8 mr-3"/>Skills & Experience</h2>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div><label className="block text-sm font-semibold text-gray-700 mb-2">Overall Experience</label>
+                                    <select name="overallExperience" value={formData.overallExperience} onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"><option>Beginner</option><option>Intermediate</option><option>Expert</option></select></div>
+                                    <div><label className="block text-sm font-semibold text-gray-700 mb-2">Years of Experience</label>
+                                    <input type="number" name="experience" value={formData.experience} placeholder="e.g., 5" onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Select Skills & Proficiency *</label>
+                                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-2xl p-6 max-h-96 overflow-y-auto">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {skillList.map(skill => (
+                                                <div key={skill} className="bg-white p-4 rounded-xl border-2 border-orange-100 hover:border-orange-300 shadow-sm">
+                                                    <div className="flex items-center mb-3">
+                                                        <input type="checkbox" id={skill} name={skill} onChange={handleSkillCheckbox} checked={!!skills[skill]} className="h-5 w-5 text-orange-600"/>
+                                                        <label htmlFor={skill} className="ml-3 text-sm font-medium text-gray-700">{skill}</label>
+                                                    </div>
+                                                    {skills[skill] && (
+                                                        <select onChange={e => handleSkillProficiency(skill, e.target.value)} value={skills[skill].proficiency} className="w-full text-sm p-2 border border-orange-200 rounded-lg bg-orange-50">
+                                                            <option value="Good">Good</option><option value="Medium">Medium</option><option value="High">High</option>
+                                                        </select>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {skills.Other && (
+                                        <div className="mt-4 bg-white p-4 rounded-xl border-2 border-orange-200">
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Specify Skill</label>
+                                            <input type="text" name="otherSkill" value={formData.otherSkill} onChange={handleChange} placeholder="Your skill…" className="w-full px-4 py-3 border border-orange-200 rounded-lg"/>
+                                        </div>
+                                    )}
+                                    <p className="text-sm text-gray-600 mt-3">Selected: <span className="font-semibold text-orange-600">{Object.keys(skills).length}</span></p>
+                                </div>
+                                <div className="flex justify-between pt-6">
+                                    <button type="button" onClick={() => setActiveSection(0)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
+                                    <button type="button" onClick={() => setActiveSection(2)} disabled={Object.keys(skills).length === 0} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl disabled:from-gray-400 disabled:to-gray-500 flex items-center">Next: Address & Documents <MapPin className="h-5 w-5 ml-2"/></button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Section 2: Address & Documents (UNCHANGED) ── */}
+                        {activeSection === 2 && (
+                            <div className="space-y-8">
+                                <div className="text-center"><h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><MapPin className="h-8 w-8 mr-3"/>Address & Documents</h2></div>
+                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200">
+                                    <h3 className="text-xl font-semibold text-orange-800 mb-4 flex items-center"><MapPin className="h-5 w-5 mr-2"/>Address</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">City *</label><input name="city" value={formData.city} placeholder="Your city" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Pincode *</label><input name="pincode" value={formData.pincode} placeholder="Area pincode" onChange={handleChange} required maxLength={6} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Locality *</label><input name="locality" value={formData.locality} placeholder="Area / Locality" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Profile Photo *</label>
+                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
+                                            <Camera className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
+                                            <input type="file" name="photo" onChange={handleFileChange} accept="image/*" className="hidden" id="photo" required/>
+                                            <label htmlFor="photo" className="cursor-pointer text-orange-600 font-semibold">Upload Profile Photo</label>
+                                            {files.photo && <p className="text-sm text-green-600 mt-2">✓ {files.photo.name}</p>}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">ID Proof *</label>
+                                        <select name="idDocumentType" value={formData.idDocumentType} onChange={handleChange} className="w-full mb-3 px-4 py-3 border-2 border-orange-200 rounded-xl bg-white">
+                                            {documentTypes.map(d => <option key={d}>{d}</option>)}
+                                        </select>
+                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
+                                            <Upload className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
+                                            <input type="file" name="idProof" onChange={handleFileChange} accept="image/*,.pdf" className="hidden" id="idProof" required/>
+                                            <label htmlFor="idProof" className="cursor-pointer text-orange-600 font-semibold">Upload {formData.idDocumentType}</label>
+                                            {files.idProof && <p className="text-sm text-green-600 mt-2">✓ {files.idProof.name}</p>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">E-Shram Number</label>
+                                        <input
+                                            name="eShramNumber"
+                                            value={formData.eShramNumber}
+                                            onChange={handleChange}
+                                            placeholder="Enter E-Shram number"
+                                            className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">E-Shram Card (optional)</label>
+                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
+                                            <Upload className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
+                                            <input type="file" name="eShramCard" onChange={handleFileChange} accept="image/*,.pdf" className="hidden" id="eShramCard"/>
+                                            <label htmlFor="eShramCard" className="cursor-pointer text-orange-600 font-semibold">Upload E-Shram Card</label>
+                                            {files.eShramCard && <p className="text-sm text-green-600 mt-2">✓ {files.eShramCard.name}</p>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Emergency Contact Name</label>
+                                        <input
+                                            name="emergencyContactName"
+                                            value={formData.emergencyContactName}
+                                            onChange={handleChange}
+                                            placeholder="Emergency person name"
+                                            className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Emergency Contact Mobile</label>
+                                        <input
+                                            name="emergencyContactMobile"
+                                            value={formData.emergencyContactMobile}
+                                            onChange={handleChange}
+                                            placeholder="10-digit emergency mobile"
+                                            maxLength={10}
+                                            className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Skill Certificates (optional)</label>
+                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
+                                            <Award className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
+                                            <input type="file" name="skillCertificates" onChange={handleFileChange} accept="image/*,.pdf" multiple className="hidden" id="skillCertificates"/>
+                                            <label htmlFor="skillCertificates" className="cursor-pointer text-orange-600 font-semibold">Upload Skill Certificates</label>
+                                            {files.skillCertificates?.length > 0 && <p className="text-sm text-green-600 mt-2">✓ {files.skillCertificates.length} file(s) selected</p>}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Portfolio Photos (optional)</label>
+                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
+                                            <ImageIcon className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
+                                            <input type="file" name="portfolioPhotos" onChange={handleFileChange} accept="image/*" multiple className="hidden" id="portfolioPhotos"/>
+                                            <label htmlFor="portfolioPhotos" className="cursor-pointer text-orange-600 font-semibold">Upload Portfolio Photos</label>
+                                            {files.portfolioPhotos?.length > 0 && <p className="text-sm text-green-600 mt-2">✓ {files.portfolioPhotos.length} photo(s) selected</p>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between pt-6">
+                                    <button type="button" onClick={() => setActiveSection(1)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
+                                    <button type="button" onClick={() => setActiveSection(3)} disabled={!formData.city || !formData.pincode || !formData.locality || !files.photo || !files.idProof} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl disabled:from-gray-400 disabled:to-gray-500 flex items-center">Next: References <Users className="h-5 w-5 ml-2"/></button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Section 3: References (UNCHANGED) ── */}
+                        {activeSection === 3 && (
+                            <div className="space-y-8">
+                                <div className="text-center"><h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><Users className="h-8 w-8 mr-3"/>References (Optional)</h2></div>
+                                <div className="space-y-4">
+                                    {references.map((ref, i) => (
+                                        <div key={i} className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Reference Name {i+1}</label>
+                                                <input name="name" placeholder="Client/Employer Name" value={ref.name} onChange={e => handleReferenceChange(i, e)} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                                <div><label className="block text-sm font-semibold text-gray-700 mb-2">Contact</label>
+                                                <div className="flex gap-3">
+                                                    <input name="contact" placeholder="Phone or Email" value={ref.contact} onChange={e => handleReferenceChange(i, e)} className="flex-1 px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/>
+                                                    <button type="button" onClick={() => removeReference(i)} disabled={references.length === 1} className="px-6 py-4 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 disabled:bg-gray-100 disabled:text-gray-400">Remove</button>
+                                                </div></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={addReference} className="w-full p-4 border-2 border-dashed border-orange-300 rounded-xl text-orange-600 hover:border-orange-400 font-semibold flex items-center justify-center gap-2">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                                        Add Reference
+                                    </button>
+                                </div>
+                                <div className="flex justify-between pt-6">
+                                    <button type="button" onClick={() => setActiveSection(2)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
+                                    <button type="button" onClick={() => setActiveSection(4)} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl flex items-center">
+                                        Next: Face Verification <Camera className="h-5 w-5 ml-2"/>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Section 4: Face Verification ← NEW ── */}
+                        {activeSection === 4 && (
+                            <div className="space-y-6">
+                                <div className="text-center">
+                                    <h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><Camera className="h-8 w-8 mr-3"/>Identity Verification</h2>
+                                    <p className="text-gray-600 mt-2">We compare your live face with your uploaded ID card to confirm your identity</p>
+                                </div>
+
+                                {/* Explainer */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+                                    <p className="font-bold text-blue-800 mb-3">📋 How it works</p>
+                                    <div className="space-y-2">
+                                        {[
+                                            'Your ID card face is extracted and securely compared with your live photo',
+                                            'You\'ll be asked to blink and turn your head to prove you are physically present',
+                                            'The comparison score is reviewed by our team along with your profile',
+                                            'Your face data is stored securely and never shared with third parties',
+                                        ].map((s, i) => (
+                                            <div key={i} className="flex items-start gap-2">
+                                                <span className="text-blue-500 font-bold flex-shrink-0 mt-0.5">{i+1}.</span>
+                                                <p className="text-sm text-blue-700">{s}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Status */}
+                                {livePhotoData ? (
+                                    <div className="bg-green-50 border-2 border-green-300 rounded-2xl p-6 text-center">
+                                        <div className="text-5xl mb-3">✅</div>
+                                        <p className="text-xl font-bold text-green-800">Face Verification Complete!</p>
+                                        <p className="text-green-600 mt-1 text-sm">Liveness detected and photo captured</p>
+                                        <div className="mt-4">
+                                            <img src={livePhotoData} alt="Captured face" className="w-24 h-24 rounded-full object-cover mx-auto border-4 border-green-400 shadow-lg"/>
+                                        </div>
+
+                                        <div className="mt-4 bg-white border border-green-200 rounded-xl p-3 text-left max-w-md mx-auto">
+                                            {checkingSimilarity ? (
+                                                <p className="text-sm text-orange-700 font-medium">Checking similarity with ID proof...</p>
+                                            ) : (
+                                                <>
+                                                    <p className="text-sm text-gray-700">
+                                                        Similarity Score: <span className="font-bold">{typeof similarity === 'number' ? similarity.toFixed(3) : 'N/A'}</span>
+                                                    </p>
+                                                    <p className="text-sm text-gray-700">
+                                                        Threshold: <span className="font-bold">{similarityThreshold.toFixed(2)}</span>
+                                                    </p>
+                                                    <p className={`text-sm mt-1 font-semibold ${faceMatchPassed ? 'text-green-700' : 'text-red-700'}`}>
+                                                        {faceMessage || (faceMatchPassed ? 'Face match passed.' : 'Face match failed. Please retry.')}
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        <button type="button" onClick={() => {
+                                            setLivePhotoData(null);
+                                            setSimilarity(null);
+                                            setFaceMatchPassed(false);
+                                            setFaceMessage('');
+                                        }} className="mt-4 text-sm text-gray-500 hover:text-gray-700 underline">Redo verification</button>
+                                    </div>
+                                ) : (
+                                    <div className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-6 text-center">
+                                        <Camera className="h-16 w-16 text-orange-400 mx-auto mb-4"/>
+                                        <p className="font-bold text-gray-800 text-lg mb-2">Start Face Verification</p>
+                                        <p className="text-sm text-gray-500 mb-5">Make sure you are in a well-lit area with your face clearly visible</p>
+                                        <button type="button" onClick={() => setShowFaceVerification(true)}
+                                            className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold rounded-2xl shadow-lg hover:from-orange-600 hover:to-amber-600 transition-all text-base">
+                                            📷 Start Camera Verification
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="bg-white border border-orange-200 rounded-2xl p-5">
+                                    <p className="font-bold text-orange-800 mb-3">Registration Summary</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
+                                        <p><span className="font-semibold">Name:</span> {formData.name || 'N/A'}</p>
+                                        <p><span className="font-semibold">Mobile:</span> {formData.mobile || 'N/A'}</p>
+                                        <p><span className="font-semibold">Aadhar:</span> {formData.aadharNumber || 'N/A'}</p>
+                                        <p><span className="font-semibold">E-Shram:</span> {formData.eShramNumber || 'Not provided'}</p>
+                                        <p><span className="font-semibold">City:</span> {formData.city || 'N/A'}</p>
+                                        <p><span className="font-semibold">Locality:</span> {formData.locality || 'N/A'}</p>
+                                        <p><span className="font-semibold">ID Proof:</span> {files.idProof?.name || 'Not selected'}</p>
+                                        <p><span className="font-semibold">E-Shram Card:</span> {files.eShramCard?.name || 'Not provided'}</p>
+                                        <p><span className="font-semibold">Skill Certificates:</span> {files.skillCertificates?.length || 0}</p>
+                                        <p><span className="font-semibold">Portfolio Photos:</span> {files.portfolioPhotos?.length || 0}</p>
+                                    </div>
+                                </div>
+
+                                {/* Terms */}
+                                <div className="pt-2 border-t border-orange-200">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="h-5 w-5 rounded border-orange-300 text-orange-600"/>
+                                        <span className="text-sm text-gray-700">I agree to the <Link to="/terms-and-conditions" target="_blank" className="text-orange-600 underline font-medium">Terms and Conditions</Link></span>
+                                    </label>
+                                </div>
+
+                                <div className="flex justify-between pt-4">
+                                    <button type="button" onClick={() => setActiveSection(3)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
+                                    <button type="submit" disabled={!mobileVerified || !agreedToTerms || !livePhotoData || !faceMatchPassed || checkingSimilarity}
+                                        className="px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl disabled:from-gray-400 disabled:to-gray-500 shadow-xl text-lg flex items-center">
+                                        <CheckCircle className="h-6 w-6 mr-3"/>Submit for Verification
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                    </form>
+                    <div className="mt-12 text-center border-t pt-8">
+                        <p className="text-gray-600">Already have an account? <Link to="/login" className="text-orange-600 font-bold hover:text-orange-800 underline">Login here</Link></p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Face Verification Modal */}
+            {showFaceVerification && (
+                <FaceVerification
+                    title="Worker Identity Verification"
+                    subtitle="Complete all challenges to verify your identity"
+                    onComplete={handleFaceComplete}
+                    onCancel={() => setShowFaceVerification(false)}
+                />
+            )}
+        </div>
+    );
+};
+
+export default WorkerRegister;

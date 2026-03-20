@@ -1,0 +1,22 @@
+# KarigarConnect Face Verification Service — Python 3.9 – 3.11 recommended
+# Install: pip install -r requirements.txt
+
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# InsightFace — includes RetinaFace (detection) + ArcFace (recognition)
+# Downloads buffalo_sc model (~100 MB) automatically on first run
+insightface==0.2.1; platform_system == "Windows" and python_version < "3.12"
+insightface==0.7.3; platform_system != "Windows" and python_version < "3.12"
+
+# ONNX Runtime — CPU inference backend (swap for onnxruntime-gpu on NVIDIA GPU)
+onnxruntime==1.24.3
+
+# Image processing
+opencv-python-headless==4.8.1.78; python_version < "3.12"
+opencv-python-headless==4.10.0.84; python_version >= "3.12"
+numpy==1.24.3; python_version < "3.12"
+numpy==2.2.0; python_version >= "3.12"
+Pillow==10.1.0; python_version < "3.12"
+Pillow==11.1.0; python_version >= "3.12"

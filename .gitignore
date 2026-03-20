@@ -1,0 +1,111 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# =========================
+# Environment Files
+# =========================
+.env
+.env.local
+.env.dev
+.env.test
+.env.prod
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================
+# Build / Output
+# =========================
+dist/
+build/
+dist-ssr/
+out/
+
+# =========================
+# Cache
+# =========================
+.cache/
+.tmp/
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Coverage
+# =========================
+coverage/
+
+# =========================
+# Misc
+# =========================
+*.local
+
+# =========================
+# Python Virtual Environments
+# =========================
+.venv/
+.venv*/
+venv/
+venv*/
+server/.venv/
+server/.venv*/
+
+# =========================
+# Face Service (Python)
+# =========================
+face_service/.venv/
+face_service/.venv311/
+face_service/.venv*/
+face_service/__pycache__/
+face_service/.pytest_cache/
+face_service/.mypy_cache/
+face_service/*.py[cod]
+
+# =========================
+# Fraud Service (Python)
+# =========================
+server/fraud_service/**/__pycache__/
+server/fraud_service/**/*.py[cod]
+server/fraud_service/.pytest_cache/
+server/fraud_service/.mypy_cache/
+server/fraud_service/.venv/
+server/fraud_service/.venv*/
+server/fraud_service/*.csv
+server/fraud_service/.env
+server/fraud_service/models/
+server/fraud_service/models/*.pkl
+server/fraud_service/models/*.joblib
+server/fraud_service/models/*.npy
+server/fraud_service/models/*.npz
+
+# =========================
+# Runtime Uploads
+# =========================
+server/uploads/**
