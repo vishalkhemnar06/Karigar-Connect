@@ -32,7 +32,7 @@ exports.getAllClients = async (req, res) => {
 
 exports.updateWorkerStatus = async (req, res) => {
     try {
-        let { workerId, status, points } = req.body;
+        let { workerId, status, points, rejectionReason } = req.body;
 
         console.log('[updateWorkerStatus] received:', { workerId, status, points });
 
@@ -64,6 +64,9 @@ exports.updateWorkerStatus = async (req, res) => {
 
         if (finalStatus === 'rejected') {
             updateFields.rejectedAt = new Date();
+            updateFields.rejectionReason = (rejectionReason || '').trim() || 'No reason provided by admin.';
+        } else {
+            updateFields.rejectionReason = null;
         }
 
         // Use findByIdAndUpdate with $set to avoid touching other fields

@@ -1,6 +1,7 @@
 // server/routes/clientRoutes.js
 const express  = require('express');
 const router   = express.Router();
+const multer   = require('multer');
 const { protect, client } = require('../middleware/authMiddleware');
 const {
     getClientProfile, updateClientProfile,
@@ -13,12 +14,15 @@ const {
     getClientAIHistory, getAIHistoryItem, saveAIAnalysis,
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
     deleteClientAccount,
+    verifyAssignedWorkerFace,
 } = require('../controllers/clientController');
 const { getNotifications, markRead, markAllRead, deleteNotification, clearAllNotifications } = require('../controllers/notificationController');
 const { jobPhotoUploader, profilePhotoUploader } = require('../utils/cloudinary');
+const faceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/profile',        protect, client, getClientProfile);
 router.put('/profile/update', protect, client, profilePhotoUploader.single('photo'), updateClientProfile);
+router.post('/face/verify-assigned-worker', protect, client, faceUpload.single('livePhoto'), verifyAssignedWorkerFace);
 
 router.get('/jobs',       protect, client, getClientJobs);
 router.post('/jobs/post', protect, client, jobPhotoUploader.array('photos', 5), postJob);
