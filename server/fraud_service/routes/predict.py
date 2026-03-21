@@ -3,11 +3,14 @@ server/fraud_service/routes/predict.py
 
 FIXES:
   1. scan-all now saves ALL scanned users to fraudqueue (sorted by fraud %),
-    not just ones above the 50% threshold. This way the Fraud Monitor always
-     shows every user with their risk score even when no one is "flagged".
+     not just ones above the 50% threshold.
   2. /queue route returns all users sorted by fraudProb DESC.
   3. predict single also saves result to queue unconditionally.
   4. All routes use SHORT decorator paths (blueprint prefix is /api/fraud).
+  5. BUGFIX: NODE_BASE_URL fallback uses 127.0.0.1 (IPv4) not localhost.
+  6. BUGFIX: scan-all purges fraudqueue entries for users that no longer exist
+     BEFORE running the scan, so stale rows are cleaned proactively even if
+     the user was deleted while the service was offline.
 """
 
 import os
@@ -23,7 +26,8 @@ from utils.model_loader import get_loader
 from utils.notifier import emit_fraud_alert
 
 predict_bp = Blueprint('predict', __name__)
-NODE_BASE_URL = os.environ.get('NODE_BASE_URL', 'http://localhost:5000')
+
+NODE_BASE_URL   = os.environ.get('NODE_BASE_URL',   'http://127.0.0.1:5000')
 INTERNAL_SECRET = os.environ.get('INTERNAL_SECRET', 'change_me')
 
 
@@ -60,8 +64,8 @@ def _notify_node(payload):
 
 def _build_medium_risk_messages(name, role, risk_level, reasons):
     readable_reasons = [reason.get('label') for reason in reasons if reason.get('label')]
-    top_reason_text = '; '.join(readable_reasons[:3]) or 'suspicious activity patterns'
-    risk_text = (risk_level or 'MEDIUM').title()
+    top_reason_text  = '; '.join(readable_reasons[:3]) or 'suspicious activity patterns'
+    risk_text        = (risk_level or 'MEDIUM').title()
 
     message = (
         'Your recent activity is violating our platform guidelines. '
@@ -81,11 +85,9 @@ def _build_medium_risk_messages(name, role, risk_level, reasons):
 def _should_send_medium_warning(previous_queue_item, current_risk_level):
     if current_risk_level not in ('MEDIUM', 'HIGH'):
         return False
-
     previous_risk = (previous_queue_item or {}).get('riskLevel')
     if previous_risk in ('MEDIUM', 'HIGH'):
         return False
-
     return True
 
 
@@ -105,18 +107,18 @@ def _send_medium_warning_if_needed(db, uid_str, role, user_data, result, previou
     )
 
     _notify_node({
-        'userId': uid_str,
-        'title': 'Guideline Warning',
-        'message': message,
-        'mobile': mobile,
+        'userId':     uid_str,
+        'title':      'Guideline Warning',
+        'message':    message,
+        'mobile':     mobile,
         'smsMessage': sms_message,
-        'action': 'medium-risk-warning',
+        'action':     'medium-risk-warning',
     })
 
     db.fraudqueue.update_one(
         {'userId': ObjectId(uid_str)},
         {'$set': {
-            'lastMediumRiskWarningAt': _utcnow(),
+            'lastMediumRiskWarningAt':      _utcnow(),
             'lastMediumRiskWarningReasons': result.get('top_reasons', []),
         }},
     )
@@ -125,8 +127,7 @@ def _send_medium_warning_if_needed(db, uid_str, role, user_data, result, previou
 def _upsert_queue(db, uid_str, role, user_data, result, features):
     """
     Save or update this user's fraud score in the queue.
-    ALL users are saved — not just flagged ones — so the monitor
-    can show every user sorted by risk percentage.
+    ALL users are saved — not just flagged ones.
     """
     db.fraudqueue.update_one(
         {'userId': ObjectId(uid_str)},
@@ -168,6 +169,35 @@ def _save_history(db, uid_str, role, result, features):
         print('[WARN] save history failed: {}'.format(e))
 
 
+def _cleanup_stale_queue(db, live_user_ids: set):
+    """
+    Remove fraudqueue entries whose userId is NOT in live_user_ids.
+    Called at the start of scan-all so stale rows are proactively cleared
+    even for users deleted while the fraud service was offline.
+    """
+    live_oids = {
+        oid if isinstance(oid, ObjectId) else ObjectId(str(oid))
+        for oid in live_user_ids
+    }
+
+    # Find all queue entries that are NOT in the live set
+    stale = list(db.fraudqueue.find(
+        {'userId': {'$nin': list(live_oids)}},
+        {'_id': 1, 'userId': 1, 'userName': 1}
+    ))
+
+    if stale:
+        stale_oids = [s['userId'] for s in stale]
+        result = db.fraudqueue.delete_many({'userId': {'$in': stale_oids}})
+        print(
+            '[scan-all] Pre-scan cleanup: removed {} stale fraudqueue entries '
+            'for deleted users: {}'.format(
+                result.deleted_count,
+                [s.get('userName', str(s.get('userId', '?'))) for s in stale]
+            )
+        )
+
+
 # ── POST /api/fraud/predict ───────────────────────────────────────────────────
 @predict_bp.route('/predict', methods=['POST'])
 def predict():
@@ -207,10 +237,7 @@ def predict():
 
         previous_queue_item = db.fraudqueue.find_one({'userId': ObjectId(resolved_id)})
 
-        # Save to history
         _save_history(db, resolved_id, user_role, result, features)
-
-        # Save to queue unconditionally — monitor shows all users by risk %
         _upsert_queue(db, resolved_id, user_role, {
             'name':               user.get('name', ''),
             'mobile':             user.get('mobile', ''),
@@ -220,7 +247,6 @@ def predict():
 
         _send_medium_warning_if_needed(db, resolved_id, user_role, user, result, previous_queue_item)
 
-        # Emit real-time alert only if actually flagged (>=50%)
         if result['is_fraud']:
             emit_fraud_alert(current_app.config['SOCKETIO'], payload)
 
@@ -239,6 +265,9 @@ def scan_all():
     """
     Scans ALL active users. Saves every user to fraudqueue sorted by fraud %.
     The Fraud Monitor shows all users — not just ones above the 50% threshold.
+
+    BUGFIX: Purges stale fraudqueue entries for deleted users BEFORE scanning,
+    so the queue always reflects only real users in the DB.
     """
     db       = current_app.config['MONGO_DB']
     socketio = current_app.config['SOCKETIO']
@@ -253,6 +282,11 @@ def scan_all():
     print('[scan-all] DB={} | total_users={} | active={}'.format(
         db.name, total_in_db, len(users)
     ))
+
+    # ── CORE FIX: purge queue rows for users deleted since last scan ──────────
+    live_ids = {user['_id'] for user in users}
+    _cleanup_stale_queue(db, live_ids)
+    # ─────────────────────────────────────────────────────────────────────────
 
     if not users:
         return jsonify({
@@ -275,8 +309,8 @@ def scan_all():
         uid  = str(user['_id'])
         role = user['role']
         try:
-            features = build_feature_vector(uid, db)
-            result   = loader.predict(features, role)
+            features            = build_feature_vector(uid, db)
+            result              = loader.predict(features, role)
             previous_queue_item = db.fraudqueue.find_one({'userId': ObjectId(uid)})
 
             risk_level = result['risk_level']
@@ -293,12 +327,10 @@ def scan_all():
             }
             all_results.append(entry)
 
-            # Save ALL users to queue so monitor can display them
             _upsert_queue(db, uid, role, user, result, features)
             _save_history(db, uid, role, result, features)
             _send_medium_warning_if_needed(db, uid, role, user, result, previous_queue_item)
 
-            # Only emit socket alert + add to flagged list if actually fraud
             if result['is_fraud']:
                 flagged.append(entry)
                 emit_fraud_alert(socketio, entry)
@@ -307,7 +339,6 @@ def scan_all():
             traceback.print_exc()
             errors.append({'user_id': uid, 'error': str(e)})
 
-    # Sort all results by fraud probability descending
     all_results.sort(key=lambda x: x['fraud_probability'], reverse=True)
     flagged.sort(key=lambda x: x['fraud_probability'], reverse=True)
 
@@ -318,7 +349,7 @@ def scan_all():
     return jsonify({
         'scanned':       len(all_results),
         'flagged_count': len(flagged),
-        'all_results':   all_results,   # full sorted list for the monitor
+        'all_results':   all_results,
         'flagged':       flagged,
         'by_risk':       risk_counts,
         'errors':        errors,
@@ -345,8 +376,8 @@ def scan_batch():
             if not user:
                 errors.append({'user_id': uid_str, 'error': 'not found'})
                 continue
-            features = build_feature_vector(resolved_id, db)
-            result   = loader.predict(features, user['role'])
+            features            = build_feature_vector(resolved_id, db)
+            result              = loader.predict(features, user['role'])
             previous_queue_item = db.fraudqueue.find_one({'userId': ObjectId(resolved_id)})
             _upsert_queue(db, resolved_id, user['role'], user, result, features)
             _send_medium_warning_if_needed(db, resolved_id, user['role'], user, result, previous_queue_item)
@@ -393,7 +424,6 @@ def fraud_stats():
     try:
         db = current_app.config['MONGO_DB']
 
-        # Stats from ALL queue entries (not just flagged)
         agg = list(db.fraudqueue.aggregate([
             {'$match': {'actioned': {'$ne': True}}},
             {'$group': {

@@ -7,6 +7,24 @@ GET  /api/fraud/queue           — current fraud alert queue (sorted by risk)
 GET  /api/fraud/metrics         — model performance metrics
 DELETE /api/fraud/queue/<id>    — dismiss (remove from queue without action)
 GET  /api/fraud/actions         — action history log
+
+BUGFIX (IPv4): NODE_BASE_URL fallback uses 127.0.0.1 not localhost.
+
+BUGFIX (stale queue entries):
+  The fraudqueue collection is a cache — it is written whenever a scan runs
+  but is never automatically cleaned when a user is deleted from the users
+  collection.  This caused deleted users to permanently appear in the Fraud
+  Monitor even after removal from the DB.
+
+  Fix: _purge_deleted_users() is called inside GET /queue before building
+  the response.  It does ONE extra DB round-trip to find which userId values
+  in the fetched batch no longer exist in users, deletes those fraudqueue
+  documents, and returns only the live items.  The monitor count now always
+  matches the real user count.
+
+  Additionally, take_action(action="delete") now immediately hard-deletes the
+  fraudqueue entry instead of just marking it actioned, so it cannot reappear
+  even before the next GET /queue call.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -18,7 +36,7 @@ from utils.notifier import emit_action_taken
 
 actions_bp = Blueprint('actions', __name__)
 
-NODE_BASE_URL   = os.environ.get('NODE_BASE_URL',   'http://localhost:5000')
+NODE_BASE_URL   = os.environ.get('NODE_BASE_URL',   'http://127.0.0.1:5000')
 INTERNAL_SECRET = os.environ.get('INTERNAL_SECRET', 'change_me')
 
 
@@ -37,6 +55,63 @@ def _notify_node(payload: dict):
         )
     except Exception as e:
         print(f'[WARN] Node notification failed: {e}')
+
+
+# ── CORE FIX ──────────────────────────────────────────────────────────────────
+def _purge_deleted_users(db, queue_items: list) -> list:
+    """
+    Cross-reference a batch of fraudqueue documents against the live users
+    collection.  Any item whose userId no longer exists in users is:
+      1. Deleted from fraudqueue (hard delete — won't reappear on next scan).
+      2. Excluded from the returned list.
+
+    This is the single source-of-truth fix: no matter how a user was deleted
+    (admin panel, direct DB op, fraud action, etc.) their queue entry is
+    cleaned up the next time the monitor fetches the queue.
+    """
+    if not queue_items:
+        return []
+
+    # Build a set of ObjectIds from the queue batch
+    oid_map = {}   # ObjectId → original queue item
+    for item in queue_items:
+        uid = item.get('userId')
+        if uid is None:
+            continue
+        oid = uid if isinstance(uid, ObjectId) else ObjectId(str(uid))
+        oid_map[oid] = item
+
+    if not oid_map:
+        return queue_items
+
+    # Single round-trip: which of these ids still exist in users?
+    existing_ids = {
+        doc['_id']
+        for doc in db.users.find(
+            {'_id': {'$in': list(oid_map.keys())}},
+            {'_id': 1}
+        )
+    }
+
+    live_items = []
+    stale_oids = []
+
+    for oid, item in oid_map.items():
+        if oid in existing_ids:
+            live_items.append(item)
+        else:
+            stale_oids.append(oid)
+
+    # Hard-delete stale fraudqueue entries so they never come back
+    if stale_oids:
+        result = db.fraudqueue.delete_many({'userId': {'$in': stale_oids}})
+        print(
+            f'[queue] Purged {result.deleted_count} stale entries '
+            f'for non-existent users: {[str(o) for o in stale_oids]}'
+        )
+
+    return live_items
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @actions_bp.route('/action', methods=['POST'])
@@ -91,6 +166,9 @@ def take_action():
             )
         else:  # delete
             db.users.delete_one({'_id': uid})
+            # FIX: Hard-delete from fraudqueue immediately on user deletion
+            # so it cannot reappear in the monitor before the next purge.
+            db.fraudqueue.delete_one({'userId': uid})
             notif_title   = 'Account Removed'
             notif_message = (
                 f'Your {user_role} account has been permanently removed from the '
@@ -120,11 +198,12 @@ def take_action():
             'takenBy':  'admin',
         })
 
-        # ── 4. Mark as actioned in fraudqueue ─────────────────────────────────
-        db.fraudqueue.update_one(
-            {'userId': uid},
-            {'$set': {'actioned': True, 'actionedAt': _utcnow(), 'actionTaken': action}},
-        )
+        # ── 4. Mark actioned in fraudqueue (block only; delete already removed it)
+        if action == 'block':
+            db.fraudqueue.update_one(
+                {'userId': uid},
+                {'$set': {'actioned': True, 'actionedAt': _utcnow(), 'actionTaken': action}},
+            )
 
         # ── 5. Emit socket → remove card from all admin dashboards ────────────
         emit_action_taken(socketio, {
@@ -144,12 +223,7 @@ def take_action():
 def warn_user():
     """
     Send a warning message to a user without blocking/deleting.
-    Body:
-    {
-      "user_id":    "<mongo_id>",
-      "user_role":  "worker"|"client",
-      "message":    "Custom warning text"
-    }
+    Body: { "user_id": "<mongo_id>", "user_role": "worker"|"client", "message": "..." }
     """
     body      = request.get_json(force=True)
     user_id   = (body.get('user_id')   or '').strip()
@@ -170,7 +244,6 @@ def warn_user():
         name   = user.get('name',   'User')
         mobile = user.get('mobile', '')
 
-        # Notify via Node.js
         _notify_node({
             'userId':     user_id,
             'title':      '⚠️ Platform Warning',
@@ -180,7 +253,6 @@ def warn_user():
             'action':     'warn',
         })
 
-        # Record warning in fraudactions
         db.fraudactions.insert_one({
             'userId':   uid,
             'userRole': user_role,
@@ -192,13 +264,9 @@ def warn_user():
             'takenBy':  'admin',
         })
 
-        # Update queue to note a warning was sent
         db.fraudqueue.update_one(
             {'userId': uid},
-            {'$set': {
-                'lastWarningAt':  _utcnow(),
-                'warningCount':   1,  # $inc would be better in real code
-            }, '$inc': {'warningCount': 1}},
+            {'$set': {'lastWarningAt': _utcnow()}, '$inc': {'warningCount': 1}},
         )
 
         return jsonify({'success': True, 'message': f'Warning sent to {name}'}), 200
@@ -209,10 +277,7 @@ def warn_user():
 
 
 def _serialise(obj):
-    """
-    Recursively convert a MongoDB document to a JSON-safe dict.
-    Handles: ObjectId → str, datetime → ISO string, nested dicts/lists.
-    """
+    """Recursively convert MongoDB BSON types → JSON-safe Python types."""
     from bson import ObjectId as ObjId
     from datetime import datetime as dt_type
     if isinstance(obj, dict):
@@ -229,7 +294,9 @@ def _serialise(obj):
 @actions_bp.route('/queue', methods=['GET'])
 def get_queue():
     """
-    Returns all scanned users sorted by fraudProb DESC.
+    Returns live users sorted by fraudProb DESC.
+    Stale entries (users deleted from the users collection) are automatically
+    purged from fraudqueue before the response is built.
     Supports ?role=worker|client and ?risk=HIGH|MEDIUM|LOW|SAFE filters.
     """
     db = current_app.config['MONGO_DB']
@@ -245,30 +312,31 @@ def get_queue():
 
     raw = list(
         db.fraudqueue
-        .find(query)          # fetch ALL fields including _id / userId
+        .find(query)
         .sort('fraudProb', -1)
         .limit(200)
     )
 
+    # ── CORE FIX: drop ghost entries for users deleted outside this service ───
+    live_raw = _purge_deleted_users(db, raw)
+    # ─────────────────────────────────────────────────────────────────────────
+
     result = []
-    for item in raw:
-        # Deep-convert all BSON types → JSON-safe Python types
+    for item in live_raw:
         clean = _serialise(item)
 
-        # Normalise camelCase → snake_case for the React frontend
-        clean['fraud_probability']  = clean.get('fraudProb',    clean.get('fraud_probability',  0))
-        clean['fraud_percent']      = clean.get('fraudPercent',  clean.get('fraud_percent',      0))
-        clean['risk_level']         = clean.get('riskLevel',     clean.get('risk_level',         'SAFE'))
-        clean['top_reasons']        = clean.get('topReasons',    clean.get('top_reasons',        []))
-        clean['name']               = clean.get('userName',      clean.get('name',               ''))
-        clean['user_role']          = clean.get('userRole',      clean.get('user_role',          ''))
-        clean['user_id']            = clean.get('userId',        clean.get('user_id',            ''))
-        clean['karigar_id']         = clean.get('karigarId',     clean.get('karigar_id',         ''))
-        clean['verification_status']= clean.get('verificationStatus', clean.get('verification_status', ''))
-        clean['features_snapshot']  = clean.get('featuresSnapshot',   clean.get('features_snapshot',   {}))
-        clean['is_fraud']           = clean.get('isFraud',       clean.get('is_fraud',           False))
+        clean['fraud_probability']   = clean.get('fraudProb',         clean.get('fraud_probability',   0))
+        clean['fraud_percent']       = clean.get('fraudPercent',       clean.get('fraud_percent',       0))
+        clean['risk_level']          = clean.get('riskLevel',          clean.get('risk_level',          'SAFE'))
+        clean['top_reasons']         = clean.get('topReasons',         clean.get('top_reasons',         []))
+        clean['name']                = clean.get('userName',           clean.get('name',                ''))
+        clean['user_role']           = clean.get('userRole',           clean.get('user_role',           ''))
+        clean['user_id']             = clean.get('userId',             clean.get('user_id',             ''))
+        clean['karigar_id']          = clean.get('karigarId',          clean.get('karigar_id',          ''))
+        clean['verification_status'] = clean.get('verificationStatus', clean.get('verification_status', ''))
+        clean['features_snapshot']   = clean.get('featuresSnapshot',   clean.get('features_snapshot',   {}))
+        clean['is_fraud']            = clean.get('isFraud',            clean.get('is_fraud',            False))
 
-        # flaggedAt → alertedAt
         flagged_at = clean.get('flaggedAt')
         if flagged_at:
             clean['alertedAt'] = flagged_at
@@ -286,12 +354,11 @@ def dismiss_alert(user_id: str):
         db.fraudqueue.update_one(
             {'userId': ObjectId(user_id)},
             {'$set': {
-                'actioned':   True,
-                'actionedAt': _utcnow(),
+                'actioned':    True,
+                'actionedAt':  _utcnow(),
                 'actionTaken': 'dismissed',
             }},
         )
-        # Emit removal from dashboard
         emit_action_taken(current_app.config['SOCKETIO'], {
             'user_id': user_id,
             'action':  'dismissed',

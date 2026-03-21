@@ -1,6 +1,15 @@
 // server/server.js
 // UPDATED: Added workerComplaintRoutes at /api/worker/complaints
 //          (mounted BEFORE /api/worker to avoid route conflicts)
+// BUGFIX (v2.3):
+//   1. /api/admin/fraud-notify now correctly routed — Python posts to this
+//      exact path (hyphen, not /fraud/notify). Solved by mounting
+//      adminFraudRoutes at both /api/admin/fraud AND /api/admin/fraud-notify
+//      so the router's POST /notify handler fires at both URLs.
+//   2. FRAUD_SERVICE_URL falls back to http://127.0.0.1:5001 (IPv4) instead
+//      of http://localhost:5001 — Node.js on modern systems resolves
+//      "localhost" to ::1 (IPv6), causing ECONNREFUSED when Python only
+//      listens on 127.0.0.1 (IPv4).
 // All original code preserved exactly.
 
 const express  = require('express');
@@ -23,7 +32,7 @@ const jobRoutes              = require('./routes/jobRoutes');
 const adminFraudRoutes       = require('./routes/adminFraudRoutes');
 const clientComplaintRoutes  = require('./routes/clientComplaintRoutes');
 const adminWorkerComplaintRoutes = require('./routes/adminWorkerComplaintRoutes');
-const workerComplaintRoutes  = require('./routes/workerComplaintRoutes'); // NEW
+const workerComplaintRoutes  = require('./routes/workerComplaintRoutes');
 const communityRoutes        = require('./routes/communityRoutes');
 const adminCommunityRoutes   = require('./routes/adminCommunityRoutes');
 const locationRoutes         = require('./routes/locationRoutes');
@@ -66,30 +75,44 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => { console.error('❌  MongoDB connection failed:', err.message); process.exit(1); });
 
 // ── Routes — specific paths BEFORE their parent prefix ────────────────────────
-app.use('/api/auth',                   authRoutes);
-app.use('/api/admin/fraud',            adminFraudRoutes);
-app.use('/api/admin/worker-complaints',  adminWorkerComplaintRoutes);   // NEW — before /api/admin
-app.use('/api/admin/community',        adminCommunityRoutes);   // before /api/admin
-app.use('/api/admin',                  adminRoutes);
-app.use('/api/client/complaints',      clientComplaintRoutes);  // before /api/client
-app.use('/api/client',                 clientRoutes);
-app.use('/api/worker/complaints',      workerComplaintRoutes);  // NEW — before /api/worker
-app.use('/api/worker',                 workerRoutes);
-app.use('/api/community',              communityRoutes);
-app.use('/api/ai',                     aiRoutes);
-app.use('/api/groups',                 groupRoutes);
-app.use('/api/jobs',                   jobRoutes);
-app.use('/api/location',               locationRoutes);
+app.use('/api/auth',                     authRoutes);
+
+// FIX 1: Mount adminFraudRoutes at /api/admin/fraud for browser requests.
+// FIX 2: ALSO mount it at /api/admin/fraud-notify so that Python's
+//         _notify_node() which POSTs to /api/admin/fraud-notify hits the
+//         router's  POST /notify  handler (registered in adminFraudRoutes.js).
+//         Without this second mount Python got a 404 which cascaded into the
+//         502 Bad Gateway the browser was seeing on /api/admin/fraud/* routes.
+app.use('/api/admin/fraud',              adminFraudRoutes);
+app.use('/api/admin/fraud-notify',       adminFraudRoutes);   // FIX: dual-mount
+
+app.use('/api/admin/worker-complaints',  adminWorkerComplaintRoutes);
+app.use('/api/admin/community',          adminCommunityRoutes);
+app.use('/api/admin',                    adminRoutes);
+app.use('/api/client/complaints',        clientComplaintRoutes);
+app.use('/api/client',                   clientRoutes);
+app.use('/api/worker/complaints',        workerComplaintRoutes);
+app.use('/api/worker',                   workerRoutes);
+app.use('/api/community',                communityRoutes);
+app.use('/api/ai',                       aiRoutes);
+app.use('/api/groups',                   groupRoutes);
+app.use('/api/jobs',                     jobRoutes);
+app.use('/api/location',                 locationRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.2.0' }));
+app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.3.0' }));
 app.get('/api/health', (req, res) => res.json({
     status: 'ok', uptime: process.uptime(),
     db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
 }));
+
+// FIX 3: Use explicit IPv4 in fallback URL.
+//         "localhost" resolves to ::1 (IPv6) on modern Node.js systems.
+//         Python's fraud service binds to 127.0.0.1 (IPv4), so ::1 → ECONNREFUSED.
 app.get('/api/fraud/health', async (req, res) => {
     try {
-        const { data } = await axios.get(`${process.env.FRAUD_SERVICE_URL || 'http://localhost:5001'}/health`, { timeout: 5000 });
+        const fraudUrl = process.env.FRAUD_SERVICE_URL || 'http://127.0.0.1:5001';
+        const { data } = await axios.get(`${fraudUrl}/health`, { timeout: 5000 });
         return res.json({ status: 'ok', service: data });
     } catch (error) {
         return res.status(503).json({ status: 'degraded', message: 'Fraud service unavailable.', error: error.response?.data?.error || error.message });

@@ -1,4 +1,3 @@
-
 """
 server/fraud_service/app.py
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -6,6 +5,12 @@ FIX: Your MONGO_URI already contains the DB name:
        mongodb://127.0.0.1:27017/karigarConnect
      PyMongo can read this directly — no separate DB_NAME needed.
      We extract the DB name from the URI so it always stays in sync.
+
+BUGFIX (v3.1):
+  - Force host="127.0.0.1" (IPv4) instead of "0.0.0.0" to prevent
+    Node.js from connecting via ::1 (IPv6) and getting ECONNREFUSED.
+  - Added allow_unsafe_werkzeug=True for Flask-SocketIO dev mode.
+  - Wrapped socketio.run() in try/finally for clean shutdown.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -174,7 +179,7 @@ def create_app():
             "status": "ok",
             "service": "fraud-detection",
             "db": DB_NAME,
-            "version": "3.0",
+            "version": "3.1",
         }, 200
 
 
@@ -204,19 +209,27 @@ if __name__ == "__main__":
 
     scheduler = start_scheduler()
 
+    # FIX: Use 127.0.0.1 (IPv4) so Node.js can connect without
+    #      hitting the IPv6 ::1 ECONNREFUSED issue.
+    #      allow_unsafe_werkzeug=True silences the Werkzeug dev-server
+    #      warning that causes the "write() before start_response" error
+    #      when Flask-SocketIO tries to hijack the WSGI stack.
+    HOST = os.environ.get("FRAUD_SERVICE_HOST", "127.0.0.1")
+    PORT = int(os.environ.get("FRAUD_SERVICE_PORT", 5001))
+
     try:
 
-        logger.info("Flask fraud service starting on :5001")
+        logger.info(f"Flask fraud service starting on {HOST}:{PORT}")
 
         socketio.run(
             app,
-            host="0.0.0.0",
-            port=5001,
+            host=HOST,
+            port=PORT,
             debug=False,
             use_reloader=False,
+            allow_unsafe_werkzeug=True,   # FIX: prevents write()-before-start_response
         )
 
     finally:
 
         stop_scheduler()
-
