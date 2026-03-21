@@ -1,7 +1,9 @@
 // src/App.jsx — UPDATED
-// Added: ClientLiveTracking (/client/live-tracking/:jobId)
-//        WorkerLiveTracking (/worker/live-tracking/:jobId)
-// All original routes, imports, and logic preserved exactly
+// Changes from previous version:
+//   - AdminComplaints (client complaint page) kept at /admin/complaints
+//   - AdminWorkerComplaints (NEW worker complaint/support page) at /admin/worker-complaints
+//   - Complaints (worker) replaced with WorkerComplaints (new full-featured page)
+//   - All original routes, imports, and logic preserved exactly
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom';
@@ -31,42 +33,43 @@ import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
 
 // Admin Pages
-import AdminDashboard from './pages/admin/AdminDashboard';
-import FraudMonitor from './pages/admin/FraudMonitor';
-import AdminComplaints from './pages/admin/AdminComplaints';
-import AdminCommunity from './pages/admin/AdminCommunity';
+import AdminDashboard        from './pages/admin/AdminDashboard';
+import FraudMonitor          from './pages/admin/FraudMonitor';
+import AdminComplaints       from './pages/admin/AdminComplaints';          // existing — client complaints
+import AdminWorkerComplaints from './pages/admin/AdminWorkerComplaints';    // NEW — worker complaints & support
+import AdminCommunity        from './pages/admin/AdminCommunity';
 
 // Worker Pages
-import WorkerDashboard from './pages/worker/WorkerDashboard';
-import JobRequests from './pages/worker/JobRequests';
-import JobBookings from './pages/worker/JobBookings';
-import Leaderboard from './pages/worker/Leaderboard';
-import Feedback from './pages/worker/Feedback';
-import Complaints from './pages/worker/Complaints';
-import History from './pages/worker/History';
-import ViewProfile from './pages/worker/ViewProfile';
-import ViewIdCard from './pages/worker/ViewIdCard';
-import Settings from './pages/worker/Settings';
-import CreateGroup from './pages/worker/CreateGroup';
-import MyGroups from './pages/worker/MyGroups';
-import ActiveGroupJobs from './pages/worker/ActiveGroupJobs';
-import CompletedGroupJobs from './pages/worker/CompletedGroupJobs';
-import WorkerProposals from './pages/worker/WorkerProposals';
-import AcceptInvites from './pages/worker/AcceptInvites';
-import Groups from './pages/worker/Groups';
-import Community from './pages/worker/Community';
-import WorkerLiveTracking from './pages/worker/WorkerLiveTracking'; // NEW
+import WorkerDashboard      from './pages/worker/WorkerDashboard';
+import JobRequests          from './pages/worker/JobRequests';
+import JobBookings          from './pages/worker/JobBookings';
+import Leaderboard          from './pages/worker/Leaderboard';
+import Feedback             from './pages/worker/Feedback';
+import WorkerComplaints     from './pages/worker/WorkerComplaints';         // NEW (replaces Complaints)
+import History              from './pages/worker/History';
+import ViewProfile          from './pages/worker/ViewProfile';
+import ViewIdCard           from './pages/worker/ViewIdCard';
+import Settings             from './pages/worker/Settings';
+import CreateGroup          from './pages/worker/CreateGroup';
+import MyGroups             from './pages/worker/MyGroups';
+import ActiveGroupJobs      from './pages/worker/ActiveGroupJobs';
+import CompletedGroupJobs   from './pages/worker/CompletedGroupJobs';
+import WorkerProposals      from './pages/worker/WorkerProposals';
+import AcceptInvites        from './pages/worker/AcceptInvites';
+import Groups               from './pages/worker/Groups';
+import Community            from './pages/worker/Community';
+import WorkerLiveTracking   from './pages/worker/WorkerLiveTracking';
 
 // Client Pages
-import ClientDashboard from './pages/client/ClientDashboard';
-import ClientJobPost from './pages/client/ClientJobPost';
-import ClientAIAssist from './pages/client/ClientAIAssist';
-import ClientProfile from './pages/client/ClientProfile';
-import ClientJobManage from './pages/client/ClientJobManage';
-import ClientSettings from './pages/client/Settings';
-import ClientComplaints from './pages/client/ClientComplaints';
-import ClientGroups from './pages/client/ClientGroups';
-import ClientLiveTracking from './pages/client/ClientLiveTracking'; // NEW
+import ClientDashboard    from './pages/client/ClientDashboard';
+import ClientJobPost      from './pages/client/ClientJobPost';
+import ClientAIAssist     from './pages/client/ClientAIAssist';
+import ClientProfile      from './pages/client/ClientProfile';
+import ClientJobManage    from './pages/client/ClientJobManage';
+import ClientSettings     from './pages/client/Settings';
+import ClientComplaints   from './pages/client/ClientComplaints';
+import ClientGroups       from './pages/client/ClientGroups';
+import ClientLiveTracking from './pages/client/ClientLiveTracking';
 
 // ── Layout wrappers ───────────────────────────────────────────────────────────
 
@@ -112,11 +115,21 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
+                {/* Existing: client complaints */}
                 <Route
                     path="/admin/complaints"
                     element={
                         <ProtectedRoute allowedRoles={['admin']}>
                             <AdminComplaints />
+                        </ProtectedRoute>
+                    }
+                />
+                {/* NEW: worker complaints & support tickets */}
+                <Route
+                    path="/admin/worker-complaints"
+                    element={
+                        <ProtectedRoute allowedRoles={['admin']}>
+                            <AdminWorkerComplaints />
                         </ProtectedRoute>
                     }
                 />
@@ -148,15 +161,15 @@ function App() {
                         }
                     >
                         <Route index element={<Navigate to="dashboard" replace />} />
-                        <Route path="dashboard"               element={<ClientDashboard />} />
-                        <Route path="ai-assist"               element={<ClientAIAssist />} />
-                        <Route path="job-manage"              element={<ClientJobManage />} />
-                        <Route path="job-post"                element={<ClientJobPost />} />
-                        <Route path="profile"                 element={<ClientProfile />} />
-                        <Route path="settings"                element={<ClientSettings />} />
-                        <Route path="complaints"              element={<ClientComplaints />} />
-                        <Route path="groups"                  element={<ClientGroups />} />
-                        <Route path="live-tracking/:jobId"    element={<ClientLiveTracking />} /> {/* NEW */}
+                        <Route path="dashboard"             element={<ClientDashboard />} />
+                        <Route path="ai-assist"             element={<ClientAIAssist />} />
+                        <Route path="job-manage"            element={<ClientJobManage />} />
+                        <Route path="job-post"              element={<ClientJobPost />} />
+                        <Route path="profile"               element={<ClientProfile />} />
+                        <Route path="settings"              element={<ClientSettings />} />
+                        <Route path="complaints"            element={<ClientComplaints />} />
+                        <Route path="groups"                element={<ClientGroups />} />
+                        <Route path="live-tracking/:jobId"  element={<ClientLiveTracking />} />
                     </Route>
 
                     {/* ── WORKER ROUTES ── */}
@@ -168,25 +181,25 @@ function App() {
                             </ProtectedRoute>
                         }
                     >
-                        <Route path="dashboard"               element={<WorkerDashboard />} />
-                        <Route path="job-requests"            element={<JobRequests />} />
-                        <Route path="job-bookings"            element={<JobBookings />} />
-                        <Route path="leaderboard"             element={<Leaderboard />} />
-                        <Route path="feedback"                element={<Feedback />} />
-                        <Route path="complaints"              element={<Complaints />} />
-                        <Route path="history"                 element={<History />} />
-                        <Route path="profile"                 element={<ViewProfile />} />
-                        <Route path="id-card"                 element={<ViewIdCard />} />
-                        <Route path="settings"                element={<Settings />} />
-                        <Route path="create-group"            element={<CreateGroup />} />
-                        <Route path="my-groups"               element={<MyGroups />} />
-                        <Route path="groups"                  element={<Groups />} />
-                        <Route path="active-group-jobs"       element={<ActiveGroupJobs />} />
-                        <Route path="completed-group-jobs"    element={<CompletedGroupJobs />} />
-                        <Route path="proposals"               element={<WorkerProposals />} />
-                        <Route path="accept-invites"          element={<AcceptInvites />} />
-                        <Route path="community"               element={<Community />} />
-                        <Route path="live-tracking/:jobId"    element={<WorkerLiveTracking />} /> {/* NEW */}
+                        <Route path="dashboard"             element={<WorkerDashboard />} />
+                        <Route path="job-requests"          element={<JobRequests />} />
+                        <Route path="job-bookings"          element={<JobBookings />} />
+                        <Route path="leaderboard"           element={<Leaderboard />} />
+                        <Route path="feedback"              element={<Feedback />} />
+                        <Route path="complaints"            element={<WorkerComplaints />} />  {/* updated component */}
+                        <Route path="history"               element={<History />} />
+                        <Route path="profile"               element={<ViewProfile />} />
+                        <Route path="id-card"               element={<ViewIdCard />} />
+                        <Route path="settings"              element={<Settings />} />
+                        <Route path="create-group"          element={<CreateGroup />} />
+                        <Route path="my-groups"             element={<MyGroups />} />
+                        <Route path="groups"                element={<Groups />} />
+                        <Route path="active-group-jobs"     element={<ActiveGroupJobs />} />
+                        <Route path="completed-group-jobs"  element={<CompletedGroupJobs />} />
+                        <Route path="proposals"             element={<WorkerProposals />} />
+                        <Route path="accept-invites"        element={<AcceptInvites />} />
+                        <Route path="community"             element={<Community />} />
+                        <Route path="live-tracking/:jobId"  element={<WorkerLiveTracking />} />
                     </Route>
                 </Route>
 

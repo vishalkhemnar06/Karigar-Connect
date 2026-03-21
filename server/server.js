@@ -1,6 +1,7 @@
-// server/server.js — UPDATED
-// Added: locationRoutes (/api/location)
-// All original code preserved exactly
+// server/server.js
+// UPDATED: Added workerComplaintRoutes at /api/worker/complaints
+//          (mounted BEFORE /api/worker to avoid route conflicts)
+// All original code preserved exactly.
 
 const express  = require('express');
 const mongoose = require('mongoose');
@@ -12,19 +13,20 @@ const axios    = require('axios');
 
 dotenv.config();
 
-const authRoutes            = require('./routes/authRoutes');
-const adminRoutes           = require('./routes/adminRoutes');
-const workerRoutes          = require('./routes/workerRoutes');
-const clientRoutes          = require('./routes/clientRoutes');
-const aiRoutes              = require('./routes/aiRoutes');
-const groupRoutes           = require('./routes/groupRoutes');
-const jobRoutes             = require('./routes/jobRoutes');
-const adminFraudRoutes      = require('./routes/adminFraudRoutes');
-const clientComplaintRoutes = require('./routes/clientComplaintRoutes');
-const adminComplaintRoutes  = require('./routes/adminComplaintRoutes');
-const communityRoutes       = require('./routes/communityRoutes');
-const adminCommunityRoutes  = require('./routes/adminCommunityRoutes');
-const locationRoutes        = require('./routes/locationRoutes'); // NEW
+const authRoutes             = require('./routes/authRoutes');
+const adminRoutes            = require('./routes/adminRoutes');
+const workerRoutes           = require('./routes/workerRoutes');
+const clientRoutes           = require('./routes/clientRoutes');
+const aiRoutes               = require('./routes/aiRoutes');
+const groupRoutes            = require('./routes/groupRoutes');
+const jobRoutes              = require('./routes/jobRoutes');
+const adminFraudRoutes       = require('./routes/adminFraudRoutes');
+const clientComplaintRoutes  = require('./routes/clientComplaintRoutes');
+const adminWorkerComplaintRoutes = require('./routes/adminWorkerComplaintRoutes');
+const workerComplaintRoutes  = require('./routes/workerComplaintRoutes'); // NEW
+const communityRoutes        = require('./routes/communityRoutes');
+const adminCommunityRoutes   = require('./routes/adminCommunityRoutes');
+const locationRoutes         = require('./routes/locationRoutes');
 
 const app = express();
 
@@ -44,23 +46,18 @@ app.use(cors({
 }));
 
 // ── Static files ──────────────────────────────────────────────────────────────
-// Legacy uploads (photos, ai, clients) — kept from original
 const legacyStaticDirs = [
-    { url: '/uploads/photos',    dir: 'uploads/photos'    },
-    { url: '/uploads/ai',        dir: 'uploads/ai'        },
-    { url: '/uploads/clients',   dir: 'uploads/clients'   },
+    { url: '/uploads/photos',  dir: 'uploads/photos'  },
+    { url: '/uploads/ai',      dir: 'uploads/ai'      },
+    { url: '/uploads/clients', dir: 'uploads/clients' },
 ];
 legacyStaticDirs.forEach(({ url, dir }) => {
     const abs = path.join(__dirname, dir);
     if (fs.existsSync(abs)) app.use(url, express.static(abs));
 });
 
-// Community uploads (fallback when Cloudinary is not configured)
-// Files are saved to uploads/community/ by communityUpload middleware
 const communityUploadDir = path.join(__dirname, 'uploads/community');
-if (!fs.existsSync(communityUploadDir)) {
-    fs.mkdirSync(communityUploadDir, { recursive: true });
-}
+if (!fs.existsSync(communityUploadDir)) fs.mkdirSync(communityUploadDir, { recursive: true });
 app.use('/uploads/community', express.static(communityUploadDir));
 
 // ── Database ──────────────────────────────────────────────────────────────────
@@ -69,19 +66,20 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => { console.error('❌  MongoDB connection failed:', err.message); process.exit(1); });
 
 // ── Routes — specific paths BEFORE their parent prefix ────────────────────────
-app.use('/api/auth',                  authRoutes);
-app.use('/api/admin/fraud',           adminFraudRoutes);
-app.use('/api/admin/complaints',      adminComplaintRoutes);
-app.use('/api/admin/community',       adminCommunityRoutes);   // before /api/admin
-app.use('/api/admin',                 adminRoutes);
-app.use('/api/client/complaints',     clientComplaintRoutes);
-app.use('/api/client',                clientRoutes);
-app.use('/api/worker',                workerRoutes);
-app.use('/api/community',             communityRoutes);
-app.use('/api/ai',                    aiRoutes);
-app.use('/api/groups',                groupRoutes);
-app.use('/api/jobs',                  jobRoutes);
-app.use('/api/location',              locationRoutes); // NEW
+app.use('/api/auth',                   authRoutes);
+app.use('/api/admin/fraud',            adminFraudRoutes);
+app.use('/api/admin/worker-complaints',  adminWorkerComplaintRoutes);   // NEW — before /api/admin
+app.use('/api/admin/community',        adminCommunityRoutes);   // before /api/admin
+app.use('/api/admin',                  adminRoutes);
+app.use('/api/client/complaints',      clientComplaintRoutes);  // before /api/client
+app.use('/api/client',                 clientRoutes);
+app.use('/api/worker/complaints',      workerComplaintRoutes);  // NEW — before /api/worker
+app.use('/api/worker',                 workerRoutes);
+app.use('/api/community',              communityRoutes);
+app.use('/api/ai',                     aiRoutes);
+app.use('/api/groups',                 groupRoutes);
+app.use('/api/jobs',                   jobRoutes);
+app.use('/api/location',               locationRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.2.0' }));

@@ -1,14 +1,17 @@
-// src/pages/admin/AdminDashboard.jsx — FULL UPDATED FILE
-// Added: Community section in sidebar + Community button in header action bar
-// All original code preserved exactly
+// src/pages/admin/AdminDashboard.jsx — UPDATED
+// Changes from previous version:
+//   - Sidebar "Worker Complaints" navigates to /admin/worker-complaints (was /admin/complaints)
+//   - Header action bar "Worker Complaints" button navigates to /admin/worker-complaints
+//   - "Complaints" button (client complaints) kept at /admin/complaints — unchanged
+//   - All original code preserved exactly
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import logo from '../../assets/logo.jpg';
-import { 
-    Check, X, ShieldX, Trash2, Eye, Users, UserCheck, 
+import {
+    Check, X, ShieldX, Trash2, Eye, Users, UserCheck,
     UserX, Clock, ShieldCheck, Search, Filter, Download,
     ChevronDown, ChevronUp, Home, Mail, Phone, MapPin,
     FileText, Image, Award, Briefcase, AlertCircle, AlertTriangle,
@@ -54,8 +57,8 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
                         <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
                             <Star size={16} className="text-orange-500" /> Assign Base Points (1 - 50)
                         </label>
-                        <input 
-                            type="number" 
+                        <input
+                            type="number"
                             min="1" max="50"
                             value={points}
                             onChange={(e) => setPoints(e.target.value)}
@@ -86,7 +89,7 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
 
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">Internal Admin Feedback</label>
-                        <textarea 
+                        <textarea
                             value={feedback}
                             onChange={(e) => setFeedback(e.target.value)}
                             placeholder="Add internal notes about background check or skill level..."
@@ -94,7 +97,7 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
                         />
                     </div>
 
-                    <button 
+                    <button
                         onClick={handleSubmit}
                         className="w-full bg-gradient-to-r from-orange-600 to-orange-500 text-white py-4 rounded-xl font-black text-lg shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 transition-all"
                     >
@@ -110,9 +113,9 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
 const UserDetailsModal = ({ user, onClose, baseURL }) => {
     if (!user) return null;
 
-    const address = user.address || {};
+    const address   = user.address || {};
     const emergency = user.emergencyContact || {};
-    const idDoc = user.idProof || {};
+    const idDoc     = user.idProof || {};
 
     const resolvePath = (value) => {
         if (!value) return null;
@@ -153,9 +156,9 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-orange-600 p-4 sm:p-6 rounded-t-xl flex justify-between items-center z-10">
                     <div className="flex items-center gap-3 sm:gap-4">
-                        <img 
-                            src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'} 
-                            alt={user.name} 
+                        <img
+                            src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'}
+                            alt={user.name}
                             className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-4 border-white/20 shadow-lg"
                             onError={(e) => { e.target.src = '/default-avatar.png'; }}
                         />
@@ -166,7 +169,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                     </div>
                     <button onClick={onClose} className="text-white text-2xl sm:text-3xl hover:text-orange-200 transition-colors">&times;</button>
                 </div>
-                
+
                 <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
                     {/* Personal & Contact */}
                     <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
@@ -174,13 +177,13 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <UserCheck size={18} className="mr-2" /> Personal & Contact Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            <DetailItem label="Full Name" value={user.name} icon={UserCheck} />
-                            <DetailItem label="Date of Birth" value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar} />
-                            <DetailItem label="Phone Type" value={user.phoneType || 'N/A'} icon={Smartphone} />
-                            <DetailItem label="Gender" value={user.gender} />
-                            <DetailItem label="Mobile" value={user.mobile} icon={Phone} />
-                            <DetailItem label="Email" value={user.email} icon={Mail} />
-                            <DetailItem label="Aadhar Number" value={user.aadharNumber} />
+                            <DetailItem label="Full Name"      value={user.name}                                                    icon={UserCheck} />
+                            <DetailItem label="Date of Birth"  value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar} />
+                            <DetailItem label="Phone Type"     value={user.phoneType || 'N/A'}                                      icon={Smartphone} />
+                            <DetailItem label="Gender"         value={user.gender} />
+                            <DetailItem label="Mobile"         value={user.mobile}                                                  icon={Phone} />
+                            <DetailItem label="Email"          value={user.email}                                                   icon={Mail} />
+                            <DetailItem label="Aadhar Number"  value={user.aadharNumber} />
                             <DetailItem label="E-Shram Number" value={user.eShramNumber || 'N/A'} />
                         </div>
                     </div>
@@ -191,8 +194,8 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <MapPinIcon size={18} className="mr-2" /> Address Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            <DetailItem label="City" value={address.city || user.city} icon={Home} />
-                            <DetailItem label="Pincode" value={address.pincode || user.pincode} />
+                            <DetailItem label="City"         value={address.city     || user.city}     icon={Home} />
+                            <DetailItem label="Pincode"      value={address.pincode  || user.pincode} />
                             <DetailItem label="Locality/Area" value={address.locality || user.locality} />
                         </div>
                     </div>
@@ -220,7 +223,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <AlertCircle size={18} className="mr-2" /> Emergency & References
                                 </h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <DetailItem label="Emergency Contact Name" value={emergency.name || user.emergencyContactName} />
+                                    <DetailItem label="Emergency Contact Name"   value={emergency.name   || user.emergencyContactName} />
                                     <DetailItem label="Emergency Contact Mobile" value={emergency.mobile || user.emergencyContactMobile} />
                                     <div className="sm:col-span-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase tracking-wider mb-2">References</p>
@@ -363,8 +366,8 @@ const MobileUserCard = ({ user, baseURL, onViewDetails, onVerifyOpen, onStatusUp
         <div className="bg-white rounded-lg shadow-sm border border-orange-100 p-4 mb-3">
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-3">
-                    <img 
-                        src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'} 
+                    <img
+                        src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'}
                         alt={user.name}
                         className="w-10 h-10 rounded-full object-cover border-2 border-orange-100"
                         onError={(e) => { e.target.src = '/default-avatar.png'; }}
@@ -469,7 +472,7 @@ const AdminDashboard = () => {
     const filteredData = useMemo(() => {
         let data = activeFilter === 'clients' ? clients : workers.filter(w => w.verificationStatus === activeFilter);
         if (searchTerm) {
-            data = data.filter(user => 
+            data = data.filter(user =>
                 user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 user.mobile?.includes(searchTerm) ||
                 user.karigarId?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -601,17 +604,27 @@ const AdminDashboard = () => {
                             <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Clients</p>
                             <SidebarLink filter="clients" label="All Clients" icon={Users} count={stats.totalClients} />
 
-                            {/* Complaints */}
-                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Complaints</p>
+                            {/* Complaints (existing — client complaints) */}
+                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Client Complaints</p>
                             <button
                                 onClick={() => { navigate('/admin/complaints'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
                                 className="flex items-center w-full px-4 py-3 text-left rounded-xl transition-all group text-gray-600 hover:bg-orange-50"
                             >
                                 <AlertTriangle size={18} className="mr-3 text-gray-400 group-hover:text-orange-500 transition-colors" />
+                                <span className="flex-1 text-sm">Client Complaints</span>
+                            </button>
+
+                            {/* Worker Complaints & Support — NEW, navigates to /admin/worker-complaints */}
+                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Worker Support</p>
+                            <button
+                                onClick={() => { navigate('/admin/worker-complaints'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
+                                className="flex items-center w-full px-4 py-3 text-left rounded-xl transition-all group text-gray-600 hover:bg-orange-50"
+                            >
+                                <MessageSquare size={18} className="mr-3 text-gray-400 group-hover:text-orange-500 transition-colors" />
                                 <span className="flex-1 text-sm">Worker Complaints</span>
                             </button>
 
-                            {/* Community — NEW */}
+                            {/* Community */}
                             <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Community</p>
                             <button
                                 onClick={() => { navigate('/admin/community'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
@@ -630,23 +643,32 @@ const AdminDashboard = () => {
                             <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Admin Control Desk</h1>
                             <p className="text-gray-500 text-sm">Manage, verify and rank professionals</p>
                         </div>
-                        <div className="flex space-x-3">
+                        <div className="flex flex-wrap gap-2">
                             <button
                                 onClick={() => navigate('/admin/fraud')}
                                 className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
                             >
                                 Fraud Monitor
                             </button>
+                            {/* Client Complaints — kept at /admin/complaints */}
                             <button
                                 onClick={() => navigate('/admin/complaints')}
                                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors flex items-center gap-2"
                             >
                                 <AlertTriangle size={14} />
-                                Complaints
+                                Client Complaints
+                            </button>
+                            {/* Worker Complaints — NEW, navigates to /admin/worker-complaints */}
+                            <button
+                                onClick={() => navigate('/admin/worker-complaints')}
+                                className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors flex items-center gap-2"
+                            >
+                                <MessageSquare size={14} />
+                                Worker Support
                             </button>
                             <button
                                 onClick={() => navigate('/admin/community')}
-                                className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors flex items-center gap-2"
+                                className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-semibold hover:bg-purple-600 transition-colors flex items-center gap-2"
                             >
                                 <MessageSquare size={14} />
                                 Community

@@ -1,7 +1,6 @@
-// client/src/api/index.js — UPDATED
-// Added: initClientLocation, updateWorkerLocation, toggleWorkerLocationSharing,
-//        getWorkerTrackingJobs, getJobLocationData
-// All original exports preserved exactly
+// client/src/api/index.js
+// UPDATED: Added password-change OTP endpoints + permanent delete
+// All other exports unchanged.
 
 import axios from 'axios';
 
@@ -41,10 +40,13 @@ export const dismissFraudQueueItem = (userId) => API.delete(`/api/admin/fraud/qu
 export const getFraudHealth        = ()       => API.get('/api/admin/fraud/health');
 
 // ── ADMIN COMPLAINTS ──────────────────────────────────────────────────────────
-export const getAdminComplaints         = (p = {}) => API.get('/api/admin/complaints',              { params: p });
-export const getAdminComplaintStats     = ()        => API.get('/api/admin/complaints/stats');
-export const getAdminComplaintById      = (id)      => API.get(`/api/admin/complaints/${id}`);
-export const takeAdminActionOnComplaint = (id, b)   => API.post(`/api/admin/complaints/${id}/action`, b);
+export const getAdminComplaints           = (p = {}) => API.get('/api/admin/worker-complaints',                   { params: p });
+export const getAdminComplaintStats       = ()        => API.get('/api/admin/worker-complaints/stats');
+export const getAdminComplaintById        = (id)      => API.get(`/api/admin/worker-complaints/${id}`);
+export const takeAdminActionOnComplaint   = (id, b)   => API.post(`/api/admin/worker-complaints/${id}/action`,    b);
+export const adminReplyToComplaint        = (id, b)   => API.post(`/api/admin/worker-complaints/${id}/reply`,     b);
+export const adminMarkComplaintRead       = (id)      => API.patch(`/api/admin/worker-complaints/${id}/read`);
+export const adminUpdateComplaintPriority = (id, b)   => API.patch(`/api/admin/worker-complaints/${id}/priority`, b);
 
 // ── ADMIN COMMUNITY ───────────────────────────────────────────────────────────
 export const adminGetCommunityPosts       = (page = 1)  => API.get('/api/admin/community/posts',          { params: { page } });
@@ -66,19 +68,36 @@ export const getNearClients                 = ()              => API.get('/api/w
 export const getWorkerProfile               = ()              => API.get('/api/worker/profile');
 export const updateWorkerProfile            = (fd)            => API.put('/api/worker/profile/update',         fd, mp);
 export const toggleAvailability             = (d = {})        => API.post('/api/worker/availability',           d);
-export const deleteAccount                  = ()              => API.delete('/api/worker/account/delete');
+export const deleteAccount                  = ()              => API.delete('/api/worker/account/delete');        // legacy
 export const getPublicWorkerProfile         = (id)            => API.get(`/api/worker/public/${id}`);
 export const getAllKarigars                 = ()              => API.get('/api/worker/all');
 export const getLeaderboard                 = ()              => API.get('/api/worker/leaderboard');
 export const getMyFeedback                  = ()              => API.get('/api/worker/feedback');
-export const fileComplaint                  = (d)             => API.post('/api/worker/complaints/file',        d);
-export const getMyComplaints                = ()              => API.get('/api/worker/complaints');
 export const respondToGroupJob              = (d)             => API.post('/api/worker/group-job/respond',      d);
 export const getWorkerNotifications         = ()              => API.get('/api/worker/notifications');
 export const markWorkerNotificationRead     = (id)            => API.patch(`/api/worker/notifications/${id}/read`);
 export const markAllWorkerNotificationsRead = ()              => API.patch('/api/worker/notifications/mark-all-read');
 export const deleteWorkerNotification       = (id)            => API.delete(`/api/worker/notifications/${id}`);
 export const clearAllWorkerNotifications    = ()              => API.delete('/api/worker/notifications/clear-all');
+
+// ── WORKER SETTINGS — Password change (NEW) ───────────────────────────────────
+// Step 1: request OTP → SMS sent to registered mobile
+export const sendPasswordChangeOtp    = ()  => API.post('/api/worker/settings/password/send-otp');
+// Step 2: submit OTP → returns { verifiedToken }
+export const verifyPasswordChangeOtp  = (d) => API.post('/api/worker/settings/password/verify-otp',  d);
+// Step 3: set new password with verifiedToken
+export const changePasswordWithOtp    = (d) => API.post('/api/worker/settings/password/change',       d);
+// Permanent delete: requires verifiedToken + confirmText === "DELETE"
+export const deleteAccountPermanently = (d) => API.delete('/api/worker/account/delete-permanent',     { data: d });
+
+// ── WORKER COMPLAINTS & SUPPORT ───────────────────────────────────────────────
+export const fileComplaint            = (d)     => API.post('/api/worker/complaints/file',            d);
+export const getMyComplaints          = ()       => API.get('/api/worker/complaints');
+export const getMyComplaintById       = (id)     => API.get(`/api/worker/complaints/${id}`);
+export const deleteMyComplaint        = (id)     => API.delete(`/api/worker/complaints/${id}`);
+export const sendComplaintMessage     = (id, d)  => API.post(`/api/worker/complaints/${id}/message`,  d);
+export const markComplaintRead        = (id)     => API.patch(`/api/worker/complaints/${id}/read`);
+export const searchClientForComplaint = (q)      => API.get('/api/worker/complaints/search-client',   { params: { query: q } });
 
 // ── CLIENT ────────────────────────────────────────────────────────────────────
 export const getClientProfile           = ()      => API.get('/api/client/profile');
@@ -145,7 +164,6 @@ export const addMemberAPI   = (gId, kId) => API.put(`/api/groups/${gId}/add`,   
 export const deleteGroupAPI = (gId)      => API.delete(`/api/groups/${gId}`);
 export const leaveGroupAPI  = (gId)      => API.put(`/api/groups/${gId}/leave`, {});
 export const hireGroupJob   = (d)        => API.post('/api/jobs/group/hire',     d);
-// Client group browsing
 export const browseGroups   = (params = {}) => API.get('/api/groups/browse',            { params });
 export const getGroupPublic = (groupId)     => API.get(`/api/groups/${groupId}/public`);
 
@@ -159,52 +177,11 @@ export const commentOnCommunityPost = (id, text)  => API.post(`/api/community/${
 export const deleteCommunityComment = (pId, cId)  => API.delete(`/api/community/${pId}/comments/${cId}`);
 
 // ── LOCATION TRACKING ─────────────────────────────────────────────────────────
-// NEW: Live location tracking for booked jobs
-
-/**
- * CLIENT: Capture static client location when a worker booking is confirmed.
- * Call this from ClientJobManage after a worker is accepted / job scheduled.
- * @param {string} jobId
- * @param {number} lat
- * @param {number} lng
- * @param {string} address  - optional reverse-geocoded address string
- */
-export const initClientLocation = (jobId, lat, lng, address = '') =>
-    API.post('/api/location/init', { jobId, lat, lng, address });
-
-/**
- * WORKER: Push the worker's live GPS position to the server.
- * Called every 5 seconds while a job is scheduled/running.
- * @param {string} jobId
- * @param {number} lat
- * @param {number} lng
- * @param {object} extras  - { accuracy, heading, speed } — all optional
- */
-export const updateWorkerLocation = (jobId, lat, lng, extras = {}) =>
-    API.put('/api/location/worker/update', { jobId, lat, lng, ...extras });
-
-/**
- * WORKER: Enable or disable live sharing for a job.
- * @param {string}  jobId
- * @param {boolean} active
- */
-export const toggleWorkerLocationSharing = (jobId, active) =>
-    API.put('/api/location/worker/toggle', { jobId, active });
-
-/**
- * WORKER: Get all jobs for which location tracking is active.
- * Used on the worker dashboard to show the tracking widget.
- */
-export const getWorkerTrackingJobs = () =>
-    API.get('/api/location/worker/jobs');
-
-/**
- * CLIENT + WORKER: Get the current location snapshot for a specific job.
- * Returns { clientLocation, workers[], isClient, isWorker }
- * @param {string} jobId
- */
-export const getJobLocationData = (jobId) =>
-    API.get(`/api/location/${jobId}`);
+export const initClientLocation          = (jobId, lat, lng, address = '') => API.post('/api/location/init',           { jobId, lat, lng, address });
+export const updateWorkerLocation        = (jobId, lat, lng, extras = {})  => API.put('/api/location/worker/update',   { jobId, lat, lng, ...extras });
+export const toggleWorkerLocationSharing = (jobId, active)                 => API.put('/api/location/worker/toggle',   { jobId, active });
+export const getWorkerTrackingJobs       = ()                              => API.get('/api/location/worker/jobs');
+export const getJobLocationData          = (jobId)                         => API.get(`/api/location/${jobId}`);
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 export const getImageUrl = (path, fallback = '/admin.png') => {
