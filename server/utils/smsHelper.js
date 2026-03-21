@@ -1,11 +1,6 @@
 // utils/smsHelper.js
-// FIXES:
-//  1. CRITICAL — sendSms() base function was MISSING (the file said
-//     "// existing code unchanged above..." but the actual Twilio call
-//     was never there). Every SMS call threw ReferenceError: sendSms is not defined.
-//  2. Duplicate export of sendGroupInviteSms removed (was exported twice).
-//  3. All exported functions now safely catch Twilio errors so an SMS failure
-//     does not crash the calling controller.
+// UPDATED: Added sendPasswordChangeOtpSms for OTP-based password change flow
+// All original functions preserved exactly.
 
 const twilio = require('twilio');
 
@@ -15,19 +10,15 @@ const client = twilio(
 );
 
 // ── BASE FUNCTION ─────────────────────────────────────────────────────────────
-// All other helpers call this. Errors are caught here so a failed SMS never
-// throws and never crashes the controller that called it.
 const sendSms = async (to, body) => {
     if (!to || !body) return;
     try {
         await client.messages.create({
             body,
             from: process.env.TWILIO_PHONE_NUMBER,
-            // Normalise: prefix +91 only if not already a full E.164 number
             to: to.startsWith('+') ? to : `+91${to}`,
         });
     } catch (err) {
-        // Log but do not re-throw — SMS failure should never break the API response
         console.error(`SMS send failed to ${to}:`, err.message);
     }
 };
@@ -54,13 +45,20 @@ exports.sendStatusUpdateSms = async (to, name, status) => {
             body = `Hi ${name}, your KarigarConnect account has been blocked due to a terms violation. Contact support for more information.`;
             break;
         default:
-            return; // Don't send for unknown statuses
+            return;
     }
     await sendSms(to, body);
 };
 
+// ── NEW: Password change OTP ──────────────────────────────────────────────────
+exports.sendPasswordChangeOtpSms = async (to, otp, name) => {
+    await sendSms(
+        to,
+        `Hi ${name || 'there'}, your KarigarConnect password change OTP is ${otp}. Valid for 10 minutes. Do not share this with anyone.`
+    );
+};
+
 // ── GROUP / JOB HELPERS ───────────────────────────────────────────────────────
-// FIX: sendGroupInviteSms was exported TWICE — duplicate removed.
 exports.sendGroupInviteSms = async (to) => {
     await sendSms(to, 'You have received a group invitation on KarigarConnect. Open the app to respond.');
 };

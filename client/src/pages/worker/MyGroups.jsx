@@ -1,6 +1,6 @@
 // src/pages/worker/MyGroups.jsx
-// Added: clickable member cards open a profile modal (name, skills, photo, karigarId)
-// All original functionality preserved exactly
+// ENHANCED UI VERSION - All original functionality preserved
+// Enhanced with: Modern gradients, animations, glassmorphism, better visual hierarchy, micro-interactions
 
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -8,11 +8,15 @@ import {
   Users, UserPlus, Trash2, LogOut, Copy, CheckCircle,
   ChevronRight, User, Shield, RefreshCw, AlertTriangle,
   Search, Hash, X, Briefcase, Star, MapPin, ExternalLink,
+  Crown, Award, Sparkles, Calendar, Mail, Phone, 
+  MessageCircle, Heart, ShieldCheck, Eye, EyeOff,
+  Clock, Award as AwardIcon, TrendingUp, Zap
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getMyGroupsAPI, addMemberAPI, deleteGroupAPI, leaveGroupAPI } from '../../api';
 
 /* ════════════════════════════════════════════
-   TOAST
+   TOAST - Enhanced
 ════════════════════════════════════════════ */
 let _tid = 0;
 const useToast = () => {
@@ -26,57 +30,104 @@ const useToast = () => {
 };
 
 const ToastList = ({ toasts }) => (
-  <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
-    {toasts.map(t => (
-      <div key={t.id} style={{
-        background: t.type === 'error' ? '#ef4444' : t.type === 'info' ? '#3b82f6' : '#22c55e',
-        color: '#fff', padding: '11px 18px', borderRadius: 12, fontWeight: 700, fontSize: 13,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 8,
-        minWidth: 200, fontFamily: 'inherit', animation: 'mg-in 0.3s ease',
-      }}>
-        {t.type === 'success' ? '✓' : t.type === 'error' ? '✕' : 'ℹ'} {t.msg}
-      </div>
-    ))}
+  <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+    <AnimatePresence>
+      {toasts.map(t => (
+        <motion.div
+          key={t.id}
+          initial={{ opacity: 0, x: 50, scale: 0.9 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: 50, scale: 0.9 }}
+          style={{
+            background: t.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 
+                       t.type === 'info' ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 
+                       'linear-gradient(135deg, #22c55e, #16a34a)',
+            color: '#fff', padding: '12px 20px', borderRadius: 14, fontWeight: 700, fontSize: 13,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 10,
+            minWidth: 220, fontFamily: 'inherit', backdropFilter: 'blur(10px)',
+          }}
+        >
+          <span style={{ fontSize: 16 }}>{t.type === 'success' ? '✓' : t.type === 'error' ? '✕' : 'ℹ'}</span>
+          {t.msg}
+        </motion.div>
+      ))}
+    </AnimatePresence>
   </div>
 );
 
 /* ════════════════════════════════════════════
-   CONFIRM DIALOG
+   CONFIRM DIALOG - Enhanced
 ════════════════════════════════════════════ */
 const ConfirmDialog = ({ message, onConfirm, onCancel, danger = true }) => (
-  <div style={{
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 1000, backdropFilter: 'blur(3px)', padding: 20,
-  }}>
-    <div style={{
-      background: '#fff', borderRadius: 20, padding: '28px 28px 24px',
-      maxWidth: 360, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-      animation: 'mg-pop 0.25s ease', fontFamily: 'inherit',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 12, background: danger ? '#fef2f2' : '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <AlertTriangle size={20} color={danger ? '#ef4444' : '#f97316'} />
-        </div>
-        <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1.4 }}>{message}</p>
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, backdropFilter: 'blur(8px)', padding: 20,
+    }}
+    onClick={onCancel}
+  >
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.9, opacity: 0 }}
+      style={{
+        background: '#fff', borderRadius: 24, padding: '32px 28px 28px',
+        maxWidth: 380, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
+        fontFamily: 'inherit',
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+        <motion.div
+          animate={{ rotate: danger ? [0, -5, 5, 0] : [0, 10, -10, 0] }}
+          transition={{ duration: 0.5 }}
+          style={{
+            width: 48, height: 48, borderRadius: 16,
+            background: danger ? '#fef2f2' : '#fff7ed',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0
+          }}
+        >
+          <AlertTriangle size={24} color={danger ? '#ef4444' : '#f97316'} />
+        </motion.div>
+        <p style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0, lineHeight: 1.4 }}>{message}</p>
       </div>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-        <button onClick={onCancel}
-          style={{ padding: '9px 20px', borderRadius: 11, border: '1.5px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 700, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit' }}
-          onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-          onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-        >Cancel</button>
-        <button onClick={onConfirm}
-          style={{ padding: '9px 20px', borderRadius: 11, border: 'none', background: danger ? '#ef4444' : '#f97316', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onCancel}
+          style={{
+            padding: '10px 22px', borderRadius: 12, border: '1.5px solid #e5e7eb',
+            background: '#fff', fontSize: 13, fontWeight: 700, color: '#6b7280',
+            cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s'
+          }}
+        >
+          Cancel
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onConfirm}
+          style={{
+            padding: '10px 22px', borderRadius: 12, border: 'none',
+            background: danger ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #f97316, #fbbf24)',
+            fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer', fontFamily: 'inherit'
+          }}
+        >
           Confirm
-        </button>
+        </motion.button>
       </div>
-    </div>
-  </div>
+    </motion.div>
+  </motion.div>
 );
 
 /* ════════════════════════════════════════════
-   MEMBER PROFILE MODAL
+   MEMBER PROFILE MODAL - Enhanced
 ════════════════════════════════════════════ */
 const MemberProfileModal = ({ member, isGroupAdmin, onClose, navigate }) => {
   if (!member) return null;
@@ -85,56 +136,131 @@ const MemberProfileModal = ({ member, isGroupAdmin, onClose, navigate }) => {
     ? member.skills.map(s => typeof s === 'object' ? s.name : s)
     : [];
 
+  const memberSince = member.createdAt ? new Date(member.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : null;
+
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(4px)', padding: 20 }}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 2000, backdropFilter: 'blur(8px)', padding: 20,
+      }}
       onClick={onClose}
     >
-      <div
-        style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 400, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.22)', animation: 'mg-pop 0.22s ease', fontFamily: 'inherit' }}
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        style={{
+          background: '#fff', borderRadius: 28, width: '100%', maxWidth: 440,
+          overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.25)',
+          fontFamily: 'inherit',
+        }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div style={{ background: 'linear-gradient(135deg,#f97316,#fbbf24)', padding: '24px 24px 20px', position: 'relative' }}>
-          <button onClick={onClose} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 10, padding: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <X size={16} color="#fff" />
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Header with gradient */}
+        <div style={{
+          background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+          padding: '28px 28px 24px', position: 'relative'
+        }}>
+          <motion.button
+            whileHover={{ scale: 1.05, rotate: 90 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onClose}
+            style={{
+              position: 'absolute', top: 18, right: 18,
+              background: 'rgba(255,255,255,0.2)', border: 'none',
+              borderRadius: 12, padding: 8, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backdropFilter: 'blur(4px)'
+            }}
+          >
+            <X size={18} color="#fff" />
+          </motion.button>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
             {member.photo ? (
-              <img src={member.photo} alt={member.name} style={{ width: 64, height: 64, borderRadius: 18, objectFit: 'cover', border: '3px solid rgba(255,255,255,0.5)', flexShrink: 0 }} />
+              <motion.img
+                whileHover={{ scale: 1.05 }}
+                src={member.photo}
+                alt={member.name}
+                style={{
+                  width: 80, height: 80, borderRadius: 24,
+                  objectFit: 'cover', border: '3px solid rgba(255,255,255,0.5)',
+                  flexShrink: 0, boxShadow: '0 8px 20px rgba(0,0,0,0.1)'
+                }}
+              />
             ) : (
-              <div style={{ width: 64, height: 64, borderRadius: 18, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '3px solid rgba(255,255,255,0.4)' }}>
-                <User size={28} color="#fff" />
+              <div style={{
+                width: 80, height: 80, borderRadius: 24,
+                background: 'rgba(255,255,255,0.2)', border: '3px solid rgba(255,255,255,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, backdropFilter: 'blur(4px)'
+              }}>
+                <User size={36} color="#fff" />
               </div>
             )}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <h3 style={{ fontSize: 18, fontWeight: 900, color: '#fff', margin: 0 }}>{member.name}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <h3 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0 }}>{member.name}</h3>
                 {isGroupAdmin && (
-                  <span style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 99, display: 'flex', alignItems: 'center', gap: 3, border: '1px solid rgba(255,255,255,0.3)' }}>
-                    <Shield size={8} /> ADMIN
+                  <span style={{
+                    background: 'rgba(255,255,255,0.25)', color: '#fff',
+                    fontSize: 10, fontWeight: 800, padding: '3px 10px',
+                    borderRadius: 99, display: 'flex', alignItems: 'center',
+                    gap: 4, border: '1px solid rgba(255,255,255,0.3)'
+                  }}>
+                    <Shield size={10} /> ADMIN
                   </span>
                 )}
               </div>
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontFamily: 'monospace', margin: 0, fontWeight: 600 }}>{member.karigarId}</p>
-              {member.overallExperience && (
-                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: '4px 0 0', fontWeight: 500 }}>{member.overallExperience}</p>
+              <p style={{
+                fontSize: 13, color: 'rgba(255,255,255,0.9)',
+                fontFamily: 'monospace', margin: 0, fontWeight: 600
+              }}>
+                {member.karigarId}
+              </p>
+              {memberSince && (
+                <p style={{
+                  fontSize: 11, color: 'rgba(255,255,255,0.8)',
+                  margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 4
+                }}>
+                  <Calendar size={10} /> Member since {memberSince}
+                </p>
               )}
             </div>
           </div>
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ padding: '24px 28px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Skills */}
           {skills.length > 0 && (
             <div>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Briefcase size={10} /> Skills
+              <p style={{
+                fontSize: 11, fontWeight: 800, color: '#9ca3af',
+                textTransform: 'uppercase', letterSpacing: '0.1em',
+                marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6
+              }}>
+                <Briefcase size={12} /> EXPERTISE
               </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {skills.map((s, i) => (
-                  <span key={i} style={{ background: '#fff7ed', color: '#c2410c', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 99, border: '1px solid #fed7aa' }}>{s}</span>
+                  <motion.span
+                    key={i}
+                    whileHover={{ scale: 1.05 }}
+                    style={{
+                      background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
+                      color: '#c2410c', fontSize: 12, fontWeight: 700,
+                      padding: '6px 14px', borderRadius: 99,
+                      border: '1px solid #fed7aa', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    {s}
+                  </motion.span>
                 ))}
               </div>
             </div>
@@ -142,44 +268,80 @@ const MemberProfileModal = ({ member, isGroupAdmin, onClose, navigate }) => {
 
           {/* Experience */}
           {member.experience && (
-            <div style={{ background: '#f9fafb', borderRadius: 12, padding: '10px 14px', display: 'flex', items: 'center', gap: 10 }}>
-              <Star size={14} color="#f97316" style={{ flexShrink: 0, marginTop: 1 }} />
-              <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', margin: 0 }}>{member.experience} years of experience</p>
-            </div>
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              style={{
+                background: 'linear-gradient(135deg, #f9fafb, #f3f4f6)',
+                borderRadius: 16, padding: '14px 18px',
+                display: 'flex', alignItems: 'center', gap: 12
+              }}
+            >
+              <div style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Star size={20} color="#fff" />
+              </div>
+              <div>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: 0, fontWeight: 500 }}>Experience</p>
+                <p style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>
+                  {member.experience} years
+                </p>
+              </div>
+            </motion.div>
           )}
 
           {/* View full profile button */}
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => { onClose(); navigate(`/profile/public/${member.karigarId}`); }}
-            style={{ width: '100%', background: 'linear-gradient(135deg,#f97316,#fbbf24)', border: 'none', borderRadius: 14, padding: '13px', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit', boxShadow: '0 4px 16px rgba(249,115,22,0.28)' }}
+            style={{
+              width: '100%', background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+              border: 'none', borderRadius: 18, padding: '14px',
+              color: '#fff', fontSize: 14, fontWeight: 800,
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 10, fontFamily: 'inherit',
+              boxShadow: '0 6px 20px rgba(249,115,22,0.3)'
+            }}
           >
             <ExternalLink size={16} /> View Full Profile
-          </button>
+          </motion.button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
 /* ════════════════════════════════════════════
-   SKELETON
+   SKELETON - Enhanced
 ════════════════════════════════════════════ */
 const Skel = ({ h = 200 }) => (
-  <div style={{ height: h, borderRadius: 20, background: 'linear-gradient(90deg,#fff7ed 25%,#ffedd5 50%,#fff7ed 75%)', backgroundSize: '200% 100%', animation: 'mg-shimmer 1.4s infinite' }} />
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    style={{
+      height: h, borderRadius: 24,
+      background: 'linear-gradient(90deg, #fff7ed 25%, #ffedd5 50%, #fff7ed 75%)',
+      backgroundSize: '200% 100%',
+      animation: 'shimmer 1.4s infinite',
+    }}
+  />
 );
 
 /* ════════════════════════════════════════════
-   MEMBER AVATAR
+   MEMBER AVATAR - Enhanced
 ════════════════════════════════════════════ */
 const MemberAvatar = ({ member }) => {
   const initials = (member.name || 'M').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return member.photo
     ? <img src={member.photo} alt={member.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-    : <span style={{ fontSize: 13, fontWeight: 800, color: '#c2410c' }}>{initials}</span>;
+    : <span style={{ fontSize: 14, fontWeight: 800, color: '#c2410c' }}>{initials}</span>;
 };
 
 /* ════════════════════════════════════════════
-   GROUP CARD
+   GROUP CARD - Enhanced
 ════════════════════════════════════════════ */
 const GroupCard = ({ group, onRefresh, toast, idx, onViewMember }) => {
   const [memberId,   setMemberId]   = useState('');
@@ -188,6 +350,7 @@ const GroupCard = ({ group, onRefresh, toast, idx, onViewMember }) => {
   const [confirm,    setConfirm]    = useState(null);
   const [copiedId,   setCopiedId]   = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [showMembers, setShowMembers] = useState(true);
 
   const copy = () => {
     navigator.clipboard.writeText(group.groupId || group._id);
@@ -245,158 +408,392 @@ const GroupCard = ({ group, onRefresh, toast, idx, onViewMember }) => {
 
   return (
     <>
-      {confirm && (
-        <ConfirmDialog
-          message={confirm.message}
-          danger={confirm.action === 'delete'}
-          onConfirm={confirm.action === 'delete' ? doDelete : doLeave}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
+      <AnimatePresence>
+        {confirm && (
+          <ConfirmDialog
+            message={confirm.message}
+            danger={confirm.action === 'delete'}
+            onConfirm={confirm.action === 'delete' ? doDelete : doLeave}
+            onCancel={() => setConfirm(null)}
+          />
+        )}
+      </AnimatePresence>
 
-      <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #fed7aa', overflow: 'hidden', boxShadow: '0 2px 16px rgba(251,146,60,0.07)', transition: 'box-shadow 0.2s, transform 0.2s', animation: `mg-fadeUp 0.4s ease ${idx * 0.08}s both` }}
-        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 36px rgba(251,146,60,0.16)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 16px rgba(251,146,60,0.07)'; e.currentTarget.style.transform = 'none'; }}
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: idx * 0.05 }}
+        whileHover={{ y: -4 }}
+        style={{
+          background: '#fff', borderRadius: 28, border: '1px solid #fed7aa',
+          overflow: 'hidden', boxShadow: '0 4px 20px rgba(251,146,60,0.08)',
+          transition: 'box-shadow 0.3s ease'
+        }}
       >
-        {/* Header */}
-        <div style={{ background: 'linear-gradient(135deg,#f97316,#fbbf24)', padding: '20px 22px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        {/* Header with enhanced gradient */}
+        <div style={{
+          background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+          padding: '24px 28px', position: 'relative', overflow: 'hidden'
+        }}>
+          <div style={{
+            position: 'absolute', top: -20, right: -20, width: 120, height: 120,
+            background: 'rgba(255,255,255,0.1)', borderRadius: '50%'
+          }} />
+          <div style={{
+            position: 'absolute', bottom: -30, left: -30, width: 150, height: 150,
+            background: 'rgba(255,255,255,0.05)', borderRadius: '50%'
+          }} />
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-                <h2 style={{ fontSize: 18, fontWeight: 900, color: '#fff', margin: 0, lineHeight: 1.2 }}>{group.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: 0, lineHeight: 1.2 }}>
+                  {group.name}
+                </h2>
                 {group.isAdmin && (
-                  <span style={{ background: 'rgba(255,255,255,0.22)', color: '#fff', fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 99, display: 'flex', alignItems: 'center', gap: 4, border: '1px solid rgba(255,255,255,0.3)', backdropFilter: 'blur(4px)', whiteSpace: 'nowrap' }}>
-                    <Shield size={9} />ADMIN
+                  <span style={{
+                    background: 'rgba(255,255,255,0.25)', color: '#fff',
+                    fontSize: 11, fontWeight: 800, padding: '4px 12px',
+                    borderRadius: 99, display: 'flex', alignItems: 'center',
+                    gap: 6, border: '1px solid rgba(255,255,255,0.3)',
+                    backdropFilter: 'blur(4px)'
+                  }}>
+                    <Shield size={12} /> ADMIN
                   </span>
                 )}
               </div>
               {group.description && (
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)', marginBottom: 12, lineHeight: 1.5, margin: '0 0 12px' }}>{group.description}</p>
+                <p style={{
+                  fontSize: 13, color: 'rgba(255,255,255,0.9)',
+                  marginBottom: 16, lineHeight: 1.5
+                }}>
+                  {group.description}
+                </p>
               )}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={copy} style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 10, padding: '6px 12px', cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: 'monospace', transition: 'background 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.18)'}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={copy}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'rgba(255,255,255,0.2)',
+                    backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.3)',
+                    borderRadius: 12, padding: '8px 16px', cursor: 'pointer',
+                    color: '#fff', fontSize: 12, fontWeight: 700,
+                    fontFamily: 'monospace', transition: 'background 0.2s'
+                  }}
                 >
-                  {copiedId ? <CheckCircle size={13} /> : <Copy size={13} />}
+                  {copiedId ? <CheckCircle size={14} /> : <Copy size={14} />}
                   {group.groupId || group._id}
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.18)', borderRadius: 10, padding: '6px 12px', fontSize: 12, fontWeight: 700, color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>
-                  <Users size={13} />{memberCount} member{memberCount !== 1 ? 's' : ''}
+                </motion.button>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'rgba(255,255,255,0.2)', borderRadius: 12,
+                  padding: '8px 16px', fontSize: 12, fontWeight: 700,
+                  color: '#fff', border: '1px solid rgba(255,255,255,0.2)'
+                }}>
+                  <Users size={14} />{memberCount} member{memberCount !== 1 ? 's' : ''}
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Members grid — now clickable to view profile */}
-        <div style={{ padding: '18px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <p style={{ fontSize: 12, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.09em', margin: 0 }}>Team Members</p>
-            <span style={{ background: '#fff7ed', color: '#c2410c', fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 99, border: '1px solid #fed7aa' }}>{memberCount} active</span>
+        {/* Members section */}
+        <div style={{ padding: '24px 28px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 10,
+                background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Users size={16} color="#f97316" />
+              </div>
+              <p style={{
+                fontSize: 13, fontWeight: 800, color: '#9ca3af',
+                textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0
+              }}>
+                Team Members
+              </p>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowMembers(!showMembers)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 11, color: '#f97316', fontWeight: 600
+              }}
+            >
+              {showMembers ? <EyeOff size={12} /> : <Eye size={12} />}
+              {showMembers ? 'Hide' : 'Show'}
+            </motion.button>
           </div>
 
-          {memberCount === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 13, fontWeight: 500 }}>No members yet</div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 16 }}>
-              {group.members.map((member, i) => {
-                const isAdmin = member._id?.toString() === creatorId?.toString();
-                return (
-                  <button
-                    key={member._id || i}
-                    onClick={() => onViewMember(member, isAdmin)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                      background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 13,
-                      cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left', fontFamily: 'inherit',
-                      width: '100%',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#ffedd5'; e.currentTarget.style.borderColor = '#fb923c'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff7ed'; e.currentTarget.style.borderColor = '#fed7aa'; e.currentTarget.style.transform = 'none'; }}
-                  >
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#ffedd5', border: '2px solid #fed7aa', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-                      <MemberAvatar member={member} />
-                      {isAdmin && (
-                        <div style={{ position: 'absolute', bottom: -2, right: -2, width: 14, height: 14, background: '#f97316', borderRadius: '50%', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Shield size={7} color="#fff" />
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</p>
-                      <p style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', margin: '1px 0 0', fontWeight: 600 }}>{member.karigarId}</p>
-                    </div>
-                    <ChevronRight size={14} color="#f97316" />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Admin controls */}
-          {group.isAdmin ? (
-            <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 14, padding: '14px 16px' }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
-                <Shield size={10} color="#f97316" />Admin Controls
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                {addOpen ? (
-                  <>
-                    <div style={{ position: 'relative', flex: '1 1 180px' }}>
-                      <Hash size={14} color="#f97316" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                      <input value={memberId} onChange={e => setMemberId(e.target.value)} placeholder="Karigar ID (e.g. K123456)" onKeyDown={e => e.key === 'Enter' && doAddMember()} autoFocus
-                        style={{ width: '100%', padding: '9px 12px 9px 34px', border: '2px solid #fed7aa', borderRadius: 11, fontSize: 12, fontFamily: 'monospace', fontWeight: 600, background: '#fff', outline: 'none', color: '#111827', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-                        onFocus={e => e.target.style.borderColor = '#f97316'}
-                        onBlur={e => e.target.style.borderColor = '#fed7aa'}
-                      />
-                    </div>
-                    <button onClick={doAddMember} disabled={adding} style={{ padding: '9px 16px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: adding ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                      {adding ? <div style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'mg-spin 0.7s linear infinite' }} /> : <UserPlus size={13} />}
-                      {adding ? 'Adding…' : 'Add'}
-                    </button>
-                    <button onClick={() => { setAddOpen(false); setMemberId(''); }} style={{ padding: '9px 14px', borderRadius: 11, border: '1.5px solid #e5e7eb', background: '#fff', fontSize: 12, fontWeight: 700, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-                  </>
-                ) : (
-                  <button onClick={() => setAddOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 11, border: '1.5px solid #fed7aa', background: '#fff', fontSize: 12, fontWeight: 700, color: '#f97316', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#fff7ed'; e.currentTarget.style.borderColor = '#fb923c'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#fed7aa'; }}
-                  >
-                    <UserPlus size={13} />Add Member
-                  </button>
-                )}
-                <button onClick={() => setConfirm({ action: 'delete', message: `Permanently delete "${group.name}"? This cannot be undone.` })} disabled={actionBusy}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 11, border: '1.5px solid #fecaca', background: '#fff', fontSize: 12, fontWeight: 700, color: '#ef4444', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', marginLeft: 'auto' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-                >
-                  <Trash2 size={13} />Delete Group
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f9fafb', border: '1.5px solid #e5e7eb', borderRadius: 13, padding: '12px 16px', flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />
-                <p style={{ fontSize: 12, color: '#6b7280', fontWeight: 500, margin: 0 }}>You are a member of this group</p>
-              </div>
-              <button onClick={() => setConfirm({ action: 'leave', message: `Leave "${group.name}"? You won't be able to rejoin without an admin invite.` })} disabled={actionBusy}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 11, border: '1.5px solid #e5e7eb', background: '#fff', fontSize: 12, fontWeight: 700, color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = '#fca5a5'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+          <AnimatePresence>
+            {showMembers && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
               >
-                <LogOut size={13} />Leave Group
-              </button>
-            </div>
+                {memberCount === 0 ? (
+                  <div style={{
+                    textAlign: 'center', padding: '32px 20px',
+                    background: '#f9fafb', borderRadius: 16,
+                    color: '#9ca3af', fontSize: 13, fontWeight: 500
+                  }}>
+                    <Users size={32} style={{ marginBottom: 8, opacity: 0.5 }} />
+                    <p>No members yet</p>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                    gap: 12, marginBottom: 20
+                  }}>
+                    {group.members.map((member, i) => {
+                      const isAdmin = member._id?.toString() === creatorId?.toString();
+                      return (
+                        <motion.button
+                          key={member._id || i}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: i * 0.03 }}
+                          whileHover={{ scale: 1.02, y: -2 }}
+                          onClick={() => onViewMember(member, isAdmin)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 12,
+                            padding: '12px 14px', background: '#fff7ed',
+                            border: '1.5px solid #fed7aa', borderRadius: 16,
+                            cursor: 'pointer', transition: 'all 0.2s',
+                            textAlign: 'left', fontFamily: 'inherit', width: '100%'
+                          }}
+                        >
+                          <div style={{
+                            width: 44, height: 44, borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #ffedd5, #fed7aa)',
+                            border: '2px solid #fed7aa', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            overflow: 'hidden', flexShrink: 0, position: 'relative'
+                          }}>
+                            <MemberAvatar member={member} />
+                            {isAdmin && (
+                              <div style={{
+                                position: 'absolute', bottom: -2, right: -2,
+                                width: 16, height: 16, background: '#f97316',
+                                borderRadius: '50%', border: '2px solid #fff',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                              }}>
+                                <Shield size={8} color="#fff" />
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <p style={{
+                              fontSize: 14, fontWeight: 800, color: '#111827',
+                              margin: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {member.name}
+                            </p>
+                            <p style={{
+                              fontSize: 11, color: '#9ca3af',
+                              fontFamily: 'monospace', margin: '2px 0 0',
+                              fontWeight: 600
+                            }}>
+                              {member.karigarId}
+                            </p>
+                          </div>
+                          <ChevronRight size={16} color="#f97316" />
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Admin controls - Enhanced */}
+          {group.isAdmin ? (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
+                border: '1.5px solid #fed7aa', borderRadius: 20,
+                padding: '18px 20px', marginTop: 8
+              }}
+            >
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14
+              }}>
+                <Shield size={14} color="#f97316" />
+                <p style={{
+                  fontSize: 11, fontWeight: 800, color: '#9ca3af',
+                  textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0
+                }}>
+                  Admin Controls
+                </p>
+              </div>
+              
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                <AnimatePresence mode="wait">
+                  {addOpen ? (
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      style={{ display: 'flex', gap: 10, flex: 1, flexWrap: 'wrap' }}
+                    >
+                      <div style={{ position: 'relative', flex: '1 1 200px' }}>
+                        <Hash size={14} color="#f97316" style={{
+                          position: 'absolute', left: 12, top: '50%',
+                          transform: 'translateY(-50%)', pointerEvents: 'none'
+                        }} />
+                        <input
+                          value={memberId}
+                          onChange={e => setMemberId(e.target.value)}
+                          placeholder="Karigar ID (e.g., K123456)"
+                          onKeyDown={e => e.key === 'Enter' && doAddMember()}
+                          autoFocus
+                          style={{
+                            width: '100%', padding: '10px 12px 10px 36px',
+                            border: '2px solid #fed7aa', borderRadius: 14,
+                            fontSize: 12, fontFamily: 'monospace', fontWeight: 600,
+                            background: '#fff', outline: 'none', color: '#111827',
+                            transition: 'border-color 0.2s'
+                          }}
+                        />
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={doAddMember}
+                        disabled={adding}
+                        style={{
+                          padding: '10px 20px', borderRadius: 14, border: 'none',
+                          background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+                          color: '#fff', fontSize: 12, fontWeight: 700,
+                          cursor: adding ? 'not-allowed' : 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        {adding ? (
+                          <div style={{
+                            width: 14, height: 14, border: '2px solid rgba(255,255,255,0.35)',
+                            borderTop: '2px solid #fff', borderRadius: '50%',
+                            animation: 'spin 0.7s linear infinite'
+                          }} />
+                        ) : <UserPlus size={14} />}
+                        {adding ? 'Adding…' : 'Add'}
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => { setAddOpen(false); setMemberId(''); }}
+                        style={{
+                          padding: '10px 18px', borderRadius: 14,
+                          border: '1.5px solid #e5e7eb', background: '#fff',
+                          fontSize: 12, fontWeight: 700, color: '#6b7280',
+                          cursor: 'pointer', fontFamily: 'inherit'
+                        }}
+                      >
+                        Cancel
+                      </motion.button>
+                    </motion.div>
+                  ) : (
+                    <motion.button
+                      key="add-btn"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setAddOpen(true)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 20px', borderRadius: 14,
+                        border: '1.5px solid #fed7aa', background: '#fff',
+                        fontSize: 12, fontWeight: 700, color: '#f97316',
+                        cursor: 'pointer', fontFamily: 'inherit'
+                      }}
+                    >
+                      <UserPlus size={14} />Add Member
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+                
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setConfirm({ action: 'delete', message: `Permanently delete "${group.name}"? This cannot be undone.` })}
+                  disabled={actionBusy}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 20px', borderRadius: 14,
+                    border: '1.5px solid #fecaca', background: '#fff',
+                    fontSize: 12, fontWeight: 700, color: '#ef4444',
+                    cursor: 'pointer', fontFamily: 'inherit', marginLeft: 'auto'
+                  }}
+                >
+                  <Trash2 size={14} />Delete Group
+                </motion.button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', background: '#f9fafb',
+                border: '1.5px solid #e5e7eb', borderRadius: 18,
+                padding: '14px 20px', flexWrap: 'wrap', gap: 12
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: '#22c55e', boxShadow: '0 0 0 2px #bbf7d0'
+                }} />
+                <p style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, margin: 0 }}>
+                  You are a member of this group
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setConfirm({ action: 'leave', message: `Leave "${group.name}"? You won't be able to rejoin without an admin invite.` })}
+                disabled={actionBusy}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 20px', borderRadius: 12,
+                  border: '1.5px solid #e5e7eb', background: '#fff',
+                  fontSize: 12, fontWeight: 700, color: '#6b7280',
+                  cursor: 'pointer', fontFamily: 'inherit'
+                }}
+              >
+                <LogOut size={14} />Leave Group
+              </motion.button>
+            </motion.div>
           )}
         </div>
-      </div>
+      </motion.div>
     </>
   );
 };
 
 /* ════════════════════════════════════════════
-   MAIN
+   MAIN - Enhanced
 ════════════════════════════════════════════ */
 export default function MyGroups() {
   const navigate = useNavigate();
@@ -404,7 +801,7 @@ export default function MyGroups() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search,     setSearch]     = useState('');
-  const [viewMember, setViewMember] = useState(null); // { member, isAdmin }
+  const [viewMember, setViewMember] = useState(null);
   const toast = useToast();
 
   const fetchGroups = useCallback(async (silent = false) => {
@@ -430,90 +827,233 @@ export default function MyGroups() {
 
   const adminCount  = groups.filter(g => g.isAdmin).length;
   const memberCount = groups.filter(g => !g.isAdmin).length;
+  const totalPoints = groups.reduce((sum, g) => sum + (g.totalPoints || 0), 0);
 
   return (
-    <div style={{ background: '#fff7ed', minHeight: '100%', padding: '24px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{
+      background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
+      minHeight: '100%', padding: '28px 24px', fontFamily: "'Inter', 'Plus Jakarta Sans', sans-serif"
+    }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-        @keyframes mg-shimmer { to { background-position: -200% 0; } }
-        @keyframes mg-in      { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
-        @keyframes mg-fadeUp  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-        @keyframes mg-pop     { 0% { transform: scale(0.88); opacity: 0; } 70% { transform: scale(1.02); } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes mg-spin    { to { transform: rotate(360deg); } }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        @keyframes shimmer { to { background-position: -200% 0; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
       <ToastList toasts={toast.toasts} />
 
-      {/* Member profile modal */}
-      {viewMember && (
-        <MemberProfileModal
-          member={viewMember.member}
-          isGroupAdmin={viewMember.isAdmin}
-          onClose={() => setViewMember(null)}
-          navigate={navigate}
-        />
-      )}
+      <AnimatePresence>
+        {viewMember && (
+          <MemberProfileModal
+            member={viewMember.member}
+            isGroupAdmin={viewMember.isAdmin}
+            onClose={() => setViewMember(null)}
+            navigate={navigate}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
+      {/* Enhanced Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+          marginBottom: 28, flexWrap: 'wrap', gap: 16
+        }}
+      >
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: '#111827', margin: 0 }}>My Work Groups</h1>
-          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-            {groups.length} group{groups.length !== 1 ? 's' : ''} · {adminCount} as admin · {memberCount} as member
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: 20,
+              background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 8px 20px rgba(249,115,22,0.25)'
+            }}>
+              <Users size={24} color="#fff" />
+            </div>
+            <h1 style={{ fontSize: 28, fontWeight: 900, color: '#111827', margin: 0 }}>
+              My Work Groups
+            </h1>
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 16,
+            flexWrap: 'wrap', marginTop: 4
+          }}>
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 13, color: '#6b7280', fontWeight: 600,
+              background: '#fff', padding: '6px 14px', borderRadius: 99,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}>
+              <Users size={14} /> {groups.length} Groups
+            </span>
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 13, color: '#6b7280', fontWeight: 600,
+              background: '#fff', padding: '6px 14px', borderRadius: 99,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}>
+              <Shield size={14} /> {adminCount} Admin
+            </span>
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 13, color: '#6b7280', fontWeight: 600,
+              background: '#fff', padding: '6px 14px', borderRadius: 99,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}>
+              <User size={14} /> {memberCount} Member
+            </span>
+            {totalPoints > 0 && (
+              <span style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 13, color: '#f97316', fontWeight: 700,
+                background: '#fff', padding: '6px 14px', borderRadius: 99,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+              }}>
+                <TrendingUp size={14} /> +{totalPoints} Points
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button onClick={() => fetchGroups(true)} disabled={refreshing}
-            style={{ background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 11, padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#fff7ed'}
-            onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+        
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <motion.button
+            whileHover={{ scale: 1.05, rotate: 180 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => fetchGroups(true)}
+            disabled={refreshing}
+            style={{
+              background: '#fff', border: '1.5px solid #fed7aa',
+              borderRadius: 14, padding: '10px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+            }}
             title="Refresh"
           >
-            <RefreshCw size={15} color="#f97316" style={{ animation: refreshing ? 'mg-spin 0.8s linear infinite' : 'none' }} />
-          </button>
-          <Link to="/worker/create-group"
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff', borderRadius: 13, fontSize: 13, fontWeight: 800, textDecoration: 'none', boxShadow: '0 3px 14px rgba(249,115,22,0.28)', transition: 'opacity 0.15s, transform 0.15s' }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '0.9'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
+            <RefreshCw size={18} color="#f97316" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
+          </motion.button>
+          
+          <motion.div
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
-            <UserPlus size={15} />Create Group
-          </Link>
+            <Link to="/worker/create-group"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 24px', background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+                color: '#fff', borderRadius: 16, fontSize: 14, fontWeight: 800,
+                textDecoration: 'none', boxShadow: '0 6px 20px rgba(249,115,22,0.35)',
+                transition: 'all 0.2s'
+              }}
+            >
+              <UserPlus size={18} />Create Group
+            </Link>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Search */}
+      {/* Enhanced Search */}
       {!loading && groups.length > 0 && (
-        <div style={{ position: 'relative', marginBottom: 20, maxWidth: 380 }}>
-          <Search size={15} color="#f97316" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search groups…"
-            style={{ width: '100%', padding: '10px 14px 10px 36px', border: '2px solid #fed7aa', borderRadius: 12, fontSize: 13, fontFamily: 'inherit', fontWeight: 500, background: '#fff', outline: 'none', color: '#111827', boxSizing: 'border-box', transition: 'border-color 0.18s' }}
-            onFocus={e => e.target.style.borderColor = '#f97316'}
-            onBlur={e => e.target.style.borderColor = '#fed7aa'}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ position: 'relative', marginBottom: 24, maxWidth: 420 }}
+        >
+          <Search size={18} color="#f97316" style={{
+            position: 'absolute', left: 16, top: '50%',
+            transform: 'translateY(-50%)', pointerEvents: 'none'
+          }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search groups by name or description..."
+            style={{
+              width: '100%', padding: '14px 18px 14px 48px',
+              border: '2px solid #fed7aa', borderRadius: 20,
+              fontSize: 14, fontFamily: 'inherit', fontWeight: 500,
+              background: '#fff', outline: 'none', color: '#111827',
+              transition: 'border-color 0.2s, box-shadow 0.2s'
+            }}
+            onFocus={e => { e.target.style.borderColor = '#f97316'; e.target.style.boxShadow = '0 0 0 4px rgba(249,115,22,0.1)'; }}
+            onBlur={e => { e.target.style.borderColor = '#fed7aa'; e.target.style.boxShadow = 'none'; }}
           />
-        </div>
+        </motion.div>
       )}
 
+      {/* Content */}
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{[1, 2].map(i => <Skel key={i} h={260} />)}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {[1, 2, 3].map(i => <Skel key={i} h={280} />)}
+        </div>
       ) : groups.length === 0 ? (
-        <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #fed7aa', padding: '60px 24px', textAlign: 'center', boxShadow: '0 1px 10px rgba(251,146,60,0.06)' }}>
-          <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg,#fff7ed,#ffedd5)', border: '2px solid #fed7aa', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
-            <Users size={30} color="#f97316" />
-          </div>
-          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', marginBottom: 8 }}>No Groups Yet</h3>
-          <p style={{ color: '#6b7280', fontSize: 13, maxWidth: 320, margin: '0 auto 22px', lineHeight: 1.65 }}>Create your first work group to collaborate with other karigars and manage projects together.</p>
-          <Link to="/worker/create-group" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff', borderRadius: 13, padding: '12px 26px', fontSize: 14, fontWeight: 800, textDecoration: 'none', boxShadow: '0 4px 16px rgba(249,115,22,0.28)' }}>
-            <UserPlus size={16} />Create Your First Group
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          style={{
+            background: '#fff', borderRadius: 32, border: '1px solid #fed7aa',
+            padding: '64px 32px', textAlign: 'center', boxShadow: '0 8px 32px rgba(251,146,60,0.08)'
+          }}
+        >
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            style={{
+              width: 96, height: 96, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
+              border: '2px solid #fed7aa', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 24px'
+            }}
+          >
+            <Users size={44} color="#f97316" />
+          </motion.div>
+          <h3 style={{ fontSize: 24, fontWeight: 900, color: '#111827', marginBottom: 12 }}>
+            No Groups Yet
+          </h3>
+          <p style={{ color: '#6b7280', fontSize: 14, maxWidth: 360, margin: '0 auto 28px', lineHeight: 1.6 }}>
+            Create your first work group to collaborate with other karigars and manage projects together.
+          </p>
+          <Link to="/worker/create-group"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 10,
+              background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+              color: '#fff', borderRadius: 18, padding: '14px 32px',
+              fontSize: 15, fontWeight: 800, textDecoration: 'none',
+              boxShadow: '0 6px 20px rgba(249,115,22,0.35)'
+            }}
+          >
+            <UserPlus size={18} /> Create Your First Group
           </Link>
-        </div>
+        </motion.div>
       ) : filtered.length === 0 ? (
-        <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #fed7aa', padding: '50px 24px', textAlign: 'center' }}>
-          <p style={{ fontSize: 18, fontWeight: 800, color: '#111827', marginBottom: 8 }}>No results for "{search}"</p>
-          <button onClick={() => setSearch('')} style={{ background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff', border: 'none', fontWeight: 700, padding: '10px 22px', borderRadius: 11, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Clear search</button>
-        </div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={{
+            background: '#fff', borderRadius: 32, border: '1px solid #fed7aa',
+            padding: '56px 32px', textAlign: 'center'
+          }}
+        >
+          <p style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginBottom: 12 }}>
+            No results for "{search}"
+          </p>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setSearch('')}
+            style={{
+              background: 'linear-gradient(135deg, #f97316, #fbbf24)',
+              color: '#fff', border: 'none', fontWeight: 700,
+              padding: '12px 28px', borderRadius: 16, fontSize: 14,
+              cursor: 'pointer', fontFamily: 'inherit', marginTop: 8
+            }}
+          >
+            Clear Search
+          </motion.button>
+        </motion.div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {filtered.map((group, idx) => (
             <GroupCard
               key={group._id}

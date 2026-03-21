@@ -623,6 +623,7 @@ const AdminDashboard = () => {
                                 <MessageSquare size={18} className="mr-3 text-gray-400 group-hover:text-orange-500 transition-colors" />
                                 <span className="flex-1 text-sm">Worker Complaints</span>
                             </button>
+                            
 
                             {/* Community */}
                             <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Community</p>
@@ -666,6 +667,7 @@ const AdminDashboard = () => {
                                 <MessageSquare size={14} />
                                 Worker Support
                             </button>
+                            
                             <button
                                 onClick={() => navigate('/admin/community')}
                                 className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-semibold hover:bg-purple-600 transition-colors flex items-center gap-2"
