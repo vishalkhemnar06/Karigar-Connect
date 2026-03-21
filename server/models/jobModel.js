@@ -1,7 +1,9 @@
 // server/models/jobModel.js
-// NEW: parentJobId, isSubTask, subTaskSkill, preStartNotificationSent
-// NEW slot status: 'reposted' — slot turned into a child sub-task
-// slot.subTaskJobId: links parent slot -> child job
+// FIX: budgetBreakdown.breakdown complexity enum expanded to include
+//      'low' and 'medium' — the AI sometimes returns these values.
+//      Accepted values: 'low','light','medium','normal','heavy'
+//      UI still shows light/normal/heavy (mapped in clientController sanitiser).
+
 const mongoose = require('mongoose');
 
 const applicantSchema = new mongoose.Schema({
@@ -27,19 +29,28 @@ const workerSlotSchema = new mongoose.Schema({
 }, { _id: true });
 
 const budgetBlockSchema = new mongoose.Schema({
-    skill: String, count: { type: Number, default: 1, min: 0 },
-    hours: { type: Number, default: 8, min: 0 }, baseRate: { type: Number, default: 0, min: 0 },
-    complexity: { type: String, enum: ['light','normal','heavy'], default: 'normal' },
+    skill:          String,
+    count:          { type: Number, default: 1,   min: 0 },
+    hours:          { type: Number, default: 8,   min: 0 },
+    baseRate:       { type: Number, default: 0,   min: 0 },
+    // FIX: Added 'low' and 'medium' so AI responses don't fail validation.
+    // clientController.sanitiseBudgetBreakdown() normalises these to
+    // 'light' / 'normal' before saving, so the DB stays clean.
+    complexity:     { type: String, enum: ['low','light','medium','normal','heavy'], default: 'normal' },
     complexityMult: { type: Number, default: 1.2, min: 0 },
     durationFactor: { type: Number, default: 1.0, min: 0 },
-    subtotal: { type: Number, default: 0, min: 0 }, description: String,
+    subtotal:       { type: Number, default: 0,   min: 0 },
+    description:    String,
 }, { _id: false });
 
 const budgetBreakdownSchema = new mongoose.Schema({
-    city: String, breakdown: [budgetBlockSchema],
-    subtotal: { type: Number, default: 0, min: 0 },
-    urgent: { type: Boolean, default: false }, urgencyMult: { type: Number, default: 1.0, min: 0 },
-    totalEstimated: { type: Number, default: 0, min: 0 }, totalWorkers: { type: Number, default: 1, min: 0 },
+    city:           String,
+    breakdown:      [budgetBlockSchema],
+    subtotal:       { type: Number, default: 0,   min: 0 },
+    urgent:         { type: Boolean, default: false },
+    urgencyMult:    { type: Number, default: 1.0, min: 0 },
+    totalEstimated: { type: Number, default: 0,   min: 0 },
+    totalWorkers:   { type: Number, default: 1,   min: 0 },
 }, { _id: false });
 
 const qaSchema = new mongoose.Schema({ question: String, answer: String }, { _id: false });
@@ -73,16 +84,20 @@ const jobSchema = new mongoose.Schema({
     workerSlots:         { type: [workerSlotSchema], default: [] },
 
     // ── Sub-task linking ──────────────────────────────────────────────────────
-    parentJobId:         { type: mongoose.Schema.Types.ObjectId, ref: 'Job', default: null },
-    isSubTask:           { type: Boolean, default: false },
-    subTaskSkill:        { type: String, default: '' },
+    parentJobId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Job', default: null },
+    isSubTask:    { type: Boolean, default: false },
+    subTaskSkill: { type: String, default: '' },
 
     // ── Notification flags ────────────────────────────────────────────────────
     preStartNotificationSent: { type: Boolean, default: false },
     clientNotifiedCompletion: { type: Boolean, default: false },
 
-    status: { type: String, enum: ['open','proposal','scheduled','running','completed','cancelled_by_client','cancelled'], default: 'open' },
-    cancelledBy:        { type: String, enum: ['client',null], default: null },
+    status: {
+        type: String,
+        enum: ['open','proposal','scheduled','running','completed','cancelled_by_client','cancelled'],
+        default: 'open',
+    },
+    cancelledBy:        { type: String, enum: ['client', null], default: null },
     cancellationReason: String,
     cancelledAt:        Date,
     cancelledWorkerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -90,7 +105,11 @@ const jobSchema = new mongoose.Schema({
     assignedTo:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     ratingsSubmitted:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     groupId:            { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },
-    responses:          [{ karigar: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, status: { type: String, enum: ['accepted','rejected'] }, reason: String }],
+    responses:          [{
+        karigar: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        status:  { type: String, enum: ['accepted','rejected'] },
+        reason:  String,
+    }],
 }, { timestamps: true });
 
 // Active slots = not open/cancelled/reposted
@@ -100,7 +119,9 @@ jobSchema.methods.allSlotsCompleted = function () {
     return active.every(s => s.status === 'task_completed');
 };
 jobSchema.methods.allAssignedSlotsRated = function () {
-    const assigned = this.workerSlots.filter(s => s.assignedWorker && !['cancelled','open','reposted'].includes(s.status));
+    const assigned = this.workerSlots.filter(s =>
+        s.assignedWorker && !['cancelled','open','reposted'].includes(s.status)
+    );
     if (!assigned.length) return false;
     return assigned.every(s => s.ratingSubmitted);
 };
