@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { createNotification } = require('../utils/notificationHelper');
 const { canWorkerCancelJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
-const { sendPasswordChangeOtpSms } = require('../utils/smsHelper');
+const { sendPasswordChangeOtpSms, sendCustomSms } = require('../utils/smsHelper');
 
 const CANCEL_PENALTY = 30;
 
@@ -327,6 +327,15 @@ exports.applyForJob = async (req, res) => {
             userId: job.postedBy, type: 'application', title: 'New Application 📋',
             message: `${worker?.name || 'A worker'} applied for ${jobLabel} as: ${newSkills.join(', ')}.`,
         });
+
+        const clientUser = await User.findById(job.postedBy).select('mobile name');
+        if (clientUser?.mobile) {
+            await sendCustomSms(
+                clientUser.mobile,
+                `KarigarConnect: ${worker?.name || 'A worker'} applied for your job "${job.title}" as ${newSkills.join(', ')}.`
+            );
+        }
+
         return res.json({ message: 'Applied successfully.', appliedSkills: newSkills });
     } catch (err) {
         console.error('applyForJob:', err);
@@ -357,6 +366,15 @@ exports.applyForSubTask = async (req, res) => {
             userId: subTask.postedBy, type: 'application', title: 'Sub-task Application 📋',
             message: `${workerDoc?.name || 'A worker'} applied for the "${skill}" sub-task of "${subTask.title}".`,
         });
+
+        const clientUser = await User.findById(subTask.postedBy).select('mobile');
+        if (clientUser?.mobile) {
+            await sendCustomSms(
+                clientUser.mobile,
+                `KarigarConnect: ${workerDoc?.name || 'A worker'} applied for your sub-task "${subTask.title}" (${skill}).`
+            );
+        }
+
         return res.json({ message: 'Applied to sub-task successfully.', skill });
     } catch (err) {
         console.error('applyForSubTask:', err);
@@ -439,6 +457,15 @@ exports.cancelAcceptedJob = async (req, res) => {
             userId: job.postedBy, type: 'cancelled', title: 'Worker Cancelled ⚠️',
             message: `${w?.name || 'Worker'} cancelled "${job.title}". Reason: ${reason}. (${CANCEL_PENALTY} pts penalty)`,
         });
+
+        const clientUser = await User.findById(job.postedBy).select('mobile name');
+        if (clientUser?.mobile) {
+            await sendCustomSms(
+                clientUser.mobile,
+                `KarigarConnect: ${w?.name || 'Worker'} cancelled job "${job.title}". Reason: ${reason.trim()}.`
+            );
+        }
+
         return res.json({ message: `Cancelled. ${CANCEL_PENALTY} penalty points deducted.`, penaltyPoints: CANCEL_PENALTY });
     } catch (err) {
         console.error('cancelAcceptedJob:', err);

@@ -70,6 +70,7 @@ import ClientSettings     from './pages/client/Settings';
 import ClientComplaints   from './pages/client/ClientComplaints';
 import ClientGroups       from './pages/client/ClientGroups';
 import ClientLiveTracking from './pages/client/ClientLiveTracking';
+import ClientWorkerFaceVerify from './pages/client/ClientWorkerFaceVerify';
 
 // ── Layout wrappers ───────────────────────────────────────────────────────────
 
@@ -169,6 +170,7 @@ function App() {
                         <Route path="settings"              element={<ClientSettings />} />
                         <Route path="complaints"            element={<ClientComplaints />} />
                         <Route path="groups"                element={<ClientGroups />} />
+                        <Route path="worker-face-verify"    element={<ClientWorkerFaceVerify />} />
                         <Route path="live-tracking/:jobId"  element={<ClientLiveTracking />} />
                     </Route>
 

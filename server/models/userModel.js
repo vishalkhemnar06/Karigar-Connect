@@ -58,6 +58,7 @@ const userSchema = new mongoose.Schema({
         default: 'pending',
     },
     rejectedAt: { type: Date, default: undefined },
+    rejectionReason: { type: String, default: null, trim: true, maxlength: 500 },
 
     // Client fields
     workplaceInfo: { type: String },

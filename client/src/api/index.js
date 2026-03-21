@@ -21,6 +21,7 @@ export const registerClient        = (fd)     => API.post('/api/auth/register/cl
 export const loginWithPassword     = (d)      => API.post('/api/auth/login-password',          d);
 export const loginWithOtp          = (d)      => API.post('/api/auth/login-otp',               d);
 export const previewFaceSimilarity = (fd)     => API.post('/api/auth/face-similarity-preview', fd, mp);
+export const getWorkerApplicationStatus = (d) => API.post('/api/auth/worker-application-status', d);
 export const forgotPassword        = (d)      => API.post('/api/auth/forgot-password',         d);
 export const resetPassword         = (t, d)   => API.put(`/api/auth/reset-password/${t}`,     d);
 
@@ -101,6 +102,7 @@ export const searchClientForComplaint = (q)      => API.get('/api/worker/complai
 
 // ── CLIENT ────────────────────────────────────────────────────────────────────
 export const getClientProfile           = ()      => API.get('/api/client/profile');
+export const verifyAssignedWorkerFace   = (fd)    => API.post('/api/client/face/verify-assigned-worker', fd, mp);
 export const updateClientProfile        = (fd)    => API.put('/api/client/profile/update',          fd, mp);
 export const deleteClientAccount        = ()      => API.delete('/api/client/account/delete');
 export const getWorkerFullProfile       = (wId)   => API.get(`/api/client/workers/${wId}/profile`);

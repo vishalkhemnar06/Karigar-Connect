@@ -205,7 +205,7 @@ const WorkerDashboard = () => {
 
   /* ── fetch everything ── */
   const fetchAll = useCallback(async (silent = false) => {
-    const tid = silent ? null : toast.loading('Syncing dashboard…');
+    const tid = null;
     if (!silent) setLoading(true); else setRefreshing(true);
     setFetchError(null);
 
@@ -228,7 +228,6 @@ const WorkerDashboard = () => {
 
       if (prof) setProfile(prof);
       if (nearR.status  === 'fulfilled') setNearClients(nearR.value?.data  || []);
-      if (tid) toast.update(tid, 'Dashboard loaded!', 'success');
     } catch (err) {
       const msg = err?.response?.data?.message || 'Could not load dashboard.';
       setFetchError(msg);

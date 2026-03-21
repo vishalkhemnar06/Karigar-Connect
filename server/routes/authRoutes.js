@@ -6,6 +6,7 @@ const {
     registerWorker, registerClient,
     loginWithPassword, loginWithOtp,
     sendOtp, verifyOtp,
+    getWorkerApplicationStatus,
     previewFaceSimilarity,
     forgotPassword, resetPassword,
 } = require('../controllers/authController');
@@ -21,6 +22,7 @@ const previewUpload = multer({
 
 router.post('/send-otp',    sendOtp);
 router.post('/verify-otp',  verifyOtp);
+router.post('/worker-application-status', getWorkerApplicationStatus);
 router.post('/face-similarity-preview',
     previewUpload.fields([
         { name: 'idProof', maxCount: 1 },

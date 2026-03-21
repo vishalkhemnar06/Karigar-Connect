@@ -497,7 +497,7 @@ const AdminDashboard = () => {
     const handleStatusUpdate = async (workerId, status, points = 0, feedback = '') => {
         const toastId = toast.loading('Processing...');
         try {
-            await api.updateWorkerStatus({ workerId, status, points: Number(points) });
+            await api.updateWorkerStatus({ workerId, status, points: Number(points), rejectionReason: feedback });
             toast.success('Action successful', { id: toastId });
             setUserToVerify(null);
             fetchData();
@@ -783,7 +783,10 @@ const AdminDashboard = () => {
                                                                 {user.role === 'worker' && user.verificationStatus === 'pending' && (
                                                                     <>
                                                                         <button onClick={() => setUserToVerify(user)} className="p-2 bg-green-100 text-green-600 rounded-lg" title="Verify & Assign Points"><Check size={16} /></button>
-                                                                        <button onClick={() => handleStatusUpdate(user._id, 'rejected')} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
+                                                                        <button onClick={() => {
+                                                                            const reason = window.prompt('Enter rejection reason for worker application:') || '';
+                                                                            handleStatusUpdate(user._id, 'rejected', 0, reason);
+                                                                        }} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
                                                                     </>
                                                                 )}
                                                                 {user.role === 'worker' && user.verificationStatus === 'approved' && (

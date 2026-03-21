@@ -66,6 +66,57 @@ exports.verifyOtp = async (req, res) => {
     } catch { return res.status(500).json({ message: 'Failed to verify OTP.' }); }
 };
 
+// Public endpoint to let workers check application status using mobile or karigarId.
+exports.getWorkerApplicationStatus = async (req, res) => {
+    try {
+        const identifierRaw = (req.body?.identifier || req.query?.identifier || '').trim();
+        if (!identifierRaw) {
+            return res.status(400).json({ message: 'Phone number or KarigarID is required.' });
+        }
+
+        const identifier = identifierRaw.toUpperCase();
+        const worker = await User.findOne({
+            role: 'worker',
+            $or: [
+                { mobile: identifierRaw },
+                { karigarId: identifier },
+            ],
+        }).select('name mobile karigarId verificationStatus rejectionReason');
+
+        if (!worker) {
+            return res.status(404).json({
+                registered: false,
+                message: 'No worker registration found. Please register first.',
+            });
+        }
+
+        const status = worker.verificationStatus || 'pending';
+        let statusMessage = 'Admin is verifying your application. Please wait up to 48 hours. If you do not get a response, contact us.';
+
+        if (status === 'rejected') {
+            statusMessage = 'Your application was rejected by admin.';
+        }
+        if (status === 'approved') {
+            statusMessage = 'Your application is approved. You can apply to jobs now.';
+        }
+
+        return res.json({
+            registered: true,
+            status,
+            statusMessage,
+            rejectionReason: status === 'rejected' ? (worker.rejectionReason || 'No reason provided by admin.') : null,
+            worker: {
+                name: worker.name,
+                mobile: worker.mobile,
+                karigarId: worker.karigarId,
+            },
+        });
+    } catch (err) {
+        console.error('getWorkerApplicationStatus:', err);
+        return res.status(500).json({ message: 'Unable to fetch application status.' });
+    }
+};
+
 // Preview similarity for registration UI before final submit.
 // Accepts multipart fields: idProof, livePhoto (memory uploads).
 exports.previewFaceSimilarity = async (req, res) => {

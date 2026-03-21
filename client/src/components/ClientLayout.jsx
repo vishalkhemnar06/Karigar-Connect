@@ -9,7 +9,7 @@ import * as api from '../api';
 import {
     LayoutDashboard, PlusSquare, Briefcase, Bot,
     User, LogOut, X, Menu, ChevronRight, Sparkles,
-    AlertTriangle, Users
+    AlertTriangle, Users, Camera
 } from 'lucide-react';
 
 const navItems = [
@@ -18,6 +18,7 @@ const navItems = [
     { to: '/client/job-manage', label: 'Manage Jobs',     icon: Briefcase,       desc: 'Track all postings' },
     { to: '/client/ai-assist',  label: 'AI Scope Tool',   icon: Bot,             desc: 'Smart project planner' },
     { to: '/client/groups',     label: 'Browse Groups',   icon: Users,           desc: 'Find worker teams' },   // NEW
+    { to: '/client/worker-face-verify', label: 'Verify Worker Face', icon: Camera, desc: 'Confirm assigned worker' },
     { to: '/client/complaints', label: 'Complaints',      icon: AlertTriangle,   desc: 'Report worker issues' },
     { to: '/client/profile',    label: 'My Profile',      icon: User,            desc: 'Account settings' },
 ];

@@ -16,6 +16,8 @@ const AIHistory = require('../models/aiHistoryModel');
 const { createNotification }           = require('../utils/notificationHelper');
 const { checkWorkerScheduleConflict, validateWorkTime, canStartJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
+const { sendCustomSms } = require('../utils/smsHelper');
+const faceClient = require('../utils/faceServiceClient');
 
 const parseJSON   = (v, fb) => { if (!v) return fb; try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return fb; } };
 const validateNeg = (v, l)  => { const n = Number(v); if (!isNaN(n) && n < 0) return `${l} cannot be negative.`; return null; };
@@ -201,6 +203,125 @@ const loadParentJobWithSubTasks = async (parentId, clientId) => {
     return enriched;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT FACE VERIFICATION FOR ASSIGNED WORKER
+// ─────────────────────────────────────────────────────────────────────────────
+exports.verifyAssignedWorkerFace = async (req, res) => {
+    try {
+        const livePhoto = req.file;
+        if (!livePhoto?.buffer) {
+            return res.status(400).json({ message: 'Live face photo is required.' });
+        }
+
+        const serviceAvailable = await faceClient.isAvailable();
+        if (!serviceAvailable) {
+            return res.status(503).json({ message: 'Face verification service is unavailable. Please try again shortly.' });
+        }
+
+        const liveResult = await faceClient.extractEmbedding(
+            livePhoto.buffer,
+            livePhoto.originalname || 'live_face.jpg'
+        );
+
+        if (!liveResult?.face_detected || !Array.isArray(liveResult?.embedding)) {
+            return res.status(400).json({ message: 'Face not detected. Please keep face clear and centered.' });
+        }
+
+        const activeJobs = await Job.find({
+            postedBy: req.user.id,
+            status: { $in: ['scheduled', 'running'] },
+        }).select('title status scheduledDate scheduledTime workerSlots');
+
+        const workerTaskMap = new Map();
+        for (const job of activeJobs) {
+            for (const slot of (job.workerSlots || [])) {
+                const wid = slot?.assignedWorker?.toString?.();
+                if (!wid) continue;
+                if (!workerTaskMap.has(wid)) workerTaskMap.set(wid, []);
+                workerTaskMap.get(wid).push({
+                    jobId: job._id,
+                    jobTitle: job.title,
+                    jobStatus: job.status,
+                    skill: slot.skill || 'general',
+                    slotStatus: slot.status,
+                    scheduledDate: job.scheduledDate || null,
+                    scheduledTime: job.scheduledTime || '',
+                });
+            }
+        }
+
+        const workerIds = [...workerTaskMap.keys()];
+        if (!workerIds.length) {
+            return res.status(404).json({ message: 'No assigned workers found in your active jobs.' });
+        }
+
+        const workers = await User.find({
+            _id: { $in: workerIds },
+            role: 'worker',
+        }).select('name karigarId mobile photo skills points overallExperience +faceEmbedding');
+
+        const candidates = workers.filter(w => Array.isArray(w.faceEmbedding) && w.faceEmbedding.length > 0);
+        if (!candidates.length) {
+            return res.status(404).json({ message: 'No assigned workers have face data available for matching.' });
+        }
+
+        const ratingRows = await Rating.aggregate([
+            { $match: { worker: { $in: candidates.map(w => w._id) } } },
+            { $group: { _id: '$worker', avgStars: { $avg: '$stars' }, totalRatings: { $sum: 1 } } },
+        ]);
+        const ratingMap = new Map(ratingRows.map(r => [r._id.toString(), r]));
+
+        let bestMatch = null;
+        for (const worker of candidates) {
+            const cmp = await faceClient.compareEmbeddings(liveResult.embedding, worker.faceEmbedding);
+            const similarity = Number(cmp?.similarity || 0);
+            if (!bestMatch || similarity > bestMatch.similarity) {
+                bestMatch = { worker, similarity };
+            }
+        }
+
+        const threshold = Number(faceClient.WORKER_THRESHOLD || 0.5);
+        if (!bestMatch || bestMatch.similarity < threshold) {
+            return res.json({
+                verified: false,
+                threshold,
+                bestSimilarity: bestMatch ? Number(bestMatch.similarity.toFixed(4)) : 0,
+                message: 'No matching assigned worker found.',
+            });
+        }
+
+        const matchedWorker = bestMatch.worker;
+        const matchedTasks = (workerTaskMap.get(matchedWorker._id.toString()) || [])
+            .sort((a, b) => {
+                const rank = v => (v === 'running' ? 0 : v === 'scheduled' ? 1 : 2);
+                return rank(a.jobStatus) - rank(b.jobStatus);
+            });
+
+        const ratingInfo = ratingMap.get(matchedWorker._id.toString());
+
+        return res.json({
+            verified: true,
+            threshold,
+            similarity: Number(bestMatch.similarity.toFixed(4)),
+            worker: {
+                id: matchedWorker._id,
+                name: matchedWorker.name,
+                karigarId: matchedWorker.karigarId,
+                mobile: matchedWorker.mobile,
+                photo: matchedWorker.photo,
+                points: matchedWorker.points || 0,
+                overallExperience: matchedWorker.overallExperience || '',
+                avgStars: ratingInfo ? Number((ratingInfo.avgStars || 0).toFixed(2)) : 0,
+                totalRatings: ratingInfo?.totalRatings || 0,
+            },
+            currentAssignedTasks: matchedTasks,
+        });
+    } catch (err) {
+        console.error('verifyAssignedWorkerFace:', err);
+        return res.status(500).json({ message: 'Failed to verify worker face.' });
+    }
+};
+
 const syncParentFromSubTaskAssignment = (parentJob, subTask, workerId) => {
     const subTaskId = subTask._id?.toString();
     const skill = (subTask.subTaskSkill || subTask.workerSlots?.[0]?.skill || '').toLowerCase();
@@ -374,6 +495,13 @@ exports.cancelJob = async (req, res) => {
         job.workerSlots.forEach(s => { if (['open','filled'].includes(s.status)) s.status = 'cancelled'; });
         for (const wId of job.assignedTo) {
             await createNotification({ userId: wId, type: 'cancelled', title: 'Job Cancelled', message: `"${job.title}" was cancelled. Reason: ${reason}` });
+            const workerUser = await User.findById(wId).select('mobile name');
+            if (workerUser?.mobile) {
+                await sendCustomSms(
+                    workerUser.mobile,
+                    `KarigarConnect: Job "${job.title}" was cancelled by client. Reason: ${reason.trim()}.`
+                );
+            }
         }
         await job.save();
         await logAuditEvent({ userId: req.user.id, role: 'client', action: 'job_cancelled', req, metadata: { jobId: job._id, reason: reason.trim() } });
@@ -535,9 +663,25 @@ exports.respondToApplicant = async (req, res) => {
                 }
             }
             await createNotification({ userId: workerId, type: 'hired', title: 'Application Approved ✅', message: `Your application for "${job.title}" as ${skill} has been approved.` });
+
+            const workerUser = await User.findById(workerId).select('mobile name');
+            if (workerUser?.mobile) {
+                await sendCustomSms(
+                    workerUser.mobile,
+                    `KarigarConnect: Congratulations ${workerUser.name || 'Worker'}! You are accepted for job "${job.title}" (${skill}).`
+                );
+            }
         } else {
             applicant.status = 'rejected'; applicant.feedback = feedback || '';
             await createNotification({ userId: workerId, type: 'job_update', title: 'Application Not Selected', message: `Your application for "${job.title}" was not selected.${feedback ? ` Feedback: ${feedback}` : ''}` });
+
+            const workerUser = await User.findById(workerId).select('mobile name');
+            if (workerUser?.mobile) {
+                await sendCustomSms(
+                    workerUser.mobile,
+                    `KarigarConnect: Your application for job "${job.title}" was rejected.${feedback ? ` Reason: ${feedback}` : ''}`
+                );
+            }
         }
 
         await job.save();
@@ -594,9 +738,25 @@ exports.respondToSubTaskApplicant = async (req, res) => {
                 }
             }
             await createNotification({ userId: workerId, type: 'hired', title: 'Sub-task Approved ✅', message: `Your application for "${subTask.title}" was approved.` });
+
+            const workerUser = await User.findById(workerId).select('mobile name');
+            if (workerUser?.mobile) {
+                await sendCustomSms(
+                    workerUser.mobile,
+                    `KarigarConnect: You are accepted for sub-task "${subTask.title}" (Parent job: "${parentJob.title}").`
+                );
+            }
         } else {
             applicant.status = 'rejected'; applicant.feedback = feedback || '';
             await createNotification({ userId: workerId, type: 'job_update', title: 'Application Not Selected', message: `Your application for "${subTask.title}" was not selected.${feedback ? ` Feedback: ${feedback}` : ''}` });
+
+            const workerUser = await User.findById(workerId).select('mobile name');
+            if (workerUser?.mobile) {
+                await sendCustomSms(
+                    workerUser.mobile,
+                    `KarigarConnect: Your application for sub-task "${subTask.title}" was rejected.${feedback ? ` Reason: ${feedback}` : ''}`
+                );
+            }
         }
 
         await subTask.save();
@@ -705,6 +865,15 @@ exports.submitRating = async (req, res) => {
         if (!job.ratingsSubmitted.map(id => id?.toString()).includes(slot._id.toString())) job.ratingsSubmitted.push(slot._id);
         await job.save();
         await createNotification({ userId: workerId, type: 'rating', title: `New Rating for ${skillForRating} ⭐`, message: `You received ${starsNum} star${starsNum !== 1 ? 's' : ''} and ${pointsNum} points for your ${skillForRating} work on "${job.title}".${message?.trim() ? ` Feedback: "${message.trim()}"` : ''}` });
+
+        const workerUser = await User.findById(workerId).select('mobile name');
+        if (workerUser?.mobile) {
+            await sendCustomSms(
+                workerUser.mobile,
+                `KarigarConnect: You received ${starsNum} star${starsNum !== 1 ? 's' : ''} and ${pointsNum} points for "${job.title}" (${skillForRating}).${message?.trim() ? ` Feedback: ${message.trim()}` : ''}`
+            );
+        }
+
         return res.status(201).json({ message: 'Rating submitted.', rating, slotRated: skillForRating });
     } catch (err) {
         if (err.code === 11000) return res.status(409).json({ message: 'Already rated this worker for this skill.' });
