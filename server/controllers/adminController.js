@@ -10,6 +10,7 @@ exports.getAllWorkers = async (req, res) => {
     try {
         const workers = await User.find({ role: 'worker' })
             .select(SENSITIVE_FIELDS)
+            .populate('reviewLock.lockedBy', 'name mobile karigarId')
             .sort({ createdAt: -1 });
         return res.json(workers);
     } catch (err) {
@@ -30,29 +31,90 @@ exports.getAllClients = async (req, res) => {
     }
 };
 
+exports.claimWorkerForReview = async (req, res) => {
+    try {
+        const { workerId } = req.params;
+        const adminId = req.user?._id?.toString();
+        if (!adminId) return res.status(401).json({ message: 'Admin session invalid.' });
+
+        const alreadyClaimedByAdmin = await User.findOne({
+            role: 'worker',
+            verificationStatus: 'pending',
+            'reviewLock.lockedBy': adminId,
+            _id: { $ne: workerId },
+        }).select('name karigarId');
+
+        if (alreadyClaimedByAdmin) {
+            return res.status(409).json({
+                message: `You already claimed ${alreadyClaimedByAdmin.name} (${alreadyClaimedByAdmin.karigarId}). Verify this worker first before claiming another.`,
+            });
+        }
+
+        const worker = await User.findById(workerId).select('name karigarId role verificationStatus reviewLock');
+        if (!worker || worker.role !== 'worker') {
+            return res.status(404).json({ message: 'Worker not found.' });
+        }
+        if (worker.verificationStatus !== 'pending') {
+            return res.status(409).json({ message: 'Worker is already verified by another admin.' });
+        }
+
+        const lockOwner = worker.reviewLock?.lockedBy?.toString?.();
+        if (lockOwner && lockOwner !== adminId) {
+            const lockAdmin = await User.findById(lockOwner).select('name karigarId');
+            return res.status(409).json({
+                message: `This worker is already claimed by ${lockAdmin?.name || 'another admin'}.`,
+            });
+        }
+
+        const updated = await User.findOneAndUpdate(
+            {
+                _id: workerId,
+                role: 'worker',
+                verificationStatus: 'pending',
+                $or: [
+                    { 'reviewLock.lockedBy': null },
+                    { 'reviewLock.lockedBy': { $exists: false } },
+                    { 'reviewLock.lockedBy': req.user._id },
+                ],
+            },
+            {
+                $set: {
+                    'reviewLock.lockedBy': req.user._id,
+                    'reviewLock.lockedAt': new Date(),
+                },
+            },
+            { new: true, runValidators: false }
+        ).populate('reviewLock.lockedBy', 'name mobile karigarId');
+
+        if (!updated) {
+            return res.status(409).json({ message: 'Unable to claim worker due to concurrent update.' });
+        }
+
+        return res.json({ message: 'Worker claimed successfully.', worker: updated });
+    } catch (err) {
+        console.error('claimWorkerForReview error:', err);
+        return res.status(500).json({ message: 'Server error while claiming worker.' });
+    }
+};
+
 exports.updateWorkerStatus = async (req, res) => {
     try {
         let { workerId, status, points, rejectionReason } = req.body;
+        const adminId = req.user?._id;
+        if (!adminId) return res.status(401).json({ message: 'Admin session invalid.' });
 
-        console.log('[updateWorkerStatus] received:', { workerId, status, points });
+        console.log('[updateWorkerStatus] received:', { workerId, status, points, adminId: adminId.toString() });
 
-        const worker = await User.findById(workerId);
-        if (!worker) {
+        const worker = await User.findById(workerId).select('experience role verificationStatus reviewLock mobile name');
+        if (!worker || worker.role !== 'worker') {
             return res.status(404).json({ message: 'Worker not found.' });
         }
 
-        // 'unblocked' is frontend-only — map to 'approved' for the DB
         const isUnblock = (status === 'unblocked');
         const finalStatus = isUnblock ? 'approved' : status;
 
-        console.log('[updateWorkerStatus] finalStatus:', finalStatus, '| isUnblock:', isUnblock);
+        const updateFields = { verificationStatus: finalStatus };
 
-        // Build update using $set with only schema-valid fields
-        const updateFields = {
-            verificationStatus: finalStatus,
-        };
-
-        // Points only for a genuine fresh approval (not unblock, not block, not reject)
         if (finalStatus === 'approved' && !isUnblock) {
             const manualPoints = Number(points) || 0;
             if (manualPoints < 1 || manualPoints > 50) {
@@ -60,31 +122,50 @@ exports.updateWorkerStatus = async (req, res) => {
             }
             const experienceYears = Number(worker.experience) || 0;
             updateFields.points = manualPoints + (experienceYears * 10);
+            updateFields.rejectedAt = undefined;
+            updateFields.rejectionReason = null;
         }
 
         if (finalStatus === 'rejected') {
             updateFields.rejectedAt = new Date();
             updateFields.rejectionReason = (rejectionReason || '').trim() || 'No reason provided by admin.';
-        } else {
+        }
+
+        if (finalStatus === 'blocked') {
             updateFields.rejectionReason = null;
         }
 
-        // Use findByIdAndUpdate with $set to avoid touching other fields
-        // runValidators: false prevents Mongoose from re-validating required
-        // fields that aren't part of this update
-        const updatedWorker = await User.findByIdAndUpdate(
-            workerId,
-            { $set: updateFields },
-            { new: true, runValidators: false }
-        ).select(SENSITIVE_FIELDS);
+        let query = { _id: workerId, role: 'worker' };
 
-        if (!updatedWorker) {
-            return res.status(404).json({ message: 'Worker not found after update.' });
+        if (['approved', 'rejected'].includes(finalStatus) && !isUnblock) {
+            query = {
+                ...query,
+                verificationStatus: 'pending',
+                'reviewLock.lockedBy': adminId,
+            };
+            updateFields['reviewLock.lockedBy'] = null;
+            updateFields['reviewLock.lockedAt'] = null;
+        } else if (finalStatus === 'blocked') {
+            query = { ...query, verificationStatus: 'approved' };
+        } else if (isUnblock) {
+            query = { ...query, verificationStatus: 'blocked' };
+            updateFields.rejectionReason = null;
         }
 
-        console.log('[updateWorkerStatus] updated verificationStatus:', updatedWorker.verificationStatus);
+        const updatedWorker = await User.findOneAndUpdate(
+            query,
+            { $set: updateFields },
+            { new: true, runValidators: false }
+        )
+            .select(SENSITIVE_FIELDS)
+            .populate('reviewLock.lockedBy', 'name mobile karigarId');
 
-        // SMS only for statuses that have a template in smsHelper
+        if (!updatedWorker) {
+            return res.status(409).json({
+                message: 'Worker status update conflict. Worker may already be processed or not claimed by you.',
+            });
+        }
+
         if (!isUnblock && ['approved', 'rejected', 'blocked'].includes(finalStatus)) {
             try {
                 await sendStatusUpdateSms(updatedWorker.mobile, updatedWorker.name, finalStatus);
@@ -95,7 +176,7 @@ exports.updateWorkerStatus = async (req, res) => {
 
         return res.status(200).json({
             message: `Worker status updated to ${finalStatus}.`,
-            worker:  updatedWorker,
+            worker: updatedWorker,
         });
 
     } catch (err) {

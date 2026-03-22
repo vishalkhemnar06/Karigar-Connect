@@ -57,6 +57,10 @@ const userSchema = new mongoose.Schema({
         enum: ['pending', 'approved', 'rejected', 'blocked'],
         default: 'pending',
     },
+    reviewLock: {
+        lockedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        lockedAt: { type: Date, default: null },
+    },
     rejectedAt: { type: Date, default: undefined },
     rejectionReason: { type: String, default: null, trim: true, maxlength: 500 },
 

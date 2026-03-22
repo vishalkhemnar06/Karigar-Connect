@@ -6,6 +6,7 @@ const router  = express.Router();
 const {
     getAllWorkers,
     getAllClients,
+    claimWorkerForReview,
     updateWorkerStatus,
     deleteUser,
     getAdminStats,
@@ -16,9 +17,10 @@ const { fraudNotify } = require('../controllers/adminFraudController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // All admin routes are protected and restricted to admin role.
-router.get('/workers',        protect, admin, getAllWorkers);
-router.get('/clients',        protect, admin, getAllClients);
-router.put('/workers/status', protect, admin, updateWorkerStatus);
+router.get('/workers',                  protect, admin, getAllWorkers);
+router.get('/clients',                  protect, admin, getAllClients);
+router.post('/workers/:workerId/claim', protect, admin, claimWorkerForReview);
+router.put('/workers/status',           protect, admin, updateWorkerStatus);
 router.delete('/user/:id',    protect, admin, deleteUser);
 
 // Dashboard/supporting endpoints used by frontend admin panel

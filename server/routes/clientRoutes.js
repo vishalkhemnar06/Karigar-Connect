@@ -9,7 +9,7 @@ const {
     uploadCompletionPhotos, startJob, toggleJobApplications,
     removeAssignedWorker, completeWorkerTask,
     repostMissingSkill, cancelSlotRequirement, respondToSubTaskApplicant, completeSubTask,
-    getJobApplicants, respondToApplicant, hireWorker, submitRating,
+    getJobApplicants, getSmartWorkerSuggestions, inviteWorkersToJob, respondToApplicant, hireWorker, submitRating,
     getWorkerPublicProfile, toggleStarWorker,
     getClientAIHistory, getAIHistoryItem, saveAIAnalysis,
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
@@ -43,6 +43,8 @@ router.post('/jobs/:id/subtask/respond', protect, client, respondToSubTaskApplic
 router.patch('/jobs/:id/subtask/complete', protect, client, completeSubTask);
 
 router.get('/jobs/:jobId/applicants', protect, client, getJobApplicants);
+router.get('/jobs/:jobId/smart-suggestions', protect, client, getSmartWorkerSuggestions);
+router.post('/jobs/:jobId/invite', protect, client, inviteWorkersToJob);
 router.post('/jobs/:jobId/respond',   protect, client, respondToApplicant);
 router.post('/jobs/:jobId/hire',      protect, client, hireWorker);
 router.post('/jobs/:jobId/rate',      protect, client, submitRating);

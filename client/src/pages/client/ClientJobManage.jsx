@@ -8,6 +8,7 @@ import {
     getClientJobs, deleteClientJob, cancelJob, updateJobStatus,
     uploadCompletionPhotos, startJob, toggleJobApplications,
     removeAssignedWorker, completeWorkerTask, respondToApplicant,
+    getJobSmartSuggestions, inviteWorkersToJob,
     submitRating, toggleStarWorker, getWorkerFullProfile, getImageUrl,
     repostMissingSkill, dismissMissingSkill, respondToSubTaskApplicant,
     completeSubTask,
@@ -23,7 +24,7 @@ import {
     Search, Filter, RefreshCw, Eye, Bookmark, Share2,
     Building, Sparkles, Crown, Target, Layers, Heart,
     MessageCircle, Camera, Upload, ThumbsUp, Flag,
-    Settings, UserCheck, UserX, Clock as ClockIcon
+    Settings, UserCheck, UserX, UserPlus, Clock as ClockIcon
 } from 'lucide-react';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1114,6 +1115,9 @@ export default function ClientJobManage() {
     const [removeData, setRemoveData] = useState(null);
     const [repostData, setRepostData] = useState(null);
     const [uploadingPhotos, setUploadingPhotos] = useState({});
+    const [smartSuggestionsByJob, setSmartSuggestionsByJob] = useState({});
+    const [loadingSuggestionsByJob, setLoadingSuggestionsByJob] = useState({});
+    const [invitingByJob, setInvitingByJob] = useState({});
     const photoRef = useRef({});
 
     const setAlert = (id, msg, type = 'error') => setCardAlerts(p => ({ ...p, [id]: { msg, type } }));
@@ -1184,6 +1188,32 @@ export default function ClientJobManage() {
             }
         } catch (err) {
             setAlert(jobId, err?.response?.data?.message || 'Failed.', err?.response?.status === 409 ? 'warning' : 'error');
+        }
+    };
+
+    const handleLoadSmartSuggestions = async (jobId) => {
+        try {
+            setLoadingSuggestionsByJob(p => ({ ...p, [jobId]: true }));
+            const { data } = await getJobSmartSuggestions(jobId);
+            setSmartSuggestionsByJob(p => ({ ...p, [jobId]: data?.suggestions || [] }));
+        } catch (err) {
+            setAlert(jobId, err?.response?.data?.message || 'Failed to load smart suggestions.');
+        } finally {
+            setLoadingSuggestionsByJob(p => ({ ...p, [jobId]: false }));
+        }
+    };
+
+    const handleInviteWorkers = async (jobId, workerIds = []) => {
+        if (!workerIds.length) return;
+        try {
+            setInvitingByJob(p => ({ ...p, [jobId]: true }));
+            const { data } = await inviteWorkersToJob(jobId, workerIds);
+            setAlert(jobId, `${data?.invitedCount || workerIds.length} worker(s) invited successfully.`, 'success');
+            await Promise.all([handleLoadSmartSuggestions(jobId), fetchJobs()]);
+        } catch (err) {
+            setAlert(jobId, err?.response?.data?.message || 'Failed to invite workers.');
+        } finally {
+            setInvitingByJob(p => ({ ...p, [jobId]: false }));
         }
     };
 
@@ -1428,6 +1458,9 @@ export default function ClientJobManage() {
                                     pending.forEach(a => { const sk = a.skill || 'general'; if (!bySkill[sk]) bySkill[sk] = []; bySkill[sk].push(a); });
                                     const openBySkill = {};
                                     (job.workerSlots || []).filter(s => s.status === 'open').forEach(s => { openBySkill[s.skill] = (openBySkill[s.skill] || 0) + 1; });
+                                    const suggestedWorkers = smartSuggestionsByJob[job._id] || [];
+                                    const suggestionsLoading = !!loadingSuggestionsByJob[job._id];
+                                    const isInviting = !!invitingByJob[job._id];
 
                                     return (
                                         <motion.div
@@ -1573,6 +1606,77 @@ export default function ClientJobManage() {
                                                         onMarkDone={subTaskId => handleMarkSubTaskDone(job._id, subTaskId)}
                                                         onRate={sub => setRatingJob({ ...job, _ratingSubTask: sub })}
                                                     />
+
+                                                    {['open', 'scheduled'].includes(job.status) && (
+                                                        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-2xl p-4">
+                                                            <div className="flex items-center justify-between gap-2 mb-3">
+                                                                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-2">
+                                                                    <Sparkles size={12} /> AI Smart Suggestions
+                                                                </p>
+                                                                <div className="flex items-center gap-2">
+                                                                    <motion.button
+                                                                        whileHover={{ scale: 1.02 }}
+                                                                        whileTap={{ scale: 0.98 }}
+                                                                        onClick={() => handleLoadSmartSuggestions(job._id)}
+                                                                        disabled={suggestionsLoading || isInviting}
+                                                                        className="text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-white font-bold disabled:opacity-60"
+                                                                    >
+                                                                        {suggestionsLoading ? 'Loading...' : 'Load Top 3'}
+                                                                    </motion.button>
+                                                                    {suggestedWorkers.length > 0 && (
+                                                                        <motion.button
+                                                                            whileHover={{ scale: 1.02 }}
+                                                                            whileTap={{ scale: 0.98 }}
+                                                                            onClick={() => handleInviteWorkers(job._id, suggestedWorkers.map(w => w._id))}
+                                                                            disabled={suggestionsLoading || isInviting}
+                                                                            className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-bold disabled:opacity-60"
+                                                                        >
+                                                                            {isInviting ? 'Inviting...' : 'Invite Top 3'}
+                                                                        </motion.button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {suggestedWorkers.length === 0 ? (
+                                                                <p className="text-xs text-indigo-500">Load suggestions to see top-rated nearby workers and invite instantly.</p>
+                                                            ) : (
+                                                                <div className="space-y-2">
+                                                                    {suggestedWorkers.map(worker => (
+                                                                        <div key={worker._id} className="flex items-center gap-3 bg-white border border-indigo-100 rounded-xl p-2.5">
+                                                                            <motion.button
+                                                                                whileHover={{ scale: 1.02 }}
+                                                                                onClick={() => setProfileWid(worker._id)}
+                                                                                className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                                                                            >
+                                                                                <img
+                                                                                    src={getImageUrl(worker.photo)}
+                                                                                    alt=""
+                                                                                    className="w-8 h-8 rounded-full object-cover border border-indigo-100"
+                                                                                    onError={e => { e.target.src = '/admin.png'; }}
+                                                                                />
+                                                                                <div className="min-w-0">
+                                                                                    <p className="text-xs font-bold text-gray-800 truncate">{worker.name}</p>
+                                                                                    <p className="text-[11px] text-indigo-600">
+                                                                                        ⭐ {Number(worker.avgStars || 0).toFixed(1)} ({worker.ratingCount || 0}) · {worker.points || 0} pts
+                                                                                        {worker.distanceKm !== null && worker.distanceKm !== undefined ? ` · ${worker.distanceKm} km` : ''}
+                                                                                    </p>
+                                                                                </div>
+                                                                            </motion.button>
+                                                                            <motion.button
+                                                                                whileHover={{ scale: 1.02 }}
+                                                                                whileTap={{ scale: 0.98 }}
+                                                                                onClick={() => handleInviteWorkers(job._id, [worker._id])}
+                                                                                disabled={isInviting}
+                                                                                className="text-xs px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 font-bold disabled:opacity-60 flex items-center gap-1"
+                                                                            >
+                                                                                <UserPlus size={12} /> Invite
+                                                                            </motion.button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
 
                                                     {/* Applicants */}
                                                     {['open', 'scheduled'].includes(job.status) && (

@@ -28,6 +28,7 @@ export const resetPassword         = (t, d)   => API.put(`/api/auth/reset-passwo
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 export const getAllWorkers          = ()       => API.get('/api/admin/workers');
 export const getAllClients          = ()       => API.get('/api/admin/clients');
+export const claimWorkerForReview   = (workerId) => API.post(`/api/admin/workers/${workerId}/claim`);
 export const updateWorkerStatus    = (d)      => API.put('/api/admin/workers/status',          d);
 export const deleteUser            = (id)     => API.delete(`/api/admin/user/${id}`);
 export const getAdminStats         = ()       => API.get('/api/admin/stats');
@@ -120,6 +121,8 @@ export const completeWorkerTask         = (id, workerId, slotId)          => API
 export const completeSubTask            = (id, subTaskId)                 => API.patch(`/api/client/jobs/${id}/subtask/complete`,     { subTaskId });
 export const uploadCompletionPhotos     = (id, fd)                        => API.post(`/api/client/jobs/${id}/completion-photos`,     fd, mp);
 export const getJobApplicants           = (jobId)                         => API.get(`/api/client/jobs/${jobId}/applicants`);
+export const getJobSmartSuggestions     = (jobId)                         => API.get(`/api/client/jobs/${jobId}/smart-suggestions`);
+export const inviteWorkersToJob         = (jobId, workerIds = [])         => API.post(`/api/client/jobs/${jobId}/invite`, { workerIds });
 export const respondToApplicant         = (jobId, d)                      => API.post(`/api/client/jobs/${jobId}/respond`,  d);
 export const hireWorker                 = (jobId, wId)                    => API.post(`/api/client/jobs/${jobId}/hire`,    { workerId: wId });
 export const submitRating               = (jobId, d)                      => API.post(`/api/client/jobs/${jobId}/rate`,    d);

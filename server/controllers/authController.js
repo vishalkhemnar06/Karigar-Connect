@@ -12,6 +12,7 @@ const faceClient = require('../utils/faceServiceClient');
 const { sendOtpSms } = require('../utils/smsHelper');
 const { sendOtpEmail } = require('../utils/emailHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
+const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
 
 // ── OTP store (in-memory; production: use Redis) ──────────────────────────────
 const otpStore = new Map(); // key: mobile/email → { otp, expiry }
@@ -490,37 +491,38 @@ exports.loginWithPassword = async (req, res) => {
         if (!mobile || !password) return res.status(400).json({ message: 'Mobile and password required.' });
 
         if (role === 'admin') {
-            const adminMobile = String(process.env.ADMIN_MOBILE || '').trim();
-            const adminPassword = String(process.env.ADMIN_PASSWORD || '').trim();
-            const submittedMobile = String(mobile).trim();
-            const submittedPassword = String(password).trim();
+            const submittedMobile = String(mobile || '').trim();
+            const allowedMobiles = getConfiguredAdminAccounts().map(acc => acc.mobile);
 
-            if (!adminMobile || !adminPassword) {
-                return res.status(500).json({ message: 'Admin credentials are not configured.' });
-            }
-
-            if (submittedMobile !== adminMobile || submittedPassword !== adminPassword) {
-                await logAuditEvent({ action: 'failed_login', req, metadata: { role: 'admin', mobile: submittedMobile } });
+            if (!allowedMobiles.includes(submittedMobile)) {
+                await logAuditEvent({ action: 'failed_login', req, metadata: { role: 'admin', mobile: submittedMobile, reason: 'not_allowed_admin_mobile' } });
                 return res.status(401).json({ message: 'Invalid mobile number or password.' });
             }
 
-            await logAuditEvent({ action: 'login', req, metadata: { role: 'admin', mobile: submittedMobile } });
+            const adminUser = await User.findOne({ role: 'admin', mobile: submittedMobile }).select('+password name karigarId photo mobile role');
+            if (!adminUser) {
+                await logAuditEvent({ action: 'failed_login', req, metadata: { role: 'admin', mobile: submittedMobile, reason: 'admin_not_found' } });
+                return res.status(401).json({ message: 'Invalid mobile number or password.' });
+            }
 
-            const token = jwt.sign(
-                { mobile: adminMobile, role: 'admin' },
-                process.env.JWT_SECRET,
-                { expiresIn: '30d' }
-            );
+            const isMatch = await bcrypt.compare(password, adminUser.password);
+            if (!isMatch) {
+                await logAuditEvent({ userId: adminUser._id, role: 'admin', action: 'failed_login', req, metadata: { reason: 'password_mismatch' } });
+                return res.status(401).json({ message: 'Invalid mobile number or password.' });
+            }
 
+            await logAuditEvent({ userId: adminUser._id, role: 'admin', action: 'login', req });
+
+            const token = signToken(adminUser._id, 'admin');
             return res.json({
                 message: 'Login successful.',
                 token,
                 user: {
-                    id: 'admin',
-                    name: 'Admin',
+                    id: adminUser._id,
+                    name: adminUser.name,
                     role: 'admin',
-                    photo: null,
-                    karigarId: 'ADMIN',
+                    photo: adminUser.photo || null,
+                    karigarId: adminUser.karigarId,
                 },
             });
         }

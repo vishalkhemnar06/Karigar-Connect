@@ -307,6 +307,11 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                             <Zap size={10} /> Urgent
                                         </span>
                                     )}
+                                    {job.invitedForMe && (
+                                        <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold">
+                                            Direct Invite
+                                        </span>
+                                    )}
                                     {job.negotiable && (
                                         <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
                                             <Gift size={10} /> Negotiable
@@ -985,6 +990,11 @@ export default function JobRequests() {
                                                             {job.urgent && (
                                                                 <span className="text-xs bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                                                                     <Zap size={10} /> Urgent
+                                                                </span>
+                                                            )}
+                                                            {job.invitedForMe && (
+                                                                <span className="text-xs bg-gradient-to-r from-indigo-100 to-blue-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
+                                                                    Direct Invite
                                                                 </span>
                                                             )}
                                                             {job.negotiable && (
