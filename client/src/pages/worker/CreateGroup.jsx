@@ -1,20 +1,20 @@
 // src/pages/worker/CreateGroup.jsx
-// FIXES retained:
-//   1. Import from "../../api" (not deleted groupService)
-//   2. navigate('/worker/my-groups') — correct path
-//   3. File location: pages/worker/CreateGroup.jsx
+// MOBILE-FRIENDLY VERSION
+//   - All converted to Tailwind with responsive design
+//   - Touch-friendly buttons (min-height 48px)
+//   - Improved spacing and layout for mobile
+//   - Better form validation feedback
+//   - Smooth animations and transitions
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, UserPlus, ArrowLeft, AlertCircle,
   CheckCircle, Sparkles, Hash, FileText, User,
+  Info, Shield, Loader2, X
 } from 'lucide-react';
 import { createGroupAPI } from '../../api';
 
-/* ════════════════════════════════════════════
-   TOAST (no external dep)
-════════════════════════════════════════════ */
 let _tid = 0;
 const useToast = () => {
   const [toasts, setToasts] = useState([]);
@@ -27,58 +27,42 @@ const useToast = () => {
 };
 
 const ToastList = ({ toasts }) => (
-  <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+  <div className="fixed top-3 left-3 right-3 sm:left-auto sm:right-5 sm:top-5 z-[9999] flex flex-col gap-2 pointer-events-none">
     {toasts.map(t => (
-      <div key={t.id} style={{
-        background: t.type === 'error' ? '#ef4444' : '#22c55e',
-        color: '#fff', padding: '11px 18px', borderRadius: 12, fontWeight: 700,
-        fontSize: 13, boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-        display: 'flex', alignItems: 'center', gap: 8,
-        fontFamily: 'inherit', animation: 'cg-in 0.3s ease',
-      }}>
-        {t.type === 'success' ? '✓' : '✕'} {t.msg}
+      <div 
+        key={t.id} 
+        className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm text-white shadow-xl animate-in slide-in-from-top duration-300 ${
+          t.type === 'error' ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-green-500 to-emerald-600'
+        }`}
+      >
+        {t.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+        {t.msg}
       </div>
     ))}
   </div>
 );
 
-/* ════════════════════════════════════════════
-   FIELD COMPONENT
-════════════════════════════════════════════ */
-const Field = ({ label, required, error, hint, children }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-    <label style={{ fontSize: 13, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+const Field = ({ label, required, error, hint, children, icon: Icon }) => (
+  <div className="flex flex-col gap-1.5 sm:gap-2">
+    <label className="text-xs sm:text-sm font-bold text-gray-700 flex items-center gap-1">
+      {Icon && <Icon size={12} className="text-orange-500" />}
       {label}
-      {required && <span style={{ color: '#ef4444', fontSize: 14 }}>*</span>}
+      {required && <span className="text-red-500 text-sm">*</span>}
     </label>
     {children}
     {hint && !error && (
-      <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, margin: 0 }}>{hint}</p>
+      <p className="text-[10px] sm:text-[11px] text-gray-400 font-medium flex items-center gap-1">
+        <Info size={10} /> {hint}
+      </p>
     )}
     {error && (
-      <p style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-        <AlertCircle size={11} />{error}
+      <p className="text-[10px] sm:text-[11px] text-red-500 font-semibold flex items-center gap-1 animate-in fade-in slide-in-from-left">
+        <AlertCircle size={10} /> {error}
       </p>
     )}
   </div>
 );
 
-const inputBase = {
-  width: '100%', border: '2px solid #fed7aa', borderRadius: 12,
-  padding: '11px 14px', fontSize: 13, fontFamily: 'inherit',
-  fontWeight: 500, background: '#fff7ed', outline: 'none',
-  color: '#111827', transition: 'border-color 0.18s, box-shadow 0.18s',
-  boxSizing: 'border-box',
-};
-
-const inputError = {
-  borderColor: '#fca5a5',
-  background: '#fff5f5',
-};
-
-/* ════════════════════════════════════════════
-   MAIN
-════════════════════════════════════════════ */
 export default function CreateGroup() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -87,6 +71,7 @@ export default function CreateGroup() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   const handleChange = e => {
     setForm(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -97,16 +82,26 @@ export default function CreateGroup() {
     const e = {};
     if (!form.name.trim()) e.name = 'Group name is required';
     else if (form.name.trim().length < 3) e.name = 'Name must be at least 3 characters';
+    else if (form.name.trim().length > 60) e.name = 'Name cannot exceed 60 characters';
+    
     if (!form.memberKarigarId.trim()) e.memberKarigarId = "Second member's Karigar ID is required";
-    else if (!/^K\d+$/i.test(form.memberKarigarId.trim())) e.memberKarigarId = 'Format should be K followed by digits (e.g. K123456)';
+    else if (!/^K\d+$/i.test(form.memberKarigarId.trim())) e.memberKarigarId = 'Format: K followed by digits (e.g., K123456)';
+    else if (form.memberKarigarId.trim().toUpperCase() === localStorage.getItem('user')?.karigarId?.toUpperCase()) {
+      e.memberKarigarId = 'You cannot add yourself as a member';
+    }
     return e;
   };
 
   const handleSubmit = async e => {
     e.preventDefault();
     const errs = validate();
-    if (Object.keys(errs).length) { setErrors(errs); return; }
-
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      // Scroll to first error
+      const firstError = document.querySelector('.border-red-300');
+      if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     setLoading(true);
     try {
       await createGroupAPI(form);
@@ -114,261 +109,352 @@ export default function CreateGroup() {
       toast.success('Group created successfully! 🎉');
       setTimeout(() => navigate('/worker/my-groups'), 1800);
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Error creating group. Try again.');
+      toast.error(err.response?.data?.msg || 'Error creating group. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const charLeft = 200 - (form.description?.length || 0);
-  const nameLen  = form.name?.length || 0;
+  const isKarigarIdValid = form.memberKarigarId && /^K\d+$/i.test(form.memberKarigarId.trim());
 
   return (
-    <div style={{ background: '#fff7ed', minHeight: '100%', padding: '24px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-        @keyframes cg-in     { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
-        @keyframes cg-fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-        @keyframes cg-spin   { to { transform: rotate(360deg); } }
-        @keyframes cg-pop    { 0% { transform: scale(0.8); opacity: 0; } 70% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes cg-pulse  { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-        .cg-input:focus { border-color: #f97316 !important; box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important; background: #fff !important; }
-        .cg-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(249,115,22,0.35) !important; }
-        .cg-back:hover { background: #fff7ed !important; color: #f97316 !important; border-color: #fb923c !important; }
-      `}</style>
-
+    <div className="min-h-screen bg-gradient-to-br from-orange-50/40 via-white to-orange-50/20 p-3 sm:p-4 pb-24 sm:pb-8">
       <ToastList toasts={toast.toasts} />
 
-      {/* ── Success overlay ── */}
+      {/* Success Overlay */}
       {success && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(255,247,237,0.92)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{ animation: 'cg-pop 0.5s ease', textAlign: 'center' }}>
-            <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#22c55e,#4ade80)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 8px 32px rgba(34,197,94,0.35)' }}>
-              <CheckCircle size={38} color="#fff" />
-            </div>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: '#111827', marginBottom: 6 }}>Group Created!</h2>
-            <p style={{ fontSize: 13, color: '#6b7280', animation: 'cg-pulse 1s infinite' }}>Redirecting to My Groups…</p>
+        <div className="fixed inset-0 bg-orange-50/95 backdrop-blur-sm z-[1000] flex flex-col items-center justify-center animate-in fade-in">
+          <div className="text-center">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', damping: 12 }}
+              className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mx-auto mb-4 shadow-xl"
+            >
+              <CheckCircle size={38} className="text-white" />
+            </motion.div>
+            <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-2">Group Created!</h2>
+            <p className="text-sm text-gray-500">Redirecting to My Groups...</p>
+            <div className="mt-4 w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
           </div>
         </div>
       )}
 
-      <div style={{ maxWidth: 560, margin: '0 auto', animation: 'cg-fadeUp 0.4s ease' }}>
-
-        {/* ── Header ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
-          <button onClick={() => navigate('/worker/my-groups')}
-            className="cg-back"
-            style={{
-              width: 40, height: 40, borderRadius: 11, border: '1.5px solid #fed7aa',
-              background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: '#6b7280', transition: 'all 0.15s', flexShrink: 0,
-            }}>
-            <ArrowLeft size={17} />
+      <div className="max-w-lg mx-auto">
+        {/* Header - Mobile Optimized */}
+        <div className="flex items-center gap-3 mb-5 sm:mb-6">
+          <button
+            onClick={() => navigate('/worker/my-groups')}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border-2 border-orange-200 bg-white flex items-center justify-center text-gray-500 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-500 transition-all active:scale-95 flex-shrink-0"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 900, color: '#111827', margin: 0 }}>Create Group</h1>
-            <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 3, fontWeight: 500 }}>Form a work team with other karigars</p>
+            <h1 className="text-lg sm:text-xl md:text-2xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+              Create Group
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5 font-medium">Form a work team with other karigars</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* ══ Card 1: Group Details ══ */}
-          <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #fed7aa', overflow: 'hidden', boxShadow: '0 1px 10px rgba(251,146,60,0.07)' }}>
-            {/* card header */}
-            <div style={{ background: 'linear-gradient(135deg,#fff7ed,#ffedd5)', padding: '14px 20px', borderBottom: '1px solid #fed7aa', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#f97316,#fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Users size={16} color="#fff" />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:gap-5">
+          {/* Card 1: Group Details */}
+          <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-4 sm:px-5 py-3 sm:py-4 border-b border-orange-100 flex items-center gap-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Users size={14} className="text-white" />
               </div>
               <div>
-                <p style={{ fontSize: 13, fontWeight: 800, color: '#111827', margin: 0 }}>Group Details</p>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, fontWeight: 500 }}>Name and describe your group</p>
+                <p className="text-xs sm:text-sm font-bold text-gray-900">Group Details</p>
+                <p className="text-[9px] sm:text-[10px] text-gray-400 font-medium">Name and describe your group</p>
               </div>
             </div>
-
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {/* Group Name */}
-              <Field label="Group Name" required error={errors.name}>
-                <div style={{ position: 'relative' }}>
-                  <Hash size={15} color="#f97316" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            
+            <div className="p-4 sm:p-5 flex flex-col gap-4 sm:gap-5">
+              <Field 
+                label="Group Name" 
+                required 
+                error={errors.name} 
+                icon={Hash}
+                hint="Choose a unique name for your team"
+              >
+                <div className="relative">
+                  <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400 pointer-events-none" />
                   <input
-                    className="cg-input"
                     name="name"
                     value={form.name}
                     onChange={handleChange}
-                    placeholder="e.g. Elite Painters Team"
+                    onFocus={() => setFocusedField('name')}
+                    onBlur={() => setFocusedField(null)}
+                    placeholder="e.g., Elite Painters Team"
                     maxLength={60}
-                    style={{ ...inputBase, ...(errors.name ? inputError : {}), paddingLeft: 38 }}
+                    autoCapitalize="words"
+                    className={`w-full pl-9 pr-3 py-3 border-2 rounded-xl text-sm font-medium transition-all min-h-[48px] ${
+                      errors.name 
+                        ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-50' 
+                        : focusedField === 'name'
+                          ? 'border-orange-400 bg-white ring-4 ring-orange-50'
+                          : 'border-orange-200 bg-orange-50 focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-50'
+                    }`}
                   />
                 </div>
-                {nameLen > 0 && (
-                  <p style={{ fontSize: 10, color: '#9ca3af', textAlign: 'right', margin: '-2px 0 0', fontWeight: 500 }}>
-                    {nameLen}/60
+                <div className="flex justify-between items-center">
+                  <p className="text-[10px] text-gray-400">
+                    {form.name?.length || 0}/60 characters
                   </p>
-                )}
+                  {form.name && form.name.length >= 50 && (
+                    <p className="text-[10px] text-orange-500">Getting long</p>
+                  )}
+                </div>
               </Field>
 
-              {/* Description */}
-              <Field label="Description" hint="Optional – describe what your group specialises in" error={errors.description}>
-                <div style={{ position: 'relative' }}>
-                  <FileText size={15} color="#f97316" style={{ position: 'absolute', left: 13, top: 13, pointerEvents: 'none' }} />
+              <Field 
+                label="Description" 
+                hint="Optional — describe what your group specialises in" 
+                error={errors.description}
+                icon={FileText}
+              >
+                <div className="relative">
+                  <FileText size={14} className="absolute left-3 top-3 text-orange-400 pointer-events-none" />
                   <textarea
-                    className="cg-input"
                     name="description"
                     value={form.description}
                     onChange={handleChange}
                     rows={3}
                     maxLength={200}
-                    placeholder="e.g. We specialise in interior painting and waterproofing work across Pune…"
-                    style={{ ...inputBase, paddingLeft: 38, resize: 'none', lineHeight: 1.65 }}
+                    placeholder="e.g., We specialise in interior painting, waterproofing, and wall finishes..."
+                    className="w-full pl-9 pr-3 py-3 border-2 border-orange-200 rounded-xl text-sm font-medium bg-orange-50 focus:bg-white focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all resize-none"
                   />
                 </div>
-                <p style={{ fontSize: 10, color: charLeft < 30 ? '#f97316' : '#9ca3af', textAlign: 'right', margin: '-2px 0 0', fontWeight: 500 }}>
-                  {charLeft} characters remaining
-                </p>
+                <div className="flex justify-between items-center">
+                  <p className={`text-[10px] font-medium ${charLeft < 30 ? 'text-orange-500' : 'text-gray-400'}`}>
+                    {charLeft} characters remaining
+                  </p>
+                  {form.description && charLeft < 50 && (
+                    <p className="text-[10px] text-orange-500">Keep it concise</p>
+                  )}
+                </div>
               </Field>
             </div>
           </div>
 
-          {/* ══ Card 2: Add Member ══ */}
-          <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #fed7aa', overflow: 'hidden', boxShadow: '0 1px 10px rgba(251,146,60,0.07)' }}>
-            {/* card header */}
-            <div style={{ background: 'linear-gradient(135deg,#fff7ed,#ffedd5)', padding: '14px 20px', borderBottom: '1px solid #fed7aa', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#f97316,#fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <UserPlus size={16} color="#fff" />
+          {/* Card 2: Add Member */}
+          <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-4 sm:px-5 py-3 sm:py-4 border-b border-orange-100 flex items-center gap-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <UserPlus size={14} className="text-white" />
               </div>
               <div>
-                <p style={{ fontSize: 13, fontWeight: 800, color: '#111827', margin: 0 }}>Add Initial Member</p>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, fontWeight: 500 }}>Groups need at least 2 members</p>
+                <p className="text-xs sm:text-sm font-bold text-gray-900">Add Initial Member</p>
+                <p className="text-[9px] sm:text-[10px] text-gray-400 font-medium">Groups need at least 2 members</p>
               </div>
             </div>
-
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* info banner */}
-              <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 12, padding: '11px 14px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                <AlertCircle size={15} color="#3b82f6" style={{ flexShrink: 0, marginTop: 1 }} />
-                <p style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 500, margin: 0, lineHeight: 1.55 }}>
-                  Enter the <strong>Karigar ID</strong> of the second member (format: K followed by digits, e.g. <code style={{ background: '#dbeafe', padding: '1px 6px', borderRadius: 5, fontSize: 11 }}>K531792</code>). You can add more members after creation.
-                </p>
+            
+            <div className="p-4 sm:p-5 flex flex-col gap-4">
+              {/* Info Banner */}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 sm:p-4 flex items-start gap-2 sm:gap-3">
+                <Shield size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs sm:text-sm text-blue-700 font-medium leading-relaxed">
+                    Enter the <strong>Karigar ID</strong> of the second member
+                  </p>
+                  <code className="inline-block mt-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono">
+                    K531792
+                  </code>
+                </div>
               </div>
 
-              {/* Karigar ID input */}
-              <Field label="Second Member's Karigar ID" required error={errors.memberKarigarId}>
-                <div style={{ position: 'relative' }}>
-                  <User size={15} color="#f97316" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <Field 
+                label="Second Member's Karigar ID" 
+                required 
+                error={errors.memberKarigarId}
+                icon={User}
+                hint="Format: K followed by 6+ digits"
+              >
+                <div className="relative">
+                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400 pointer-events-none" />
                   <input
-                    className="cg-input"
                     name="memberKarigarId"
                     value={form.memberKarigarId}
                     onChange={handleChange}
+                    onFocus={() => setFocusedField('karigarId')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="K123456"
-                    style={{
-                      ...inputBase,
-                      ...(errors.memberKarigarId ? inputError : {}),
-                      paddingLeft: 38,
-                      fontFamily: 'monospace',
-                      letterSpacing: '0.05em',
-                      textTransform: 'uppercase',
-                    }}
+                    autoCapitalize="characters"
+                    inputMode="text"
+                    className={`w-full pl-9 pr-3 py-3 border-2 rounded-xl text-sm font-mono font-semibold tracking-wider uppercase transition-all min-h-[48px] ${
+                      errors.memberKarigarId 
+                        ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-50'
+                        : focusedField === 'karigarId'
+                          ? 'border-orange-400 bg-white ring-4 ring-orange-50'
+                          : 'border-orange-200 bg-orange-50 focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-50'
+                    }`}
                   />
                 </div>
               </Field>
 
-              {/* Member preview (when valid) */}
-              {form.memberKarigarId && /^K\d+$/i.test(form.memberKarigarId.trim()) && (
-                <div style={{
-                  background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12,
-                  padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10,
-                  animation: 'cg-fadeUp 0.25s ease',
-                }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#22c55e,#4ade80)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <User size={14} color="#fff" />
+              {/* Valid Format Indicator */}
+              {form.memberKarigarId && !errors.memberKarigarId && isKarigarIdValid && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <CheckCircle size={14} className="text-white" />
                   </div>
+                  <div className="flex-1">
+                    <p className="text-xs sm:text-sm font-bold text-green-800">{form.memberKarigarId.toUpperCase()}</p>
+                    <p className="text-[10px] sm:text-[11px] text-green-600 font-medium">Valid format ✓</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Invalid Format Warning */}
+              {form.memberKarigarId && !errors.memberKarigarId && !isKarigarIdValid && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left">
+                  <AlertCircle size={14} className="text-amber-600 flex-shrink-0" />
                   <div>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', margin: 0 }}>{form.memberKarigarId.toUpperCase()}</p>
-                    <p style={{ fontSize: 11, color: '#16a34a', margin: 0, fontWeight: 500 }}>Valid format ✓</p>
+                    <p className="text-xs sm:text-sm font-medium text-amber-800">Invalid format</p>
+                    <p className="text-[10px] sm:text-[11px] text-amber-600">Karigar ID should start with K followed by digits</p>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* ══ Preview strip ══ */}
+          {/* Preview Section - Mobile Optimized */}
           {(form.name.trim() || form.memberKarigarId.trim()) && (
-            <div style={{
-              background: '#fff', borderRadius: 18, border: '1px solid #fed7aa',
-              padding: '16px 20px', boxShadow: '0 1px 10px rgba(251,146,60,0.07)',
-              animation: 'cg-fadeUp 0.3s ease',
-            }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 12 }}>
-                <Sparkles size={10} style={{ marginRight: 4 }} />
-                Group Preview
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border border-orange-100 p-4 sm:p-5 shadow-sm animate-in fade-in slide-in-from-bottom">
+              <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1">
+                <Sparkles size={10} /> Group Preview
               </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 46, height: 46, borderRadius: 13, background: 'linear-gradient(135deg,#f97316,#fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 3px 12px rgba(249,115,22,0.3)' }}>
-                  <Users size={20} color="#fff" />
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
+                  <Users size={20} className="text-white" />
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 16, fontWeight: 800, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {form.name.trim() || <span style={{ color: '#d1d5db' }}>Group name…</span>}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 text-sm sm:text-base truncate">
+                    {form.name.trim() || <span className="text-gray-300">Group name...</span>}
                   </p>
-                  {form.description.trim() && (
-                    <p style={{ fontSize: 12, color: '#6b7280', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {form.description.trim()}
-                    </p>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-                    <span style={{ background: '#fff7ed', color: '#c2410c', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #fed7aa' }}>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className="text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-orange-500 to-amber-500 text-white px-2 py-0.5 rounded-full shadow-sm">
                       You (Admin)
                     </span>
-                    {form.memberKarigarId.trim() && (
-                      <span style={{ background: '#f0fdf4', color: '#15803d', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, border: '1px solid #86efac' }}>
+                    {form.memberKarigarId.trim() && isKarigarIdValid && (
+                      <span className="text-[8px] sm:text-[9px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shadow-sm">
                         {form.memberKarigarId.toUpperCase()}
                       </span>
                     )}
+                    {form.memberKarigarId.trim() && !isKarigarIdValid && (
+                      <span className="text-[8px] sm:text-[9px] font-bold bg-red-400 text-white px-2 py-0.5 rounded-full shadow-sm">
+                        Invalid ID
+                      </span>
+                    )}
                   </div>
+                  {form.description && (
+                    <p className="text-[10px] sm:text-[11px] text-gray-500 mt-2 line-clamp-2">
+                      {form.description}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {/* ══ Submit button ══ */}
+          {/* Submit Button - Touch Optimized */}
           <button
             type="submit"
             disabled={loading || success}
-            className="cg-btn"
-            style={{
-              width: '100%', border: 'none', borderRadius: 16,
-              padding: '15px', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer',
-              background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-              boxShadow: '0 4px 16px rgba(249,115,22,0.28)',
-              transition: 'all 0.18s', fontFamily: 'inherit',
-              opacity: loading ? 0.7 : 1,
-            }}
+            className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-2 shadow-lg shadow-orange-200 hover:shadow-orange-300 disabled:opacity-60 transition-all min-h-[52px] active:scale-[0.98] hover:scale-[1.01]"
           >
-            {loading
-              ? <><div style={{ width: 18, height: 18, border: '2.5px solid rgba(255,255,255,0.35)', borderTop: '2.5px solid #fff', borderRadius: '50%', animation: 'cg-spin 0.7s linear infinite' }} />Creating Group…</>
-              : <><Users size={17} />Create Group</>
-            }
+            {loading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Creating Group...
+              </>
+            ) : (
+              <>
+                <Users size={18} />
+                Create Group
+              </>
+            )}
           </button>
 
-          {/* cancel link */}
-          <button type="button" onClick={() => navigate('/worker/my-groups')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', padding: '4px 0', transition: 'color 0.15s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#f97316'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#9ca3af'; }}
+          {/* Cancel Button */}
+          <button
+            type="button"
+            onClick={() => navigate('/worker/my-groups')}
+            className="text-gray-400 text-xs sm:text-sm font-semibold py-2 hover:text-orange-500 transition-colors active:scale-95"
           >
             Cancel — go back to My Groups
           </button>
-
         </form>
       </div>
+
+      {/* Add custom styles for animations */}
+      <style jsx>{`
+        @keyframes slide-in-from-top {
+          from {
+            transform: translateY(-100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes slide-in-from-left {
+          from {
+            transform: translateX(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes slide-in-from-bottom {
+          from {
+            transform: translateY(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        
+        .animate-in {
+          animation-duration: 0.3s;
+          animation-fill-mode: both;
+        }
+        
+        .slide-in-from-top {
+          animation-name: slide-in-from-top;
+        }
+        
+        .slide-in-from-left {
+          animation-name: slide-in-from-left;
+        }
+        
+        .slide-in-from-bottom {
+          animation-name: slide-in-from-bottom;
+        }
+        
+        .fade-in {
+          animation-name: fade-in;
+        }
+        
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+      `}</style>
     </div>
   );
 }

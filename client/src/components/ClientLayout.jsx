@@ -1,32 +1,35 @@
-// src/components/ClientLayout.jsx — UPDATED
-// Added: 'Browse Groups' nav item pointing to /client/groups
-// All original code preserved exactly
+// src/components/ClientLayout.jsx
+// MOBILE-FRIENDLY VERSION - Scrollable Bottom Navigation
 
-import React, { useState, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { getImageUrl } from '../constants/config';
 import * as api from '../api';
 import {
     LayoutDashboard, PlusSquare, Briefcase, Bot,
     User, LogOut, X, Menu, ChevronRight, Sparkles,
-    AlertTriangle, Users, Camera
+    AlertTriangle, Users, Camera, Home, Search, Settings,
+    Bell, ChevronLeft
 } from 'lucide-react';
 
 const navItems = [
-    { to: '/client/dashboard',  label: 'Dashboard',       icon: LayoutDashboard, desc: 'Overview & stats' },
-    { to: '/client/job-post',   label: 'Post a Job',      icon: PlusSquare,      desc: 'Create new listing' },
-    { to: '/client/job-manage', label: 'Manage Jobs',     icon: Briefcase,       desc: 'Track all postings' },
-    { to: '/client/ai-assist',  label: 'AI Scope Tool',   icon: Bot,             desc: 'Smart project planner' },
-    { to: '/client/groups',     label: 'Browse Groups',   icon: Users,           desc: 'Find worker teams' },   // NEW
-    { to: '/client/worker-face-verify', label: 'Verify Worker Face', icon: Camera, desc: 'Confirm assigned worker' },
-    { to: '/client/complaints', label: 'Complaints',      icon: AlertTriangle,   desc: 'Report worker issues' },
-    { to: '/client/profile',    label: 'My Profile',      icon: User,            desc: 'Account settings' },
+    { to: '/client/dashboard',  label: 'Dashboard',   icon: LayoutDashboard, desc: 'Overview & stats' },
+    { to: '/client/job-post',   label: 'Post Job',    icon: PlusSquare,      desc: 'Create new listing' },
+    { to: '/client/job-manage', label: 'Manage Jobs', icon: Briefcase,       desc: 'Track all postings' },
+    { to: '/client/ai-assist',  label: 'AI Tool',     icon: Bot,             desc: 'Smart project planner' },
+    { to: '/client/groups',     label: 'Groups',      icon: Users,           desc: 'Find worker teams' },
+    { to: '/client/worker-face-verify', label: 'Face Verify', icon: Camera,  desc: 'Verify worker identity' },
+    { to: '/client/complaints', label: 'Complaints',  icon: AlertTriangle,   desc: 'Report issues' },
+    { to: '/client/profile',    label: 'Profile',     icon: User,            desc: 'Account settings' },
 ];
 
 export default function ClientLayout() {
     const navigate = useNavigate();
+    const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [profile, setProfile]   = useState(null);
+    const [profile, setProfile] = useState(null);
+    const [showScrollHint, setShowScrollHint] = useState(true);
+    const bottomNavRef = useRef(null);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -41,6 +44,19 @@ export default function ClientLayout() {
             }
         };
         fetchProfile();
+    }, []);
+
+    // Check if bottom nav is scrollable
+    useEffect(() => {
+        const checkScrollable = () => {
+            if (bottomNavRef.current) {
+                const isScrollable = bottomNavRef.current.scrollWidth > bottomNavRef.current.clientWidth;
+                setShowScrollHint(isScrollable);
+            }
+        };
+        checkScrollable();
+        window.addEventListener('resize', checkScrollable);
+        return () => window.removeEventListener('resize', checkScrollable);
     }, []);
 
     const handleLogout = () => {
@@ -126,7 +142,7 @@ export default function ClientLayout() {
     );
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30">
+        <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30 pb-20 md:pb-0">
             {/* Desktop Sidebar */}
             <aside className="hidden md:flex flex-col w-64 bg-white border-r border-orange-100 shadow-sm fixed top-0 left-0 h-full z-20">
                 <SidebarContent onNavClick={undefined} />
@@ -140,7 +156,7 @@ export default function ClientLayout() {
             {/* Mobile Drawer */}
             <aside className={`md:hidden fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="absolute top-4 right-4 z-10">
-                    <button onClick={() => setMenuOpen(false)} className="p-2 bg-white/20 rounded-lg text-white hover:bg-white/30 transition-all">
+                    <button onClick={() => setMenuOpen(false)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-all">
                         <X size={18} />
                     </button>
                 </div>
@@ -149,22 +165,80 @@ export default function ClientLayout() {
 
             {/* Mobile Top Bar */}
             <div className="md:hidden fixed top-0 left-0 right-0 z-30 bg-white border-b border-orange-100 px-4 py-3 flex items-center justify-between shadow-sm">
-                <button onClick={() => setMenuOpen(true)} className="p-2 rounded-xl text-gray-600 hover:bg-orange-50 transition-all">
+                <button 
+                    onClick={() => setMenuOpen(true)} 
+                    className="p-2 rounded-xl text-gray-600 hover:bg-orange-50 transition-all active:bg-orange-100"
+                >
                     <Menu size={22} />
                 </button>
                 <div className="flex items-center gap-2">
                     <div className="w-7 h-7 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
                         <Sparkles size={14} className="text-white" />
                     </div>
-                    <span className="font-black text-orange-600 tracking-tighter">KARIGAR CONNECT</span>
+                    <span className="font-black text-orange-600 tracking-tighter text-sm">KARIGAR CONNECT</span>
                 </div>
                 <div className="w-9" />
+            </div>
+
+            {/* Mobile Bottom Navigation - Scrollable */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-orange-100 shadow-lg">
+                {/* Scroll Hint */}
+                {showScrollHint && (
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded-full opacity-70 whitespace-nowrap animate-pulse">
+                        ← Scroll for more →
+                    </div>
+                )}
+                
+                {/* Scrollable Navigation */}
+                <div 
+                    ref={bottomNavRef}
+                    className="overflow-x-auto overflow-y-hidden scrollbar-hide"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                    <div className="flex px-2 py-2 min-w-max">
+                        {navItems.map(({ to, label, icon: Icon }) => {
+                            const isActive = location.pathname === to;
+                            return (
+                                <NavLink
+                                    key={to}
+                                    to={to}
+                                    className={({ isActive }) =>
+                                        `flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all min-w-[64px] ${
+                                            isActive 
+                                                ? 'text-orange-600 bg-orange-50' 
+                                                : 'text-gray-400 hover:text-orange-500 hover:bg-orange-50/50'
+                                        }`
+                                    }
+                                >
+                                    <Icon size={20} className={isActive ? 'text-orange-500' : ''} />
+                                    <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-orange-600' : 'text-gray-500'}`}>
+                                        {label}
+                                    </span>
+                                    {isActive && (
+                                        <div className="w-1 h-1 bg-orange-500 rounded-full mt-0.5" />
+                                    )}
+                                </NavLink>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
             {/* Page Content */}
             <main className="flex-1 md:ml-64 min-h-screen pt-14 md:pt-0">
                 <Outlet />
             </main>
+
+            {/* Hide scrollbar styles */}
+            <style jsx>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                    display: none;
+                }
+                .scrollbar-hide {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
+                }
+            `}</style>
         </div>
     );
 }

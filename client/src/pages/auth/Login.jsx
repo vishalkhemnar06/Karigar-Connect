@@ -1,309 +1,356 @@
-import React, { useState } from 'react';
+// client/src/pages/auth/Login.jsx
+// UPDATED:
+//   - Shop owner login now on the SAME page (no separate route needed)
+//   - Fixed input re-render bug (all sub-components defined OUTSIDE Login)
+//   - Professional design with smooth role switching
+//   - All original worker/client/admin logic preserved
+
+import React, { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
+import { Store, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
-const Login = () => {
-    const [loginMethod, setLoginMethod] = useState('password');
-    const [role, setRole] = useState('worker');
-    const [mobile, setMobile] = useState('');
+// ─────────────────────────────────────────────────────────────────────────────
+// STABLE sub-components — defined OUTSIDE Login component so they are never
+// re-created on re-render, fixing the "must click input each time" bug.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TextInput = ({ label, type, placeholder, value, onChange,
+    required, maxLength, prefix, rightSlot }) => (
+    <div className="space-y-1.5">
+        {label && (
+            <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                {label}
+            </label>
+        )}
+        <div className="relative flex items-center">
+            {prefix && (
+                <span className="absolute left-4 text-gray-400 text-sm font-medium select-none pointer-events-none z-10">
+                    {prefix}
+                </span>
+            )}
+            <input
+                type={type || 'text'}
+                placeholder={placeholder}
+                value={value}
+                onChange={onChange}
+                required={required}
+                maxLength={maxLength}
+                autoComplete="off"
+                className={[
+                    'w-full border-2 rounded-xl py-3.5 pr-12 bg-gray-50 text-gray-900',
+                    'placeholder-gray-300 text-sm font-medium',
+                    'focus:border-orange-400 focus:ring-4 focus:ring-orange-50 focus:outline-none focus:bg-white',
+                    'transition-all duration-200',
+                    prefix ? 'pl-14' : 'pl-4',
+                    'border-gray-200',
+                ].join(' ')}
+            />
+            {rightSlot && (
+                <div className="absolute right-3 z-10">{rightSlot}</div>
+            )}
+        </div>
+    </div>
+);
+
+const MethodToggle = ({ method, onChange }) => (
+    <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+        {['password', 'otp'].map(m => (
+            <button key={m} type="button" onClick={() => onChange(m)}
+                className={[
+                    'flex-1 py-2 rounded-lg text-xs font-bold transition-all',
+                    method === m
+                        ? 'bg-white shadow text-orange-700 border border-orange-100'
+                        : 'text-gray-500 hover:text-orange-600',
+                ].join(' ')}>
+                {m === 'password' ? '🔑 Password' : '📱 OTP Login'}
+            </button>
+        ))}
+    </div>
+);
+
+const SubmitBtn = ({ loading, gradient, children }) => (
+    <button type="submit" disabled={loading}
+        className={[
+            'w-full bg-gradient-to-r text-white py-3.5 rounded-xl font-black text-sm',
+            'hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            'flex items-center justify-center gap-2',
+            gradient,
+        ].join(' ')}>
+        {loading ? (
+            <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Logging in...</span>
+            </>
+        ) : children}
+    </button>
+);
+
+// ── Standard login (worker / client / admin) ──────────────────────────────────
+const StandardForm = ({ role, gradient, onSuccess }) => {
+    const [method, setMethod]     = useState('password');
+    const [mobile, setMobile]     = useState('');
     const [password, setPassword] = useState('');
-    const [otp, setOtp] = useState('');
-    const [otpSent, setOtpSent] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const navigate = useNavigate();
+    const [showPwd, setShowPwd]   = useState(false);
+    const [otp, setOtp]           = useState('');
+    const [otpSent, setOtpSent]   = useState(false);
+    const [loading, setLoading]   = useState(false);
 
-    // Role-based images for the main display
-    const roleImages = {
-        worker: "https://thumbs.dreamstime.com/b/workers-group-people-tools-car-mechanic-painter-handyman-79544094.jpg",
-        client: "https://www.shutterstock.com/image-photo/professional-mature-business-woman-manager-600nw-2424450135.jpg",
-        admin: "https://images.unsplash.com/photo-1568992687947-868a62a9f521?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1032&q=80"
-    };
+    const onMobileChange   = useCallback(e => setMobile(e.target.value), []);
+    const onPasswordChange = useCallback(e => setPassword(e.target.value), []);
+    const onOtpChange      = useCallback(e => setOtp(e.target.value), []);
+    const togglePwd        = useCallback(() => setShowPwd(v => !v), []);
+    const handleMethodChange = useCallback(m => setMethod(m), []);
 
-    // Role-based small icons
-    const roleIcons = {
-        worker: "https://static.thenounproject.com/png/215121-200.png",
-        client: "https://png.pngtree.com/png-clipart/20231220/original/pngtree-customer-icon-client-intensive-red-photo-png-image_13895659.png",
-        admin: "https://www.pngmart.com/files/21/Admin-Profile-Vector-PNG-Photo.png"
-    };
-
-    // Role-based gradients
-    const roleGradients = {
-        worker: "from-orange-500 to-orange-600",
-        client: "from-orange-500 to-amber-500",
-        admin: "from-amber-500 to-orange-700"
-    };
-
-    const handleRoleChange = (newRole) => {
-        setRole(newRole);
-        if (newRole === 'admin') {
-            setLoginMethod('password');
-        }
-    };
-
-    const handleLogin = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
-        const toastId = toast.loading('Logging in...');
-        try {
-            let data;
-            if (loginMethod === 'password') {
-                const response = await api.loginWithPassword({ role, mobile, password });
-                data = response.data;
-            } else {
-                const response = await api.loginWithOtp({ role, mobile, otp });
-                data = response.data;
-            }
-           
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('role', data.user.role);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            toast.success('Login Successful!', { id: toastId });
-
-            if (data.user.role === 'admin') {
-                navigate('/admin/dashboard');
-            } else if (data.user.role === 'worker') {
-                navigate('/worker/dashboard');
-            } else {
-                navigate('/client/dashboard');
-            }
-
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Login Failed', { id: toastId });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-   
-    const handleSendOtp = async () => {
-        if (!mobile || mobile.length !== 10) return toast.error('Please enter a valid 10-digit mobile number');
-        setIsLoading(true);
-        const toastId = toast.loading('Sending OTP...');
+    const sendOtp = useCallback(async () => {
+        if (!mobile || mobile.length !== 10) return toast.error('Enter valid 10-digit mobile.');
+        setLoading(true);
         try {
             await api.sendOtp({ mobile });
             setOtpSent(true);
-            toast.success('OTP sent to your mobile!', { id: toastId });
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to send OTP', { id: toastId });
-        } finally {
-            setIsLoading(false);
-        }
-    };
+            toast.success('OTP sent to your mobile!');
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Failed to send OTP.');
+        } finally { setLoading(false); }
+    }, [mobile]);
+
+    const handleSubmit = useCallback(async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const tid = toast.loading('Logging in...');
+        try {
+            const res = method === 'password'
+                ? await api.loginWithPassword({ role, mobile, password })
+                : await api.loginWithOtp({ role, mobile, otp });
+            const { data } = res;
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('role', data.user.role);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            toast.success('Login successful!', { id: tid });
+            onSuccess(data.user.role);
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Login failed.', { id: tid });
+        } finally { setLoading(false); }
+    }, [role, mobile, password, otp, method, onSuccess]);
 
     return (
-        <div className="min-h-screen flex bg-gradient-to-br from-orange-50 via-white to-orange-100">
-            {/* Left side - Form */}
-            <div className="w-full lg:w-2/5 flex items-center justify-center p-4 lg:p-8">
-                <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-orange-200">
-                    {/* Form header with gradient based on role */}
-                    <div className={`bg-gradient-to-r ${roleGradients[role]} py-6 px-8 text-center relative overflow-hidden`}>
-                        <div className="absolute inset-0 bg-white/20"></div>
-                        <div className="relative z-10 flex items-center justify-center">
-                            <img
-                                src={roleIcons[role]}
-                                alt={role}
-                                className="w-12 h-12 mr-3 filter brightness-0 invert"
-                            />
-                            <div>
-                                <h1 className="text-3xl font-bold text-white drop-shadow-md">Welcome Back</h1>
-                                <p className="text-white/90 mt-1">Login to your KarigarConnect account</p>
-                            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <TextInput label="Mobile Number" type="tel" placeholder="10-digit mobile"
+                value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91" />
+
+            {role !== 'admin' && <MethodToggle method={method} onChange={handleMethodChange} />}
+
+            {method === 'password' ? (
+                <>
+                    <TextInput
+                        label="Password" type={showPwd ? 'text' : 'password'}
+                        placeholder="Enter your password"
+                        value={password} onChange={onPasswordChange} required
+                        rightSlot={
+                            <button type="button" onClick={togglePwd}
+                                className="text-gray-400 hover:text-gray-700 p-1">
+                                {showPwd ? <EyeOff size={15}/> : <Eye size={15}/>}
+                            </button>
+                        }
+                    />
+                    {role !== 'admin' && (
+                        <div className="text-right -mt-2">
+                            <Link to="/forgot-password"
+                                className="text-xs text-orange-500 hover:text-orange-700 font-semibold">
+                                Forgot Password?
+                            </Link>
                         </div>
+                    )}
+                </>
+            ) : (
+                <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                        <TextInput label="OTP" type="text" placeholder="6-digit OTP"
+                            value={otp} onChange={onOtpChange} required maxLength={6} />
                     </div>
-                   
-                    <div className="p-8">
-                        <form onSubmit={handleLogin} className="space-y-6">
-                            {/* Role Selection */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-3">I am a</label>
-                                <div className="grid grid-cols-3 gap-3">
-                                    {['worker', 'client', 'admin'].map((r) => (
-                                        <button
-                                            key={r}
-                                            type="button"
-                                            onClick={() => handleRoleChange(r)}
-                                            className={`py-3 px-2 rounded-xl border text-sm font-medium transition-all duration-300 transform flex flex-col items-center ${
-                                                role === r
-                                                    ? `bg-gradient-to-b ${roleGradients[r]} border-orange-300 text-white scale-105 shadow-lg`
-                                                    : 'bg-white border-orange-200 text-gray-700 hover:bg-orange-50'
-                                            }`}
-                                        >
-                                            <img
-                                                src={roleIcons[r]}
-                                                alt={r}
-                                                className="w-6 h-6 mb-1 filter brightness-0 opacity-100"
-                                            />
-                                            {r.charAt(0).toUpperCase() + r.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                    <button type="button" onClick={sendOtp} disabled={loading}
+                        className="shrink-0 px-4 py-3.5 bg-orange-100 hover:bg-orange-200 text-orange-700
+                            rounded-xl text-xs font-bold border border-orange-200 disabled:opacity-50 transition-all whitespace-nowrap">
+                        {otpSent ? 'Resend' : 'Send OTP'}
+                    </button>
+                </div>
+            )}
 
-                            {/* Mobile Input with Send OTP Button */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Mobile Number</label>
-                                <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
-                                    <div className="relative flex-1">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <span className="text-gray-500">+91</span>
-                                        </div>
-                                        <input
-                                            type="tel"
-                                            placeholder="Enter your registered mobile number"
-                                            value={mobile}
-                                            onChange={(e) => setMobile(e.target.value)}
-                                            required
-                                            className="block w-full pl-12 pr-4 py-3 bg-orange-50 border border-orange-200 rounded-lg text-gray-800 placeholder-orange-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
-                                            maxLength="10"
-                                        />
-                                    </div>
-                                    {loginMethod === 'otp' && (
-                                        <button
-                                            type="button"
-                                            onClick={handleSendOtp}
-                                            disabled={isLoading || !mobile || mobile.length !== 10}
-                                            className="px-4 py-3 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 hover:text-orange-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap border border-orange-200 font-medium sm:w-auto"
-                                        >
-                                            {otpSent ? 'Resend OTP' : 'Send OTP'}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                           
-                            {/* Login Method Toggle */}
-                            {role !== 'admin' && (
-                                <div className="flex bg-orange-100 rounded-xl p-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setLoginMethod('password')}
-                                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-                                            loginMethod === 'password'
-                                                ? 'bg-white text-orange-700 shadow-md border border-orange-200'
-                                                : 'text-orange-600 hover:text-orange-800'
-                                        }`}
-                                    >
-                                        Password
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setLoginMethod('otp')}
-                                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-                                            loginMethod === 'otp'
-                                                ? 'bg-white text-orange-700 shadow-md border border-orange-200'
-                                                : 'text-orange-600 hover:text-orange-800'
-                                        }`}
-                                    >
-                                        OTP Login
-                                    </button>
-                                </div>
-                            )}
+            <SubmitBtn loading={loading} gradient={`from-${gradient}-500 to-${gradient}-600`}>
+                <span>Login to Account</span><ArrowRight size={15}/>
+            </SubmitBtn>
+        </form>
+    );
+};
 
-                            {/* Password or OTP Input */}
-                            {loginMethod === 'password' ? (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                                    <input
-                                        type="password"
-                                        placeholder="Enter your password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        className="block w-full px-4 py-3 bg-orange-50 border border-orange-200 rounded-lg text-gray-800 placeholder-orange-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
-                                    />
-                                    {role !== 'admin' && (
-                                        <div className="text-right mt-2">
-                                            <Link to="/forgot-password" className="text-sm text-orange-600 hover:text-orange-800 transition-colors">
-                                                Forgot Password?
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">One-Time Password (OTP)</label>
-                                    <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
-                                        <input
-                                            type="text"
-                                            placeholder="Enter 6-digit OTP"
-                                            value={otp}
-                                            onChange={(e) => setOtp(e.target.value)}
-                                            required
-                                            className="block flex-1 px-4 py-3 bg-orange-50 border border-orange-200 rounded-lg text-gray-800 placeholder-orange-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
-                                            maxLength="6"
-                                        />
-                                        <button
-                                            type="submit"
-                                            disabled={isLoading}
-                                            className="px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap border border-orange-500 font-medium sm:w-auto"
-                                        >
-                                            Verify OTP
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+// ── Shop owner login form ─────────────────────────────────────────────────────
+const ShopForm = ({ onSuccess }) => {
+    const [mobile, setMobile]     = useState('');
+    const [password, setPassword] = useState('');
+    const [showPwd, setShowPwd]   = useState(false);
+    const [loading, setLoading]   = useState(false);
 
-                            {/* Login Button (only show for password login) */}
-                            {loginMethod === 'password' && (
-                                <button
-                                    type="submit"
-                                    disabled={isLoading}
-                                    className={`w-full bg-gradient-to-r ${roleGradients[role]} text-white py-3 px-4 rounded-xl font-bold hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed`}
-                                >
-                                    {isLoading ? (
-                                        <span className="flex items-center justify-center">
-                                            <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            Logging in...
-                                        </span>
-                                    ) : (
-                                        'Login to Account'
-                                    )}
-                                </button>
-                            )}
-                        </form>
-                       
-                        {/* Register Link */}
-                        <div className="mt-6 text-center">
-                            <p className="text-sm text-gray-600">
-                                Don't have an account?{' '}
-                                <Link to="/register" className="font-bold text-orange-600 hover:text-orange-800 transition-colors">
-                                    Register now
-                                </Link>
-                            </p>
-                        </div>
+    const onMobileChange   = useCallback(e => setMobile(e.target.value), []);
+    const onPasswordChange = useCallback(e => setPassword(e.target.value), []);
+    const togglePwd        = useCallback(() => setShowPwd(v => !v), []);
+
+    const handleSubmit = useCallback(async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const tid = toast.loading('Logging in...');
+        try {
+            const { data } = await api.shopLogin({ mobile, password });
+            localStorage.setItem('shopToken', data.token);
+            localStorage.setItem('shopRole', 'shop');
+            localStorage.setItem('shop', JSON.stringify(data.shop));
+            toast.success('Login successful!', { id: tid });
+            onSuccess('shop');
+        } catch (e) {
+            toast.error(e.response?.data?.message || 'Login failed.', { id: tid });
+        } finally { setLoading(false); }
+    }, [mobile, password, onSuccess]);
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <TextInput label="Registered Mobile" type="tel" placeholder="Shop mobile number"
+                value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91" />
+            <TextInput
+                label="Password" type={showPwd ? 'text' : 'password'}
+                placeholder="Enter your password"
+                value={password} onChange={onPasswordChange} required
+                rightSlot={
+                    <button type="button" onClick={togglePwd}
+                        className="text-gray-400 hover:text-gray-700 p-1">
+                        {showPwd ? <EyeOff size={15}/> : <Eye size={15}/>}
+                    </button>
+                }
+            />
+            <SubmitBtn loading={loading} gradient="from-teal-500 to-emerald-600">
+                <Store size={16}/><span>Login to Shop Dashboard</span>
+            </SubmitBtn>
+            <p className="text-center text-xs text-gray-500">
+                New shop?{' '}
+                <Link to="/shop/register" className="text-teal-600 font-bold hover:underline">
+                    Register your shop
+                </Link>
+            </p>
+        </form>
+    );
+};
+
+// ── Role config ───────────────────────────────────────────────────────────────
+const ROLES = [
+    { key: 'worker', label: 'Karigar',  emoji: '🔨', color: 'orange',  headerGrad: 'from-orange-500 to-orange-600' },
+    { key: 'client', label: 'Client',   emoji: '👤', color: 'amber',   headerGrad: 'from-amber-500 to-orange-500'  },
+    { key: 'admin',  label: 'Admin',    emoji: '🛡️', color: 'gray',    headerGrad: 'from-gray-700 to-gray-900'     },
+    { key: 'shop',   label: 'Shop',     emoji: null,  color: 'teal',    headerGrad: 'from-teal-500 to-emerald-600'  },
+];
+
+const IMAGES = {
+    worker: 'https://thumbs.dreamstime.com/b/workers-group-people-tools-car-mechanic-painter-handyman-79544094.jpg',
+    client: 'https://www.shutterstock.com/image-photo/professional-mature-business-woman-manager-600nw-2424450135.jpg',
+    admin:  'https://images.unsplash.com/photo-1568992687947-868a62a9f521?auto=format&fit=crop&w=1032&q=80',
+    shop:   'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1032&q=80',
+};
+
+const HEADLINES = {
+    worker: ['Skilled Workers Platform',  'Connect with clients and grow your business'],
+    client: ['Find Trusted Professionals','Hire verified professionals for all your needs'],
+    admin:  ['Admin Management Portal',   'Manage the platform and ensure smooth operations'],
+    shop:   ['Partner Shop Portal',       'Sell tools to verified workers with exclusive discounts'],
+};
+
+// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
+const Login = () => {
+    const navigate  = useNavigate();
+    const [role, setRole] = useState('worker');
+
+    const handleRoleChange = useCallback(key => setRole(key), []);
+    const handleSuccess = useCallback(userRole => {
+        const paths = { admin: '/admin/dashboard', worker: '/worker/dashboard', shop: '/shop/dashboard' };
+        navigate(paths[userRole] || '/client/dashboard');
+    }, [navigate]);
+
+    const current = ROLES.find(r => r.key === role);
+    const [hl, sub] = HEADLINES[role];
+
+    return (
+        <div className="min-h-screen flex bg-white">
+            {/* ── LEFT ── */}
+            <div className="w-full lg:w-[44%] flex flex-col justify-center px-6 py-10 lg:px-12 bg-gradient-to-br from-orange-50 to-white">
+                {/* Brand */}
+                <div className="mb-8">
+                    <div className="inline-flex items-center gap-2 bg-orange-100 px-3 py-1.5 rounded-full mb-4">
+                        <span className="text-orange-600 text-xs font-black uppercase tracking-widest">KarigarConnect</span>
                     </div>
+                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">Welcome back 👋</h1>
+                    <p className="text-gray-500 text-sm mt-1">Sign in to your account to continue</p>
+                </div>
+
+                {/* Role selector */}
+                <div className="grid grid-cols-4 gap-2 mb-6">
+                    {ROLES.map(r => (
+                        <button
+                            key={r.key}
+                            type="button"
+                            onClick={() => handleRoleChange(r.key)}
+                            className={[
+                                'flex flex-col items-center gap-1.5 py-3 px-1 rounded-2xl border-2 text-[11px] font-black',
+                                'transition-all duration-200 select-none',
+                                role === r.key
+                                    ? `bg-gradient-to-b ${r.headerGrad} border-transparent text-white shadow-lg scale-105`
+                                    : 'bg-white border-gray-100 text-gray-500 hover:border-orange-200 hover:bg-orange-50',
+                            ].join(' ')}>
+                            {r.key === 'shop'
+                                ? <Store size={18} className={role === r.key ? 'text-white' : 'text-teal-500'} />
+                                : <span className="text-lg leading-none">{r.emoji}</span>
+                            }
+                            {r.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Form card */}
+                <div className="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
+                    <div className={`bg-gradient-to-r ${current.headerGrad} px-6 py-4`}>
+                        <h2 className="text-white font-black text-base">
+                            {role === 'shop' ? 'Shop Owner Login' :
+                             role === 'admin' ? 'Admin Portal' :
+                             role === 'worker' ? 'Karigar Login' : 'Client Login'}
+                        </h2>
+                        <p className="text-white/60 text-xs mt-0.5">
+                            {role === 'shop' ? 'Access your shop dashboard' : 'Enter your credentials to continue'}
+                        </p>
+                    </div>
+                    <div className="p-6">
+                        {role === 'shop'
+                            ? <ShopForm onSuccess={handleSuccess} />
+                            : <StandardForm role={role} gradient={current.color} onSuccess={handleSuccess} />
+                        }
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="mt-5 text-center">
+                    <p className="text-sm text-gray-600">
+                        Don't have an account?{' '}
+                        <Link to="/register" className="font-bold text-orange-600 hover:text-orange-800">Register now</Link>
+                    </p>
                 </div>
             </div>
 
-            {/* Right side - Image based on role */}
-            <div className="hidden lg:flex lg:w-3/5 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-l from-orange-100/80 via-transparent to-transparent z-10"></div>
-                <div className="absolute inset-0 bg-gradient-to-t from-orange-100/50 to-transparent z-10"></div>
-                
-                {/* Image container with improved styling */}
-                <div className="w-full h-full flex items-center justify-center p-12">
-                    <div className="relative w-full h-150 rounded-3xl overflow-hidden">
-                        <img
-                            src={roleImages[role]}
-                            alt={role}
-                            className="w-full h-full object-cover rounded-3xl"
-                        />
-                        
-                        {/* Text overlay */}
-                        <div className="absolute bottom-8 left-8 z-20 text-gray-800 max-w-md">
-                            <h2 className="text-4xl font-bold mb-3 bg-white/80 backdrop-blur-sm p-4 rounded-xl">
-                                {role === 'worker' && 'Skilled Workers Platform'}
-                                {role === 'client' && 'Find Trusted Professionals'}
-                                {role === 'admin' && 'Admin Management Portal'}
-                            </h2>
-                            <p className="text-xl bg-white/80 backdrop-blur-sm p-4 rounded-xl">
-                                {role === 'worker' && 'Connect with clients and grow your business'}
-                                {role === 'client' && 'Hire verified professionals for all your needs'}
-                                {role === 'admin' && 'Manage the platform and ensure smooth operations'}
-                            </p>
-                        </div>
+            {/* ── RIGHT ── */}
+            <div className="hidden lg:block lg:flex-1 relative overflow-hidden">
+                <img src={IMAGES[role]} alt={role}
+                    className="absolute inset-0 w-full h-full object-cover transition-all duration-700" />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                <div className="relative z-10 h-full flex items-end p-14">
+                    <div className="max-w-md">
+                        <h2 className="text-5xl font-black text-white leading-tight mb-4">{hl}</h2>
+                        <p className="text-white/70 text-lg leading-relaxed">{sub}</p>
                     </div>
                 </div>
             </div>

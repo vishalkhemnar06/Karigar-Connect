@@ -1,38 +1,14 @@
 // src/pages/client/ClientDashboard.jsx
-// ─────────────────────────────────────────────────────────────────────────────
-// BUGS FIXED:
-//   1. DOUBLE SIDEBAR — Component had its own <aside> + full-page flex layout,
-//      but ClientLayout already wraps it with a sidebar via <Outlet />.
-//      FIX: Removed ALL layout chrome (aside, header, flex wrapper, mobile overlay).
-//      This file now renders ONLY the main content area.
-//
-//   2. `toastId` referenced but never defined in the catch block → ReferenceError.
-//      FIX: Removed toastId reference entirely; using self-contained toast.
-//
-//   3. `getImageUrl()` called in KarigarCard without a valid import when photos
-//      are Cloudinary URLs (not local paths) → broken images.
-//      FIX: Use karigar.photo directly with an initials fallback on error.
-//
-//   4. Availability badge always showed "Available" regardless of DB value.
-//      FIX: Badge reflects karigar.availability boolean from real data.
-//
-//   5. Sequential API calls (await client, then await karigars).
-//      FIX: Promise.allSettled for true parallel fetching.
-//
-//   6. skills array entries can be objects {name, proficiency} OR plain strings.
-//      FIX: (sk.name || sk) used everywhere for safe skill name access.
-//
-//   7. "View Profile" link used karigar._id (MongoDB ObjectId) but the public
-//      profile route /profile/public/:workerId expects a karigarId string
-//      like "K736300". FIX: Changed to karigar.karigarId.
-// ─────────────────────────────────────────────────────────────────────────────
+// MOBILE-FRIENDLY VERSION
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api';
+import { getImageUrl } from '../../constants/config';
 import {
   Search, MapPin, Award, Filter, CheckCircle,
   Star, X, RefreshCw, Briefcase, Users, ChevronRight, TrendingUp,
+  Phone, Mail, Clock, Calendar, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 /* ════════════════════════════════════════════
@@ -52,7 +28,7 @@ const SKILLS = [
 ];
 
 /* ════════════════════════════════════════════
-   TOAST  (no external dep)
+   TOAST
 ════════════════════════════════════════════ */
 let _tid = 0;
 const useToast = () => {
@@ -66,15 +42,11 @@ const useToast = () => {
 };
 
 const ToastList = ({ toasts }) => (
-  <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+  <div className="fixed top-3 right-3 left-3 sm:left-auto sm:right-5 sm:top-5 z-[9999] flex flex-col gap-2 pointer-events-none">
     {toasts.map(t => (
-      <div key={t.id} style={{
-        background: t.type === 'error' ? '#ef4444' : '#22c55e',
-        color: '#fff', padding: '11px 18px', borderRadius: 12, fontWeight: 700,
-        fontSize: 13, boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-        display: 'flex', alignItems: 'center', gap: 8, minWidth: 200,
-        fontFamily: 'inherit', animation: 'cd-in 0.3s ease',
-      }}>
+      <div key={t.id} className={`px-4 py-3 rounded-xl font-bold text-sm text-white shadow-xl animate-in slide-in-from-right ${
+        t.type === 'error' ? 'bg-red-500' : 'bg-green-500'
+      }`}>
         {t.type === 'success' ? '✓' : '✕'} {t.msg}
       </div>
     ))}
@@ -82,179 +54,174 @@ const ToastList = ({ toasts }) => (
 );
 
 /* ════════════════════════════════════════════
-   SKELETON
-════════════════════════════════════════════ */
-const Skel = ({ h = 300, r = 18 }) => (
-  <div style={{
-    height: h, borderRadius: r,
-    background: 'linear-gradient(90deg,#fff7ed 25%,#ffedd5 50%,#fff7ed 75%)',
-    backgroundSize: '200% 100%', animation: 'cd-shimmer 1.4s infinite',
-  }} />
-);
-
-/* ════════════════════════════════════════════
-   STAT CARD
+   STAT CARD - Mobile Optimized
 ════════════════════════════════════════════ */
 const StatCard = ({ icon: Icon, grad, label, value, sub }) => (
-  <div style={{
-    background: '#fff', borderRadius: 16, padding: '16px 18px',
-    border: '1px solid #fed7aa', boxShadow: '0 1px 10px rgba(251,146,60,0.07)',
-    display: 'flex', alignItems: 'center', gap: 14, flex: '1 1 140px',
-    transition: 'transform 0.18s, box-shadow 0.18s',
-  }}
-    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 22px rgba(251,146,60,0.15)'; }}
-    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 10px rgba(251,146,60,0.07)'; }}
-  >
-    <div style={{ width: 44, height: 44, borderRadius: 13, background: grad, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 3px 12px rgba(249,115,22,0.25)' }}>
-      <Icon size={20} color="#fff" />
-    </div>
-    <div style={{ minWidth: 0 }}>
-      <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{label}</p>
-      <p style={{ fontSize: 24, fontWeight: 900, color: '#111827', margin: '2px 0 0', lineHeight: 1 }}>{value}</p>
-      {sub && <p style={{ fontSize: 11, color: '#6b7280', margin: '3px 0 0', fontWeight: 500 }}>{sub}</p>}
+  <div className="bg-white rounded-2xl p-3 sm:p-4 border border-orange-100 shadow-sm hover:shadow-md transition-all">
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md" style={{ background: grad }}>
+        <Icon size={18} className="text-white" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-wider">{label}</p>
+        <p className="text-lg sm:text-2xl font-black text-gray-900 leading-tight">{value}</p>
+        {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
+      </div>
     </div>
   </div>
 );
 
 /* ════════════════════════════════════════════
-   KARIGAR CARD
+   KARIGAR CARD - Mobile Optimized
 ════════════════════════════════════════════ */
 const KarigarCard = ({ karigar, idx }) => {
   const [imgErr, setImgErr] = useState(false);
-  const initials  = (karigar.name || 'K').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const [expanded, setExpanded] = useState(false);
+  const initials = (karigar.name || 'K').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const isAvailable = karigar.availability !== false;
-  const rating    = karigar.avgStars || 0;
-  const skills    = karigar.skills || [];
+  const rating = karigar.avgStars || 0;
+  const skills = karigar.skills || [];
 
   return (
-    <div style={{
-      background: '#fff', borderRadius: 20, border: '1px solid #fed7aa',
-      overflow: 'hidden', boxShadow: '0 2px 14px rgba(251,146,60,0.07)',
-      display: 'flex', flexDirection: 'column',
-      transition: 'transform 0.2s, box-shadow 0.2s',
-      animation: `cd-fadeUp 0.4s ease ${Math.min(idx * 0.05, 0.5)}s both`,
-    }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 14px 40px rgba(251,146,60,0.18)'; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 14px rgba(251,146,60,0.07)'; }}
-    >
-      {/* ── Photo ── */}
-      <div style={{ position: 'relative', paddingTop: '100%', background: 'linear-gradient(135deg,#fff7ed,#ffedd5)', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: 0 }}>
-          {karigar.photo && !imgErr
-            ? <img src={karigar.photo} alt={karigar.name} onError={() => setImgErr(true)}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#ffedd5,#fff7ed)' }}>
-                <span style={{ fontSize: 46, fontWeight: 900, color: '#fb923c' }}>{initials}</span>
-              </div>
-          }
-        </div>
-
-        {/* Experience badge */}
-        <div style={{ position: 'absolute', bottom: 10, left: 10, background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 99, boxShadow: '0 2px 8px rgba(249,115,22,0.4)', zIndex: 1 }}>
+    <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-all">
+      {/* Photo Section */}
+      <div className="relative pt-[100%] bg-gradient-to-br from-orange-50 to-amber-50">
+        <div className="absolute inset-0">
+  {karigar.photo && !imgErr ? (
+    <img
+      src={getImageUrl(karigar.photo)}
+      alt={karigar.name}
+      onError={() => setImgErr(true)}
+      className="w-full h-full object-cover"
+    />
+  ) : (
+    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100">
+      <span className="text-4xl sm:text-5xl font-black text-orange-400">
+        {initials}
+      </span>
+    </div>
+  )}
+</div>
+        
+        {/* Experience Badge */}
+        <div className="absolute bottom-2 left-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full shadow-md">
           {karigar.experience || 0}+ yrs exp
         </div>
-
-        {/* Availability badge */}
-        <div style={{ position: 'absolute', top: 10, right: 10, background: isAvailable ? '#22c55e' : '#9ca3af', color: '#fff', fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 99, display: 'flex', alignItems: 'center', gap: 4, boxShadow: '0 2px 8px rgba(0,0,0,0.18)', zIndex: 1 }}>
-          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff', animation: isAvailable ? 'cd-pulse 1.5s infinite' : 'none' }} />
+        
+        {/* Availability Badge */}
+        <div className={`absolute top-2 right-2 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 ${
+          isAvailable ? 'bg-green-500' : 'bg-gray-500'
+        }`}>
+          <div className={`w-1.5 h-1.5 rounded-full bg-white ${isAvailable ? 'animate-pulse' : ''}`} />
           {isAvailable ? 'Available' : 'Busy'}
         </div>
-
-        {/* hover tint overlay */}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.08), transparent)', pointerEvents: 'none' }} />
       </div>
 
-      {/* ── Content ── */}
-      <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Name + location */}
+      {/* Content */}
+      <div className="p-3 sm:p-4 space-y-2">
+        {/* Name & Location */}
         <div>
-          <h3 style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {karigar.name}
-          </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
-            <MapPin size={12} color="#f97316" />
-            <span style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <h3 className="font-bold text-gray-900 text-sm sm:text-base truncate">{karigar.name}</h3>
+          <div className="flex items-center gap-1 mt-0.5">
+            <MapPin size={12} className="text-orange-500 flex-shrink-0" />
+            <span className="text-[11px] sm:text-xs text-gray-500 truncate">
               {karigar.address?.city || 'Location not set'}
             </span>
           </div>
         </div>
 
-        {/* Stars */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{ display: 'flex', gap: 2 }}>
+        {/* Rating */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex gap-0.5">
             {[1, 2, 3, 4, 5].map(s => (
-              <Star key={s} size={12} color={s <= rating ? '#f59e0b' : '#e5e7eb'} fill={s <= rating ? '#f59e0b' : 'none'} />
+              <Star key={s} size={12} className={s <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'} />
             ))}
           </div>
-          <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>
+          <span className="text-[10px] sm:text-xs font-semibold text-gray-500">
             {rating > 0 ? rating.toFixed(1) : 'New'}
           </span>
         </div>
 
         {/* Skills */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        <div className="flex flex-wrap gap-1.5">
           {skills.slice(0, 2).map((sk, i) => (
-            <span key={i} style={{ background: '#fff7ed', color: '#c2410c', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 99, border: '1px solid #fed7aa' }}>
+            <span key={i} className="text-[9px] sm:text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
               {sk.name || sk}
             </span>
           ))}
           {skills.length > 2 && (
-            <span style={{ background: '#f3f4f6', color: '#6b7280', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 99 }}>
-              +{skills.length - 2} more
+            <span className="text-[9px] sm:text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
+              +{skills.length - 2}
             </span>
           )}
-          {!skills.length && <span style={{ color: '#9ca3af', fontSize: 11 }}>No skills listed</span>}
         </div>
 
         {/* Karigar ID */}
         {karigar.karigarId && (
-          <p style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', margin: 0, fontWeight: 600 }}>
+          <p className="text-[9px] sm:text-[10px] text-gray-400 font-mono font-semibold">
             {karigar.karigarId}
           </p>
         )}
 
-        {/* Rank + Points */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 99, padding: '3px 9px' }}>
-            <Award size={10} color="#f97316" />
-            <span style={{ fontSize: 10, fontWeight: 800, color: '#c2410c' }}>#{karigar.rank || idx + 1}</span>
+        {/* Rank & Points */}
+        <div className="flex gap-2">
+          <div className="flex items-center gap-1 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
+            <Award size={10} className="text-orange-500" />
+            <span className="text-[9px] sm:text-[10px] font-bold text-orange-600">#{karigar.rank || idx + 1}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 99, padding: '3px 9px' }}>
-            <TrendingUp size={10} color="#d97706" />
-            <span style={{ fontSize: 10, fontWeight: 800, color: '#b45309' }}>{karigar.points || 0} pts</span>
+          <div className="flex items-center gap-1 bg-yellow-50 px-2 py-0.5 rounded-full border border-yellow-200">
+            <TrendingUp size={10} className="text-yellow-600" />
+            <span className="text-[9px] sm:text-[10px] font-bold text-yellow-700">{karigar.points || 0} pts</span>
           </div>
         </div>
 
-        {/* CTA buttons */}
-        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {/* Expandable Details */}
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between pt-2 text-gray-500 hover:text-orange-600 transition-colors"
+        >
+          <span className="text-[10px] font-semibold">More Details</span>
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+
+        {expanded && (
+          <div className="space-y-2 pt-1 border-t border-gray-100">
+            {karigar.experience && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <Clock size={12} className="text-gray-400" />
+                <span className="text-gray-600">{karigar.experience} years experience</span>
+              </div>
+            )}
+            {karigar.email && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <Mail size={12} className="text-gray-400" />
+                <span className="text-gray-600 truncate">{karigar.email}</span>
+              </div>
+            )}
+            {karigar.workHours && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <Calendar size={12} className="text-gray-400" />
+                <span className="text-gray-600">{karigar.workHours}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex gap-2 pt-2">
           {karigar.mobile && (
-            <a href={`tel:${karigar.mobile}`}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                background: 'linear-gradient(135deg,#22c55e,#4ade80)', color: '#fff',
-                borderRadius: 12, padding: '9px 14px', fontSize: 12, fontWeight: 800,
-                textDecoration: 'none', boxShadow: '0 2px 10px rgba(34,197,94,0.28)',
-                transition: 'opacity 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            <a
+              href={`tel:${karigar.mobile}`}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
             >
-              Contact Now
+              <Phone size={12} /> Contact
             </a>
           )}
-          {/* FIX 7: was karigar._id (MongoDB ObjectId) — route expects karigarId like "K736300" */}
-          <Link to={`/profile/public/${karigar.karigarId}`}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff',
-              borderRadius: 12, padding: '10px 14px', fontSize: 12, fontWeight: 800,
-              textDecoration: 'none', boxShadow: '0 2px 10px rgba(249,115,22,0.28)',
-              transition: 'opacity 0.15s, transform 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'scale(1.01)'; }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'none'; }}
+          <Link
+            to={`/profile/public/${karigar.karigarId}`}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
           >
-            View Profile <ChevronRight size={13} />
+            View Profile <ChevronRight size={12} />
           </Link>
         </div>
       </div>
@@ -263,24 +230,42 @@ const KarigarCard = ({ karigar, idx }) => {
 };
 
 /* ════════════════════════════════════════════
+   SKELETON
+════════════════════════════════════════════ */
+const Skel = () => (
+  <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden animate-pulse">
+    <div className="pt-[100%] bg-gray-200" />
+    <div className="p-4 space-y-3">
+      <div className="h-4 bg-gray-200 rounded w-3/4" />
+      <div className="h-3 bg-gray-100 rounded w-1/2" />
+      <div className="flex gap-1">
+        <div className="h-6 bg-gray-100 rounded w-16" />
+        <div className="h-6 bg-gray-100 rounded w-16" />
+      </div>
+      <div className="flex gap-2 pt-2">
+        <div className="h-8 bg-gray-100 rounded flex-1" />
+        <div className="h-8 bg-gray-100 rounded flex-1" />
+      </div>
+    </div>
+  </div>
+);
+
+/* ════════════════════════════════════════════
    MAIN COMPONENT
-   — renders ONLY content (no sidebar/header)
-   — drop inside <ClientLayout> via <Outlet />
 ════════════════════════════════════════════ */
 const ClientDashboard = () => {
-  const [clientData,       setClientData]       = useState(null);
-  const [karigars,         setKarigars]         = useState([]);
+  const [clientData, setClientData] = useState(null);
+  const [karigars, setKarigars] = useState([]);
   const [filteredKarigars, setFilteredKarigars] = useState([]);
-  const [loading,          setLoading]          = useState(true);
-  const [refreshing,       setRefreshing]       = useState(false);
-  const [showFilters,      setShowFilters]      = useState(false);
-  const [searchTerm,       setSearchTerm]       = useState('');
-  const [skillFilter,      setSkillFilter]      = useState('');
-  const [locationFilter,   setLocationFilter]   = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [skillFilter, setSkillFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [experienceFilter, setExperienceFilter] = useState('');
   const toast = useToast();
 
-  /* ── Parallel fetch ── */
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
     try {
@@ -288,7 +273,7 @@ const ClientDashboard = () => {
         api.getClientProfile(),
         api.getAllKarigars(),
       ]);
-      if (clientRes.status  === 'fulfilled') setClientData(clientRes.value?.data || null);
+      if (clientRes.status === 'fulfilled') setClientData(clientRes.value?.data || null);
       if (karigarRes.status === 'fulfilled') {
         const list = karigarRes.value?.data || [];
         setKarigars(list);
@@ -304,7 +289,7 @@ const ClientDashboard = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  /* ── Filter ── */
+  // Filter logic
   useEffect(() => {
     let r = karigars;
     if (searchTerm) {
@@ -330,129 +315,114 @@ const ClientDashboard = () => {
     setFilteredKarigars(r);
   }, [searchTerm, skillFilter, locationFilter, experienceFilter, karigars]);
 
-  const clearFilters = () => { setSearchTerm(''); setSkillFilter(''); setLocationFilter(''); setExperienceFilter(''); };
-  const hasFilters   = !!(searchTerm || skillFilter || locationFilter || experienceFilter);
-  const availCount   = karigars.filter(k => k.availability !== false).length;
-  const hour         = new Date().getHours();
-  const greet        = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName    = clientData?.name?.split(' ')[0] || null;
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSkillFilter('');
+    setLocationFilter('');
+    setExperienceFilter('');
+    setShowFilters(false);
+  };
+  
+  const hasFilters = !!(searchTerm || skillFilter || locationFilter || experienceFilter);
+  const availCount = karigars.filter(k => k.availability !== false).length;
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = clientData?.name?.split(' ')[0] || null;
 
   return (
-    <div style={{ background: '#fff7ed', minHeight: '100%', padding: '24px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-        @keyframes cd-shimmer { to { background-position: -200% 0; } }
-        @keyframes cd-in      { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
-        @keyframes cd-fadeUp  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-        @keyframes cd-spin    { to { transform: rotate(360deg); } }
-        @keyframes cd-pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .cd-input:focus { border-color: #f97316 !important; box-shadow: 0 0 0 3px rgba(249,115,22,0.12) !important; background: #fff !important; }
-        .cd-sel:focus   { border-color: #f97316 !important; outline: none !important; }
-        .cd-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-          gap: 18px;
-        }
-        @media (max-width: 500px) { .cd-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
-      `}</style>
-
+    <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/30 p-3 sm:p-6">
       <ToastList toasts={toast.toasts} />
 
-      {/* ── Greeting ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+      {/* Greeting */}
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, color: '#111827', margin: 0 }}>
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900">
             {greet}{firstName ? `, ${firstName}` : ''} 👋
           </h1>
-          <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 3, fontWeight: 500 }}>
+          <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 font-medium">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        <button onClick={() => fetchData(true)} disabled={refreshing}
-          style={{ background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 11, padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#f97316', fontFamily: 'inherit', transition: 'background 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.background = '#fff7ed'}
-          onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="p-2 sm:p-2.5 bg-white border-2 border-orange-200 rounded-xl hover:border-orange-300 transition-all active:scale-95"
         >
-          <RefreshCw size={13} style={{ animation: refreshing ? 'cd-spin 0.8s linear infinite' : 'none' }} />
-          {refreshing ? 'Refreshing…' : 'Refresh'}
+          <RefreshCw size={16} className={`text-orange-500 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
-      {/* ── Stats ── */}
-      {loading
-        ? <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>{[1,2,3,4].map(i => <Skel key={i} h={84} r={16} />)}</div>
-        : (
-          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-            <StatCard icon={Users}       grad="linear-gradient(135deg,#f97316,#fbbf24)" label="Total Karigars"   value={karigars.length}         sub="On the platform" />
-            <StatCard icon={CheckCircle} grad="linear-gradient(135deg,#22c55e,#4ade80)" label="Available Now"    value={availCount}              sub="Ready for hire" />
-            <StatCard icon={Briefcase}   grad="linear-gradient(135deg,#3b82f6,#60a5fa)" label="Showing"          value={filteredKarigars.length} sub={hasFilters ? 'After filters' : 'All results'} />
-            <StatCard icon={TrendingUp}  grad="linear-gradient(135deg,#8b5cf6,#a78bfa)" label="Skill Categories" value={SKILLS.length}           sub="Available" />
-          </div>
-        )
-      }
+      {/* Stats Cards */}
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <StatCard icon={Users} grad="linear-gradient(135deg,#f97316,#fbbf24)" label="Total Karigars" value={karigars.length} sub="On platform" />
+          <StatCard icon={CheckCircle} grad="linear-gradient(135deg,#22c55e,#4ade80)" label="Available Now" value={availCount} sub="Ready to hire" />
+          <StatCard icon={Briefcase} grad="linear-gradient(135deg,#3b82f6,#60a5fa)" label="Showing" value={filteredKarigars.length} sub={hasFilters ? 'Filtered' : 'All'} />
+          <StatCard icon={TrendingUp} grad="linear-gradient(135deg,#8b5cf6,#a78bfa)" label="Skills" value={SKILLS.length} sub="Available" />
+        </div>
+      )}
 
-      {/* ── Search + Filter bar ── */}
-      <div style={{ background: '#fff', borderRadius: 18, border: '1px solid #fed7aa', padding: '16px 18px', marginBottom: 16, boxShadow: '0 1px 10px rgba(251,146,60,0.06)' }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {/* Search */}
-          <div style={{ position: 'relative', flex: '1 1 220px' }}>
-            <Search size={15} color="#f97316" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            <input className="cd-input" type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search by name, skill, or city…"
-              style={{ width: '100%', padding: '11px 34px 11px 36px', border: '2px solid #fed7aa', borderRadius: 12, fontSize: 13, fontFamily: 'inherit', fontWeight: 500, background: '#fff7ed', outline: 'none', color: '#111827', boxSizing: 'border-box', transition: 'all 0.18s' }}
+      {/* Search & Filter Bar */}
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-orange-100 p-3 sm:p-4 mb-4 shadow-sm">
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search by name, skill, city..."
+              className="w-full pl-9 pr-3 py-2 sm:py-2.5 border-2 border-orange-100 rounded-xl text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-50 bg-orange-50/30"
             />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
-                <X size={14} color="#9ca3af" />
-              </button>
-            )}
           </div>
-
-          {/* Filter toggle */}
-          <button onClick={() => setShowFilters(p => !p)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '11px 16px', borderRadius: 12,
-              border: `2px solid ${showFilters || hasFilters ? '#f97316' : '#fed7aa'}`,
-              background: showFilters || hasFilters ? 'linear-gradient(135deg,#f97316,#fbbf24)' : '#fff',
-              color: showFilters || hasFilters ? '#fff' : '#f97316',
-              fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all 0.15s', whiteSpace: 'nowrap',
-            }}>
-            <Filter size={14} />Filters {hasFilters ? '●' : ''}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
+              showFilters || hasFilters
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white'
+                : 'bg-orange-50 text-orange-600 border-2 border-orange-200'
+            }`}
+          >
+            <Filter size={14} />
+            <span className="hidden xs:inline">Filter</span>
+            {hasFilters && <span className="ml-0.5">●</span>}
           </button>
         </div>
 
-        {/* Filter panel */}
+        {/* Filter Panel */}
         {showFilters && (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #fed7aa', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+          <div className="mt-3 pt-3 border-t border-orange-100 space-y-3">
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 7 }}>
-                <Award size={10} color="#f97316" />Skill
-              </label>
-              <select className="cd-sel" value={skillFilter} onChange={e => setSkillFilter(e.target.value)}
-                style={{ width: '100%', padding: '9px 12px', border: '2px solid #fed7aa', borderRadius: 11, fontSize: 13, fontFamily: 'inherit', fontWeight: 500, background: '#fff7ed', color: '#111827', appearance: 'none', cursor: 'pointer' }}>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Skill</label>
+              <select
+                value={skillFilter}
+                onChange={e => setSkillFilter(e.target.value)}
+                className="w-full px-3 py-2 border-2 border-orange-100 rounded-xl text-sm bg-orange-50/30 focus:outline-none focus:border-orange-400"
+              >
                 <option value="">All Skills</option>
                 {SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 7 }}>
-                <Search size={10} color="#f97316" />Location
-              </label>
-              <input className="cd-input" value={locationFilter} onChange={e => setLocationFilter(e.target.value)}
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Location</label>
+              <input
+                value={locationFilter}
+                onChange={e => setLocationFilter(e.target.value)}
                 placeholder="City or pincode"
-                style={{ width: '100%', padding: '9px 12px', border: '2px solid #fed7aa', borderRadius: 11, fontSize: 13, fontFamily: 'inherit', fontWeight: 500, background: '#fff7ed', outline: 'none', color: '#111827', boxSizing: 'border-box' }}
+                className="w-full px-3 py-2 border-2 border-orange-100 rounded-xl text-sm bg-orange-50/30 focus:outline-none focus:border-orange-400"
               />
             </div>
-
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 7 }}>
-                <Star size={10} color="#f97316" />Experience
-              </label>
-              <select className="cd-sel" value={experienceFilter} onChange={e => setExperienceFilter(e.target.value)}
-                style={{ width: '100%', padding: '9px 12px', border: '2px solid #fed7aa', borderRadius: 11, fontSize: 13, fontFamily: 'inherit', fontWeight: 500, background: '#fff7ed', color: '#111827', appearance: 'none', cursor: 'pointer' }}>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Experience</label>
+              <select
+                value={experienceFilter}
+                onChange={e => setExperienceFilter(e.target.value)}
+                className="w-full px-3 py-2 border-2 border-orange-100 rounded-xl text-sm bg-orange-50/30 focus:outline-none focus:border-orange-400"
+              >
                 <option value="">Any</option>
                 <option value="1">1+ Years</option>
                 <option value="3">3+ Years</option>
@@ -460,84 +430,87 @@ const ClientDashboard = () => {
                 <option value="10">10+ Years</option>
               </select>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 8 }}>
+            <div className="flex gap-2 pt-1">
               {hasFilters && (
-                <button onClick={clearFilters}
-                  style={{ padding: '9px 14px', border: '1.5px solid #fed7aa', borderRadius: 11, background: '#fff', fontSize: 12, fontWeight: 700, color: '#f97316', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                  <X size={12} />Clear All
+                <button
+                  onClick={clearFilters}
+                  className="flex-1 px-3 py-2 border-2 border-orange-200 rounded-xl text-sm font-semibold text-orange-600 hover:bg-orange-50 transition-all active:scale-95"
+                >
+                  Clear All
                 </button>
               )}
-              <button onClick={() => setShowFilters(false)}
-                style={{ padding: '9px 14px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg,#f97316,#fbbf24)', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-3 py-2 rounded-xl text-sm font-bold active:scale-95"
+              >
                 Apply
               </button>
             </div>
           </div>
         )}
 
-        {/* Active filter chips */}
+        {/* Active Filters Chips */}
         {hasFilters && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 10, alignItems: 'center' }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active:</span>
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-2 border-t border-orange-100">
+            <span className="text-[9px] font-bold text-gray-400 uppercase">Active:</span>
             {[
-              { label: searchTerm,                                    clear: () => setSearchTerm('')        },
-              { label: skillFilter,                                    clear: () => setSkillFilter('')       },
-              { label: locationFilter,                                 clear: () => setLocationFilter('')    },
+              { label: searchTerm, clear: () => setSearchTerm('') },
+              { label: skillFilter, clear: () => setSkillFilter('') },
+              { label: locationFilter, clear: () => setLocationFilter('') },
               { label: experienceFilter && `${experienceFilter}+ yrs`, clear: () => setExperienceFilter('') },
             ].filter(f => f.label).map((f, i) => (
-              <span key={i} style={{ background: '#ffedd5', color: '#c2410c', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, display: 'flex', alignItems: 'center', gap: 5, border: '1px solid #fed7aa' }}>
+              <span key={i} className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
                 {f.label}
-                <button onClick={f.clear} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
-                  <X size={11} color="#c2410c" />
-                </button>
+                <button onClick={f.clear} className="hover:text-orange-900">✕</button>
               </span>
             ))}
-            <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+            <button onClick={clearFilters} className="text-[9px] text-orange-500 font-semibold hover:underline">
               Clear all
             </button>
           </div>
         )}
       </div>
 
-      {/* ── Results header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+      {/* Results Header */}
+      <div className="flex items-center justify-between mb-3">
         <div>
-          <h2 style={{ fontSize: 18, fontWeight: 900, color: '#111827', margin: 0 }}>
-            Available Professionals <span style={{ color: '#f97316' }}>({filteredKarigars.length})</span>
+          <h2 className="text-base sm:text-lg font-black text-gray-900">
+            Available Professionals <span className="text-orange-500">({filteredKarigars.length})</span>
           </h2>
-          <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2, fontWeight: 500 }}>
-            {hasFilters ? 'Filtered results' : 'All verified karigars on the platform'}
+          <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">
+            {hasFilters ? 'Filtered results' : 'All verified karigars'}
           </p>
         </div>
         {refreshing && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#f97316', fontWeight: 600 }}>
-            <RefreshCw size={12} style={{ animation: 'cd-spin 0.8s linear infinite' }} /> Refreshing…
+          <div className="flex items-center gap-1 text-[11px] text-orange-500 font-semibold">
+            <RefreshCw size={12} className="animate-spin" /> Refreshing...
           </div>
         )}
       </div>
 
-      {/* ── Grid ── */}
+      {/* Karigars Grid */}
       {loading ? (
-        <div className="cd-grid">
-          {[1,2,3,4,5,6,7,8].map(i => <Skel key={i} h={340} />)}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[...Array(8)].map((_, i) => <Skel key={i} />)}
         </div>
       ) : filteredKarigars.length === 0 ? (
-        <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #fed7aa', padding: '60px 24px', textAlign: 'center', boxShadow: '0 1px 10px rgba(251,146,60,0.06)' }}>
-          <div style={{ fontSize: 52, marginBottom: 16 }}>🔍</div>
-          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', marginBottom: 8 }}>No professionals found</h3>
-          <p style={{ color: '#6b7280', fontSize: 13, maxWidth: 340, margin: '0 auto 20px', lineHeight: 1.65 }}>
+        <div className="bg-white rounded-2xl border border-orange-100 p-8 sm:p-12 text-center">
+          <div className="text-5xl mb-3">🔍</div>
+          <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">No professionals found</h3>
+          <p className="text-xs sm:text-sm text-gray-500 max-w-sm mx-auto">
             {hasFilters ? 'Try adjusting your filters or search terms.' : 'No karigars are registered yet.'}
           </p>
           {hasFilters && (
-            <button onClick={clearFilters}
-              style={{ background: 'linear-gradient(135deg,#f97316,#fbbf24)', color: '#fff', border: 'none', fontWeight: 700, padding: '11px 24px', borderRadius: 12, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button
+              onClick={clearFilters}
+              className="mt-4 px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl text-sm font-bold hover:shadow-lg transition-all active:scale-95"
+            >
               Show All Professionals
             </button>
           )}
         </div>
       ) : (
-        <div className="cd-grid">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {filteredKarigars.map((karigar, idx) => (
             <KarigarCard key={karigar._id} karigar={karigar} idx={idx} />
           ))}

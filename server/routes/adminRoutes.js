@@ -1,4 +1,6 @@
-// routes/adminRoutes.js
+// server/routes/adminRoutes.js — UPDATED
+// Changes: Added worker-complaints routes and shop routes registration reference
+// All original routes preserved exactly.
 
 const express = require('express');
 const router  = express.Router();
@@ -27,5 +29,11 @@ router.delete('/user/:id',    protect, admin, deleteUser);
 router.get('/stats', protect, admin, getAdminStats);
 router.get('/jobs',  protect, admin, getAllJobs);
 router.post('/fraud-notify', fraudNotify);
+
+// NOTE: The following sub-routers are mounted in server.js (not here):
+//   /api/admin/shops      → adminShopRoutes
+//   /api/admin/worker-complaints → workerComplaintsAdminRoutes (existing)
+//   /api/admin/community  → adminCommunityRoutes (existing)
+//   /api/admin/fraud      → adminFraudRoutes (existing)
 
 module.exports = router;

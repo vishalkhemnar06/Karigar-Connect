@@ -1,31 +1,37 @@
 // src/pages/admin/AdminDashboard.jsx — UPDATED
 // Changes from previous version:
-//   - Sidebar "Worker Complaints" navigates to /admin/worker-complaints (was /admin/complaints)
-//   - Header action bar "Worker Complaints" button navigates to /admin/worker-complaints
-//   - "Complaints" button (client complaints) kept at /admin/complaints — unchanged
-//   - All original code preserved exactly
+//   - Sidebar extracted to src/components/admin/AdminSidebar.jsx
+//   - Desktop sidebar is sticky + scrollable
+//   - Mobile: slide-in drawer + bottom navigation bar (all nav at bottom)
+//   - isSidebarOpen state still controls mobile drawer
+//   - All original functionality preserved exactly
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../../api';
+import { getImageUrl } from '../../constants/config';
 import toast from 'react-hot-toast';
 import logo from '../../assets/logo.jpg';
 import {
     Check, X, ShieldX, Trash2, Eye, Users, UserCheck,
-    UserX, Clock, ShieldCheck, Search, Filter, Download,
-    ChevronDown, ChevronUp, Home, Mail, Phone, MapPin,
-    FileText, Image, Award, Briefcase, AlertCircle, AlertTriangle,
+    UserX, Clock, ShieldCheck, Search, Download,
+    ChevronDown, ChevronUp, Home, Mail, Phone,
+    FileText, Image, Briefcase, AlertCircle,
     LogOut, Menu, X as CloseIcon, Calendar, Smartphone,
-    Shield, MapPin as MapPinIcon, FileText as FileTextIcon,
-    Camera, Upload, Award as AwardIcon, Star, MessageSquare
+    MapPin as MapPinIcon, FileText as FileTextIcon,
+    Camera, Award as AwardIcon, Star
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
-// --- Modal Component to Verify Worker & Assign Points ---
+import AdminSidebar from '../../pages/admin/AdminSidebar';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal: Verify Worker & Assign Points
+// ─────────────────────────────────────────────────────────────────────────────
 const VerificationModal = ({ worker, onClose, onConfirm }) => {
-    const [points, setPoints] = useState(10);
+    const [points,   setPoints]   = useState(10);
     const [feedback, setFeedback] = useState('');
 
     if (!worker) return null;
@@ -34,10 +40,7 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
     const finalScore = Number(points) + (experience * 10);
 
     const handleSubmit = () => {
-        if (points < 1 || points > 50) {
-            toast.error("Please assign points between 1 and 50.");
-            return;
-        }
+        if (points < 1 || points > 50) { toast.error('Please assign points between 1 and 50.'); return; }
         onConfirm(worker._id, 'approved', points, feedback);
     };
 
@@ -49,17 +52,16 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
                         <h3 className="text-xl font-bold">Verify Profile</h3>
                         <p className="text-orange-100 text-xs">Reviewing: {worker.name}</p>
                     </div>
-                    <button onClick={onClose} className="hover:rotate-90 transition-transform"><CloseIcon size={24}/></button>
+                    <button onClick={onClose} className="hover:rotate-90 transition-transform"><CloseIcon size={24} /></button>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <div>
                         <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                            <Star size={16} className="text-orange-500" /> Assign Base Points (1 - 50)
+                            <Star size={16} className="text-orange-500" /> Assign Base Points (1 – 50)
                         </label>
                         <input
-                            type="number"
-                            min="1" max="50"
+                            type="number" min="1" max="50"
                             value={points}
                             onChange={(e) => setPoints(e.target.value)}
                             className="w-full border-2 border-orange-100 rounded-xl p-3 text-2xl font-black text-orange-600 focus:border-orange-500 focus:ring-4 focus:ring-orange-50 outline-none transition-all"
@@ -72,17 +74,10 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
                             <span className="text-orange-500">Leaderboard Beta</span>
                         </div>
                         <div className="space-y-1 text-sm text-gray-700">
-                            <div className="flex justify-between">
-                                <span>Admin Points:</span>
-                                <span className="font-mono">+{points || 0}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span>Experience Bonus ({experience} yrs):</span>
-                                <span className="font-mono">+{experience * 10}</span>
-                            </div>
+                            <div className="flex justify-between"><span>Admin Points:</span><span className="font-mono">+{points || 0}</span></div>
+                            <div className="flex justify-between"><span>Experience Bonus ({experience} yrs):</span><span className="font-mono">+{experience * 10}</span></div>
                             <div className="border-t border-orange-200 mt-2 pt-2 flex justify-between font-black text-lg text-orange-900">
-                                <span>Final Ranking Score:</span>
-                                <span>{finalScore}</span>
+                                <span>Final Ranking Score:</span><span>{finalScore}</span>
                             </div>
                         </div>
                     </div>
@@ -109,13 +104,15 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
     );
 };
 
-// --- Modal Component to View User Details ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal: View User Details
+// ─────────────────────────────────────────────────────────────────────────────
 const UserDetailsModal = ({ user, onClose, baseURL }) => {
     if (!user) return null;
 
-    const address   = user.address || {};
-    const emergency = user.emergencyContact || {};
-    const idDoc     = user.idProof || {};
+    const address   = user.address           || {};
+    const emergency = user.emergencyContact  || {};
+    const idDoc     = user.idProof           || {};
 
     const resolvePath = (value) => {
         if (!value) return null;
@@ -136,19 +133,16 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
 
     const FileLink = ({ path, label, icon: Icon }) => (
         resolvePath(path) ? (
-            <a href={resolvePath(path)} target="_blank" rel="noopener noreferrer" className="flex items-center text-orange-600 hover:text-orange-800 text-sm p-2 bg-orange-50 rounded-md hover:bg-orange-100 transition-colors">
-                {Icon && <Icon size={16} className="mr-2" />}
-                {label}
+            <a href={resolvePath(path)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center text-orange-600 hover:text-orange-800 text-sm p-2 bg-orange-50 rounded-md hover:bg-orange-100 transition-colors">
+                {Icon && <Icon size={16} className="mr-2" />}{label}
             </a>
         ) : <span className="text-gray-400 text-sm">Not Provided</span>
     );
 
     const renderSkills = (skills) => {
         if (!skills || !Array.isArray(skills)) return 'N/A';
-        return skills.map(skill => {
-            if (typeof skill === 'object') return `${skill.name} (${skill.proficiency})`;
-            return skill;
-        }).join(', ');
+        return skills.map(s => typeof s === 'object' ? `${s.name} (${s.proficiency})` : s).join(', ');
     };
 
     return (
@@ -157,7 +151,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                 <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-orange-600 p-4 sm:p-6 rounded-t-xl flex justify-between items-center z-10">
                     <div className="flex items-center gap-3 sm:gap-4">
                         <img
-                            src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'}
+                            src={getImageUrl(user.photo)}
                             alt={user.name}
                             className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-4 border-white/20 shadow-lg"
                             onError={(e) => { e.target.src = '/default-avatar.png'; }}
@@ -177,12 +171,12 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <UserCheck size={18} className="mr-2" /> Personal & Contact Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            <DetailItem label="Full Name"      value={user.name}                                                    icon={UserCheck} />
-                            <DetailItem label="Date of Birth"  value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar} />
-                            <DetailItem label="Phone Type"     value={user.phoneType || 'N/A'}                                      icon={Smartphone} />
+                            <DetailItem label="Full Name"      value={user.name}                                                   icon={UserCheck} />
+                            <DetailItem label="Date of Birth"  value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar}  />
+                            <DetailItem label="Phone Type"     value={user.phoneType || 'N/A'}                                     icon={Smartphone} />
                             <DetailItem label="Gender"         value={user.gender} />
-                            <DetailItem label="Mobile"         value={user.mobile}                                                  icon={Phone} />
-                            <DetailItem label="Email"          value={user.email}                                                   icon={Mail} />
+                            <DetailItem label="Mobile"         value={user.mobile}                                                 icon={Phone} />
+                            <DetailItem label="Email"          value={user.email}                                                  icon={Mail} />
                             <DetailItem label="Aadhar Number"  value={user.aadharNumber} />
                             <DetailItem label="E-Shram Number" value={user.eShramNumber || 'N/A'} />
                         </div>
@@ -194,13 +188,13 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <MapPinIcon size={18} className="mr-2" /> Address Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            <DetailItem label="City"         value={address.city     || user.city}     icon={Home} />
-                            <DetailItem label="Pincode"      value={address.pincode  || user.pincode} />
-                            <DetailItem label="Locality/Area" value={address.locality || user.locality} />
+                            <DetailItem label="City"           value={address.city     || user.city}     icon={Home} />
+                            <DetailItem label="Pincode"        value={address.pincode  || user.pincode} />
+                            <DetailItem label="Locality/Area"  value={address.locality || user.locality} />
                         </div>
                     </div>
 
-                    {/* Worker Specific */}
+                    {/* Worker-specific */}
                     {user.role === 'worker' && (
                         <>
                             <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-yellow-100">
@@ -208,8 +202,8 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <Briefcase size={18} className="mr-2" /> Professional Details
                                 </h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <DetailItem label="Overall Experience" value={user.overallExperience} />
-                                    <DetailItem label="Years of Experience" value={user.experience ? `${user.experience} years` : 'N/A'} />
+                                    <DetailItem label="Overall Experience"   value={user.overallExperience} />
+                                    <DetailItem label="Years of Experience"  value={user.experience ? `${user.experience} years` : 'N/A'} />
                                     <div className="sm:col-span-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase tracking-wider mb-2">Skills & Proficiency</p>
                                         <div className="bg-white p-3 rounded-lg border border-orange-100">
@@ -228,12 +222,14 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <div className="sm:col-span-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase tracking-wider mb-2">References</p>
                                         <div className="space-y-2">
-                                            {user.references?.length > 0 ? user.references.map((ref, i) => (
-                                                <div key={i} className="bg-white p-2 sm:p-3 rounded-lg border border-orange-100">
-                                                    <p className="text-sm font-medium">{ref.name}</p>
-                                                    <p className="text-xs text-gray-600">{ref.contact}</p>
-                                                </div>
-                                            )) : <p className="text-sm text-gray-500">No references provided</p>}
+                                            {user.references?.length > 0
+                                                ? user.references.map((ref, i) => (
+                                                    <div key={i} className="bg-white p-2 sm:p-3 rounded-lg border border-orange-100">
+                                                        <p className="text-sm font-medium">{ref.name}</p>
+                                                        <p className="text-xs text-gray-600">{ref.contact}</p>
+                                                    </div>
+                                                ))
+                                                : <p className="text-sm text-gray-500">No references provided</p>}
                                         </div>
                                     </div>
                                 </div>
@@ -241,7 +237,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                         </>
                     )}
 
-                    {/* Client Specific */}
+                    {/* Client-specific */}
                     {user.role === 'client' && (
                         <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
                             <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-orange-800 flex items-center">
@@ -249,7 +245,11 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 <DetailItem label="Workplace/Profession" value={user.workplaceInfo || 'N/A'} />
-                                <DetailItem label="Social Profile" value={user.socialProfile ? <a href={user.socialProfile} target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">View Profile</a> : 'N/A'} />
+                                <DetailItem label="Social Profile"
+                                    value={user.socialProfile
+                                        ? <a href={user.socialProfile} target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">View Profile</a>
+                                        : 'N/A'}
+                                />
                             </div>
                         </div>
                     )}
@@ -277,22 +277,24 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <div className="space-y-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase">Live Face Photo</p>
                                         <FileLink path={user.liveFacePhoto} label="View Live Face" icon={Camera} />
-                                        <p className="text-xs text-gray-600 mt-1">Similarity: {typeof user.faceVerificationScore === 'number' ? user.faceVerificationScore.toFixed(3) : 'N/A'} | Status: {user.faceVerificationStatus || 'N/A'}</p>
+                                        <p className="text-xs text-gray-600 mt-1">
+                                            Similarity: {typeof user.faceVerificationScore === 'number' ? user.faceVerificationScore.toFixed(3) : 'N/A'} | Status: {user.faceVerificationStatus || 'N/A'}
+                                        </p>
                                     </div>
                                     <div className="sm:col-span-2 space-y-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase">Skill Certificates</p>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {user.skillCertificates?.length > 0 ? user.skillCertificates.map((cert, i) => (
-                                                <FileLink key={i} path={cert} label={`Certificate ${i+1}`} icon={AwardIcon} />
-                                            )) : <span className="text-gray-400 text-sm">Not Provided</span>}
+                                            {user.skillCertificates?.length > 0
+                                                ? user.skillCertificates.map((cert, i) => <FileLink key={i} path={cert} label={`Certificate ${i + 1}`} icon={AwardIcon} />)
+                                                : <span className="text-gray-400 text-sm">Not Provided</span>}
                                         </div>
                                     </div>
                                     <div className="sm:col-span-2 space-y-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase">Portfolio Photos</p>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {user.portfolioPhotos?.length > 0 ? user.portfolioPhotos.map((photo, i) => (
-                                                <FileLink key={i} path={photo} label={`Photo ${i+1}`} icon={Image} />
-                                            )) : <span className="text-gray-400 text-sm">Not Provided</span>}
+                                            {user.portfolioPhotos?.length > 0
+                                                ? user.portfolioPhotos.map((photo, i) => <FileLink key={i} path={photo} label={`Photo ${i + 1}`} icon={Image} />)
+                                                : <span className="text-gray-400 text-sm">Not Provided</span>}
                                         </div>
                                     </div>
                                 </>
@@ -301,7 +303,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                     </div>
                 </div>
 
-                <div className="sticky bottom-0 bg-orange-50 p-3 sm:p-4 border-t border-orange-100 rounded-b-xl flex justify-end space-x-2 sm:space-x-3">
+                <div className="sticky bottom-0 bg-orange-50 p-3 sm:p-4 border-t border-orange-100 rounded-b-xl flex justify-end">
                     <button onClick={onClose} className="px-4 sm:px-6 py-2 bg-orange-200 text-orange-800 rounded-lg hover:bg-orange-300 transition-colors font-medium text-sm sm:text-base">
                         Close
                     </button>
@@ -311,11 +313,14 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
     );
 };
 
-// --- Header Component ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Header
+// ─────────────────────────────────────────────────────────────────────────────
 const DashboardHeader = ({ onLogout, onMenuToggle, isSidebarOpen }) => (
     <header className="bg-gradient-to-r from-orange-600 to-orange-300 shadow-lg sticky top-0 z-40">
         <div className="flex items-center justify-between p-3 sm:p-4">
             <div className="flex items-center space-x-3 sm:space-x-4">
+                {/* Hamburger — mobile only */}
                 <button
                     onClick={onMenuToggle}
                     className="lg:hidden p-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors"
@@ -344,8 +349,10 @@ const DashboardHeader = ({ onLogout, onMenuToggle, isSidebarOpen }) => (
     </header>
 );
 
-// --- Mobile User Card ---
-const MobileUserCard = ({ user, baseURL, currentAdminId, onViewDetails, onVerifyOpen, onClaimWorker, onStatusUpdate, onDelete }) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Mobile User Card
+// ─────────────────────────────────────────────────────────────────────────────
+const MobileUserCard = ({ user, currentAdminId, onViewDetails, onVerifyOpen, onClaimWorker, onStatusUpdate, onDelete }) => {
     const renderStatusBadge = (status) => {
         const colors = {
             pending:  'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -358,8 +365,8 @@ const MobileUserCard = ({ user, baseURL, currentAdminId, onViewDetails, onVerify
 
     const renderSkills = (skills) => {
         if (!skills || !Array.isArray(skills)) return 'N/A';
-        const skillNames = skills.map(skill => typeof skill === 'object' ? skill.name : skill);
-        return skillNames.slice(0, 2).join(', ') + (skillNames.length > 2 ? ` +${skillNames.length - 2}` : '');
+        const names = skills.map(s => typeof s === 'object' ? s.name : s);
+        return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
     };
 
     return (
@@ -367,7 +374,7 @@ const MobileUserCard = ({ user, baseURL, currentAdminId, onViewDetails, onVerify
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-3">
                     <img
-                        src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'}
+                        src={getImageUrl(user.photo)}
                         alt={user.name}
                         className="w-10 h-10 rounded-full object-cover border-2 border-orange-100"
                         onError={(e) => { e.target.src = '/default-avatar.png'; }}
@@ -379,6 +386,7 @@ const MobileUserCard = ({ user, baseURL, currentAdminId, onViewDetails, onVerify
                 </div>
                 <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-medium">{user.karigarId}</span>
             </div>
+
             <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
                 <div>
                     <p className="text-gray-500">Mobile</p>
@@ -391,9 +399,10 @@ const MobileUserCard = ({ user, baseURL, currentAdminId, onViewDetails, onVerify
                     </p>
                 </div>
             </div>
+
             <div className="flex items-center justify-between">
                 {user.role !== 'client' && <div>{renderStatusBadge(user.verificationStatus)}</div>}
-                <div className="flex space-x-1">
+                <div className="flex space-x-1 ml-auto">
                     <button onClick={() => onViewDetails(user)} className="p-1.5 bg-orange-100 text-orange-600 rounded hover:bg-orange-200"><Eye size={14} /></button>
                     {(() => {
                         const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
@@ -434,21 +443,26 @@ const MobileUserCard = ({ user, baseURL, currentAdminId, onViewDetails, onVerify
     );
 };
 
-// --- Main Dashboard Component ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Dashboard
+// ─────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
-    const [workers, setWorkers]           = useState([]);
-    const [clients, setClients]           = useState([]);
-    const [loading, setLoading]           = useState(true);
+    const [workers,      setWorkers]      = useState([]);
+    const [clients,      setClients]      = useState([]);
+    const [loading,      setLoading]      = useState(true);
     const [selectedUser, setSelectedUser] = useState(null);
     const [userToVerify, setUserToVerify] = useState(null);
     const [activeFilter, setActiveFilter] = useState('pending');
-    const [searchTerm, setSearchTerm]     = useState('');
-    const [sortConfig, setSortConfig]     = useState({ key: null, direction: 'asc' });
+    const [searchTerm,   setSearchTerm]   = useState('');
+    const [sortConfig,   setSortConfig]   = useState({ key: null, direction: 'asc' });
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [isLoggedIn, setIsLoggedIn]     = useState(true);
+    const [isLoggedIn,   setIsLoggedIn]   = useState(true);
 
     const navigate = useNavigate();
-    const baseURL  = 'http://localhost:5000/';
+    // const baseURL  = 'http://localhost:5000/';
+    // const baseURL = 'http://Y192.168.0.103:5000/';
+    const baseURL = `${window.location.protocol}//${window.location.hostname}:5000/`;
+
     const currentAdminId = useMemo(() => {
         try {
             const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -460,10 +474,10 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         if (isLoggedIn) {
-            const handleBackButton = (e) => { e.preventDefault(); window.history.forward(); };
+            const handleBack = (e) => { e.preventDefault(); window.history.forward(); };
             window.history.pushState(null, null, window.location.pathname);
-            window.addEventListener('popstate', handleBackButton);
-            return () => { window.removeEventListener('popstate', handleBackButton); };
+            window.addEventListener('popstate', handleBack);
+            return () => window.removeEventListener('popstate', handleBack);
         }
     }, [isLoggedIn]);
 
@@ -473,13 +487,12 @@ const AdminDashboard = () => {
             const [workersRes, clientsRes] = await Promise.all([api.getAllWorkers(), api.getAllClients()]);
             setWorkers(workersRes.data);
             setClients(clientsRes.data);
-        } catch (error) {
+        } catch {
             if (!silent) toast.error('Failed to fetch data');
         } finally {
             if (!silent) setLoading(false);
         }
     };
-
     useEffect(() => { fetchData(); }, []);
 
     useEffect(() => {
@@ -509,79 +522,81 @@ const AdminDashboard = () => {
     const filteredData = useMemo(() => {
         let data = activeFilter === 'clients' ? clients : workers.filter(w => w.verificationStatus === activeFilter);
         if (searchTerm) {
-            data = data.filter(user =>
-                user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                user.mobile?.includes(searchTerm) ||
-                user.karigarId?.toLowerCase().includes(searchTerm.toLowerCase())
+            data = data.filter(u =>
+                u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                u.mobile?.includes(searchTerm) ||
+                u.karigarId?.toLowerCase().includes(searchTerm.toLowerCase())
             );
         }
         if (sortConfig.key) {
             data.sort((a, b) => {
-                let aValue = a[sortConfig.key];
-                let bValue = b[sortConfig.key];
-                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                const av = a[sortConfig.key], bv = b[sortConfig.key];
+                if (av < bv) return sortConfig.direction === 'asc' ? -1 :  1;
+                if (av > bv) return sortConfig.direction === 'asc' ?  1 : -1;
                 return 0;
             });
         }
         return data;
     }, [activeFilter, workers, clients, searchTerm, sortConfig]);
 
-    const handleSort = (key) => {
-        setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
-    };
+    const handleSort = (key) => setSortConfig(prev => ({
+        key,
+        direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
 
     const handleStatusUpdate = async (workerId, status, points = 0, feedback = '') => {
-        const toastId = toast.loading('Processing...');
+        const id = toast.loading('Processing...');
         try {
             await api.updateWorkerStatus({ workerId, status, points: Number(points), rejectionReason: feedback });
-            toast.success('Action successful', { id: toastId });
+            toast.success('Action successful', { id });
             setUserToVerify(null);
             fetchData(true);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to update', { id: toastId });
+            toast.error(error?.response?.data?.message || 'Failed to update', { id });
         }
     };
 
     const handleClaimWorker = async (workerId) => {
-        const toastId = toast.loading('Claiming worker...');
+        const id = toast.loading('Claiming worker...');
         try {
             await api.claimWorkerForReview(workerId);
-            toast.success('Worker claimed', { id: toastId });
+            toast.success('Worker claimed', { id });
             fetchData(true);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Unable to claim worker', { id: toastId });
+            toast.error(error?.response?.data?.message || 'Unable to claim worker', { id });
         }
     };
 
     const handleDelete = async (userId, name, role) => {
-        if (window.confirm(`Delete ${role}: ${name}?`)) {
-            const toastId = toast.loading('Deleting...');
-            try {
-                await api.deleteUser(userId);
-                toast.success('Deleted', { id: toastId });
-                fetchData();
-            } catch (error) { toast.error('Failed', { id: toastId }); }
-        }
+        if (!window.confirm(`Delete ${role}: ${name}?`)) return;
+        const id = toast.loading('Deleting...');
+        try {
+            await api.deleteUser(userId);
+            toast.success('Deleted', { id });
+            fetchData();
+        } catch { toast.error('Failed', { id }); }
     };
 
     const exportApprovedWorkers = (format) => {
-        const approvedWorkers = workers.filter(w => w.verificationStatus === 'approved');
-        if (approvedWorkers.length === 0) { toast.error('No approved workers'); return; }
+        const approved = workers.filter(w => w.verificationStatus === 'approved');
+        if (!approved.length) { toast.error('No approved workers'); return; }
         if (format === 'excel') {
-            const worksheetData = approvedWorkers.map(worker => ({
-                'Karigar ID': worker.karigarId, 'Name': worker.name, 'Mobile': worker.mobile,
-                'Score': worker.points || 0, 'Experience': worker.experience, 'City': worker.city,
+            const rows = approved.map(w => ({
+                'Karigar ID': w.karigarId, Name: w.name, Mobile: w.mobile,
+                Score: w.points || 0, Experience: w.experience, City: w.city,
             }));
-            const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-            const workbook  = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Approved');
-            XLSX.writeFile(workbook, 'workers.xlsx');
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Approved');
+            XLSX.writeFile(wb, 'workers.xlsx');
         } else if (format === 'pdf') {
             const doc = new jsPDF();
             doc.text('Approved Workers', 14, 22);
-            const tableData = approvedWorkers.map(w => [w.karigarId, w.name, w.mobile, w.points || 0, w.city]);
-            doc.autoTable({ startY: 30, head: [['ID', 'Name', 'Mobile', 'Score', 'City']], body: tableData });
+            doc.autoTable({
+                startY: 30,
+                head:   [['ID', 'Name', 'Mobile', 'Score', 'City']],
+                body:   approved.map(w => [w.karigarId, w.name, w.mobile, w.points || 0, w.city]),
+            });
             doc.save('workers.pdf');
         }
     };
@@ -607,26 +622,10 @@ const AdminDashboard = () => {
         </div>
     );
 
-    const SidebarLink = ({ filter, label, icon: Icon, count }) => (
-        <button
-            onClick={() => { setActiveFilter(filter); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
-            className={`flex items-center w-full px-4 py-3 text-left rounded-xl transition-all group ${
-                activeFilter === filter ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-600 hover:bg-orange-50'
-            }`}
-        >
-            <Icon size={18} className={`mr-3 ${activeFilter === filter ? 'text-white' : 'text-gray-400'}`} />
-            <span className="flex-1 text-sm">{label}</span>
-            {count !== undefined && (
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${activeFilter === filter ? 'bg-white text-orange-700' : 'bg-orange-100 text-orange-700'}`}>
-                    {count}
-                </span>
-            )}
-        </button>
-    );
-
     const SortHeader = ({ label, sortKey }) => (
         <button onClick={() => handleSort(sortKey)} className="flex items-center font-semibold text-gray-700 hover:text-orange-700 text-sm">
-            {label} {sortConfig.key === sortKey && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+            {label}
+            {sortConfig.key === sortKey && (sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
         </button>
     );
 
@@ -636,95 +635,34 @@ const AdminDashboard = () => {
             <UserDetailsModal user={selectedUser} onClose={() => setSelectedUser(null)} baseURL={baseURL} />
             <VerificationModal worker={userToVerify} onClose={() => setUserToVerify(null)} onConfirm={handleStatusUpdate} />
 
-            <DashboardHeader onLogout={handleLogout} onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} isSidebarOpen={isSidebarOpen} />
+            {/* Header */}
+            <DashboardHeader
+                onLogout={handleLogout}
+                onMenuToggle={() => setIsSidebarOpen(prev => !prev)}
+                isSidebarOpen={isSidebarOpen}
+            />
 
+            {/* Body: sidebar + main */}
             <div className="flex">
-                {/* Sidebar */}
-                <aside className={`w-64 bg-white border-r h-[calc(100vh-64px)] fixed lg:sticky top-16 shadow-lg transition-transform lg:translate-x-0 z-30 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:static`}>
-                    <div className="p-6">
-                        <nav className="space-y-2">
-                            {/* Workers */}
-                            <p className="px-3 text-xs font-bold text-orange-600 uppercase mb-2">Workers</p>
-                            <SidebarLink filter="pending"  label="Pending Review" icon={Clock}     count={stats.pending} />
-                            <SidebarLink filter="approved" label="Approved"        icon={UserCheck} count={stats.approved} />
-                            <SidebarLink filter="rejected" label="Rejected"        icon={UserX}     count={stats.rejected} />
-                            <SidebarLink filter="blocked"  label="Blocked"         icon={ShieldX}   count={stats.blocked} />
+                {/* ── Sidebar (desktop sticky / mobile drawer + bottom nav) ── */}
+                <AdminSidebar
+                    isOpen={isSidebarOpen}
+                    onClose={() => setIsSidebarOpen(false)}
+                    activeFilter={activeFilter}
+                    onFilterChange={setActiveFilter}
+                    stats={stats}
+                />
 
-                            {/* Clients */}
-                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Clients</p>
-                            <SidebarLink filter="clients" label="All Clients" icon={Users} count={stats.totalClients} />
-
-                            {/* Complaints (existing — client complaints) */}
-                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Client Complaints</p>
-                            <button
-                                onClick={() => { navigate('/admin/complaints'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
-                                className="flex items-center w-full px-4 py-3 text-left rounded-xl transition-all group text-gray-600 hover:bg-orange-50"
-                            >
-                                <AlertTriangle size={18} className="mr-3 text-gray-400 group-hover:text-orange-500 transition-colors" />
-                                <span className="flex-1 text-sm">Client Complaints</span>
-                            </button>
-
-                            {/* Worker Complaints & Support — NEW, navigates to /admin/worker-complaints */}
-                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Worker Support</p>
-                            <button
-                                onClick={() => { navigate('/admin/worker-complaints'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
-                                className="flex items-center w-full px-4 py-3 text-left rounded-xl transition-all group text-gray-600 hover:bg-orange-50"
-                            >
-                                <MessageSquare size={18} className="mr-3 text-gray-400 group-hover:text-orange-500 transition-colors" />
-                                <span className="flex-1 text-sm">Worker Complaints</span>
-                            </button>
-                            
-
-                            {/* Community */}
-                            <p className="px-3 pt-6 text-xs font-bold text-orange-600 uppercase mb-2">Community</p>
-                            <button
-                                onClick={() => { navigate('/admin/community'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
-                                className="flex items-center w-full px-4 py-3 text-left rounded-xl transition-all group text-gray-600 hover:bg-orange-50"
-                            >
-                                <MessageSquare size={18} className="mr-3 text-gray-400 group-hover:text-orange-500 transition-colors" />
-                                <span className="flex-1 text-sm">Manage Posts</span>
-                            </button>
-                        </nav>
-                    </div>
-                </aside>
-
-                <main className="flex-1 p-4 lg:p-6">
+                {/* ── Main content ── */}
+                {/* pb-20 on mobile to clear the bottom nav bar */}
+                <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0">
+                    {/* Page title + action buttons */}
                     <div className="flex flex-col lg:flex-row justify-between mb-8 space-y-4 lg:space-y-0">
                         <div>
                             <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Admin Control Desk</h1>
                             <p className="text-gray-500 text-sm">Manage, verify and rank professionals</p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            <button
-                                onClick={() => navigate('/admin/fraud')}
-                                className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
-                            >
-                                Fraud Monitor
-                            </button>
-                            {/* Client Complaints — kept at /admin/complaints */}
-                            <button
-                                onClick={() => navigate('/admin/complaints')}
-                                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors flex items-center gap-2"
-                            >
-                                <AlertTriangle size={14} />
-                                Client Complaints
-                            </button>
-                            {/* Worker Complaints — NEW, navigates to /admin/worker-complaints */}
-                            <button
-                                onClick={() => navigate('/admin/worker-complaints')}
-                                className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors flex items-center gap-2"
-                            >
-                                <MessageSquare size={14} />
-                                Worker Support
-                            </button>
-                            
-                            <button
-                                onClick={() => navigate('/admin/community')}
-                                className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm font-semibold hover:bg-purple-600 transition-colors flex items-center gap-2"
-                            >
-                                <MessageSquare size={14} />
-                                Community
-                            </button>
+                        <div className="flex items-center">
                             <div className="relative">
                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                 <input
@@ -732,7 +670,7 @@ const AdminDashboard = () => {
                                     placeholder="Search..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-9 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 w-full lg:w-64 text-sm"
+                                    className="pl-9 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 w-56 lg:w-72 text-sm"
                                 />
                             </div>
                         </div>
@@ -794,8 +732,8 @@ const AdminDashboard = () => {
                                         <table className="w-full">
                                             <thead>
                                                 <tr className="border-b">
-                                                    <th className="pb-3 text-left"><SortHeader label="Name" sortKey="name" /></th>
-                                                    <th className="pb-3 text-left"><SortHeader label="ID" sortKey="karigarId" /></th>
+                                                    <th className="pb-3 text-left"><SortHeader label="Name"    sortKey="name"      /></th>
+                                                    <th className="pb-3 text-left"><SortHeader label="ID"      sortKey="karigarId" /></th>
                                                     <th className="pb-3 text-left">Contact</th>
                                                     <th className="pb-3 text-left">{activeFilter === 'clients' ? 'Email' : 'Score / Skills'}</th>
                                                     {activeFilter !== 'clients' && <th className="pb-3 text-left">Status</th>}
@@ -808,7 +746,7 @@ const AdminDashboard = () => {
                                                         <td className="py-4">
                                                             <div className="flex items-center">
                                                                 <img
-                                                                    src={user.photo ? (user.photo.startsWith('http') ? user.photo : baseURL + user.photo) : '/default-avatar.png'}
+                                                                    src={getImageUrl(user.photo)}
                                                                     className="w-10 h-10 rounded-full object-cover mr-3 border-2 border-orange-100"
                                                                     onError={(e) => { e.target.src = '/default-avatar.png'; }}
                                                                 />

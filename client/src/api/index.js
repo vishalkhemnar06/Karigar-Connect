@@ -1,6 +1,12 @@
 // client/src/api/index.js
-// UPDATED: Added password-change OTP endpoints + permanent delete
-// All other exports unchanged.
+// FIXED:
+//   1. getAdminComplaints / getAdminComplaintStats / getAdminComplaintById /
+//      takeAdminActionOnComplaint now clearly separated per model:
+//        - /api/admin/complaints        → ClientComplaint model (client-vs-worker)
+//        - /api/admin/worker-complaints → Complaint model      (worker support tickets)
+//   2. Added getAdminWorkerComplaintById (was missing, caused blank detail panel)
+//   3. Removed stale "getAdminComplaintById" export that pointed at the wrong route
+//      and was being imported by AdminWorkerComplaints.jsx
 
 import axios from 'axios';
 
@@ -41,14 +47,37 @@ export const takeFraudAction       = (d)      => API.post('/api/admin/fraud/acti
 export const dismissFraudQueueItem = (userId) => API.delete(`/api/admin/fraud/queue/${userId}`);
 export const getFraudHealth        = ()       => API.get('/api/admin/fraud/health');
 
-// ── ADMIN COMPLAINTS ──────────────────────────────────────────────────────────
-export const getAdminComplaints           = (p = {}) => API.get('/api/admin/worker-complaints',                   { params: p });
-export const getAdminComplaintStats       = ()        => API.get('/api/admin/worker-complaints/stats');
-export const getAdminComplaintById        = (id)      => API.get(`/api/admin/worker-complaints/${id}`);
-export const takeAdminActionOnComplaint   = (id, b)   => API.post(`/api/admin/worker-complaints/${id}/action`,    b);
-export const adminReplyToComplaint        = (id, b)   => API.post(`/api/admin/worker-complaints/${id}/reply`,     b);
-export const adminMarkComplaintRead       = (id)      => API.patch(`/api/admin/worker-complaints/${id}/read`);
-export const adminUpdateComplaintPriority = (id, b)   => API.patch(`/api/admin/worker-complaints/${id}/priority`, b);
+// ── ADMIN CLIENT-VS-WORKER COMPLAINTS ─────────────────────────────────────────
+// Route: /api/admin/complaints → adminComplaintRoutes → adminComplaintController
+// Model: ClientComplaint  (complaints filed by clients against workers)
+// Used by: AdminClientComplaints page (NOT AdminWorkerComplaints)
+export const getAdminClientComplaints         = (p = {}) => API.get('/api/admin/complaints',                { params: p });
+export const getAdminClientComplaintStats     = ()        => API.get('/api/admin/complaints/stats');
+export const getAdminClientComplaintById      = (id)      => API.get(`/api/admin/complaints/${id}`);
+export const takeAdminClientComplaintAction   = (id, b)   => API.post(`/api/admin/complaints/${id}/action`, b);
+
+// ── ADMIN WORKER SUPPORT TICKETS ──────────────────────────────────────────────
+// Route: /api/admin/worker-complaints → adminWorkerComplaintRoutes → adminWorkerComplaintController
+// Model: Complaint  (worker support tickets / worker-filed complaints)
+// Used by: AdminWorkerComplaints page
+export const getAdminWorkerComplaints         = (p = {}) => API.get('/api/admin/worker-complaints',                   { params: p });
+export const getAdminWorkerComplaintStats     = ()        => API.get('/api/admin/worker-complaints/stats');
+export const getAdminWorkerComplaintById      = (id)      => API.get(`/api/admin/worker-complaints/${id}`);            // ← FIXED: was missing
+export const takeAdminWorkerComplaintAction   = (id, b)   => API.post(`/api/admin/worker-complaints/${id}/action`,    b);
+export const adminReplyToComplaint            = (id, b)   => API.post(`/api/admin/worker-complaints/${id}/reply`,     b);
+export const adminMarkComplaintRead           = (id)      => API.patch(`/api/admin/worker-complaints/${id}/read`);
+export const adminUpdateComplaintPriority     = (id, b)   => API.patch(`/api/admin/worker-complaints/${id}/priority`, b);
+
+// Legacy aliases kept so any other page that imported the old names doesn't break.
+// New code should use the explicit names above.
+/** @deprecated use getAdminClientComplaints */
+export const getAdminComplaints           = getAdminClientComplaints;
+/** @deprecated use getAdminClientComplaintStats */
+export const getAdminComplaintStats       = getAdminClientComplaintStats;
+/** @deprecated use getAdminClientComplaintById */
+export const getAdminComplaintById        = getAdminClientComplaintById;
+/** @deprecated use takeAdminClientComplaintAction */
+export const takeAdminActionOnComplaint   = takeAdminClientComplaintAction;
 
 // ── ADMIN COMMUNITY ───────────────────────────────────────────────────────────
 export const adminGetCommunityPosts       = (page = 1)  => API.get('/api/admin/community/posts',          { params: { page } });
@@ -58,6 +87,45 @@ export const adminEditCommunityPost       = (id, fd)     => API.put(`/api/admin/
 export const adminDeleteCommunityPost     = (id, reason) => API.delete(`/api/admin/community/posts/${id}`,  { data: { reason } });
 export const adminHardDeleteCommunityPost = (id)         => API.delete(`/api/admin/community/posts/${id}/hard`);
 export const adminRestoreCommunityPost    = (id)         => API.post(`/api/admin/community/posts/${id}/restore`);
+
+// ── ADMIN SHOPS ───────────────────────────────────────────────────────────────
+export const adminGetAllShops          = ()        => API.get('/api/admin/shops');
+export const adminGetShopById          = (id)      => API.get(`/api/admin/shops/${id}`);
+export const adminApproveShop          = (id)      => API.patch(`/api/admin/shops/${id}/approve`);
+export const adminRejectShop           = (id, b)   => API.patch(`/api/admin/shops/${id}/reject`, b);
+export const adminBlockShop            = (id)      => API.patch(`/api/admin/shops/${id}/block`);
+export const adminDeleteShop           = (id)      => API.delete(`/api/admin/shops/${id}`);
+export const adminGetAllCoupons        = ()        => API.get('/api/admin/shops/coupons');
+export const adminGetUnclaimedCoupons  = ()        => API.get('/api/admin/shops/coupons/unclaimed');
+export const adminGetCouponHistory     = ()        => API.get('/api/admin/shops/coupons/history');
+
+// ── SHOP AUTH ─────────────────────────────────────────────────────────────────
+export const shopSendMobileOtp   = (d)  => API.post('/api/shop/auth/send-mobile-otp',   d);
+export const shopVerifyMobileOtp = (d)  => API.post('/api/shop/auth/verify-mobile-otp', d);
+export const shopSendEmailOtp    = (d)  => API.post('/api/shop/auth/send-email-otp',    d);
+export const shopVerifyEmailOtp  = (d)  => API.post('/api/shop/auth/verify-email-otp',  d);
+export const shopRegister        = (fd) => API.post('/api/shop/auth/register',           fd, mp);
+export const shopLogin           = (d)  => API.post('/api/shop/auth/login',              d);
+
+// ── SHOP DASHBOARD ────────────────────────────────────────────────────────────
+export const getShopProfile      = ()       => API.get('/api/shop/profile');
+export const updateShopProfile   = (fd)     => API.put('/api/shop/profile',               fd, mp);
+export const getShopProducts     = ()       => API.get('/api/shop/products');
+export const addShopProduct      = (fd)     => API.post('/api/shop/products',              fd, mp);
+export const editShopProduct     = (id, fd) => API.put(`/api/shop/products/${id}`,        fd, mp);
+export const deleteShopProduct   = (id)     => API.delete(`/api/shop/products/${id}`);
+export const verifyCoupon        = (d)      => API.post('/api/shop/coupons/verify',        d);
+export const applyCoupon         = (fd)     => API.post('/api/shop/coupons/apply',         fd, mp);
+export const getShopTransactions = ()       => API.get('/api/shop/transactions');
+export const getShopAnalytics    = ()       => API.get('/api/shop/analytics');
+
+// ── WORKER COUPON ─────────────────────────────────────────────────────────────
+export const generateMyCoupon = ()  => API.post('/api/worker/coupons/generate');
+export const getMyCoupons     = ()  => API.get('/api/worker/coupons/my');
+
+// ── WORKER — PUBLIC SHOP BROWSING ─────────────────────────────────────────────
+export const getApprovedShops      = ()         => API.get('/api/shop/public/all');
+export const getShopPublicProducts = (shopId)   => API.get(`/api/shop/public/${shopId}/products`);
 
 // ── WORKER ────────────────────────────────────────────────────────────────────
 export const getAvailableJobs               = ()              => API.get('/api/worker/jobs');
@@ -70,7 +138,7 @@ export const getNearClients                 = ()              => API.get('/api/w
 export const getWorkerProfile               = ()              => API.get('/api/worker/profile');
 export const updateWorkerProfile            = (fd)            => API.put('/api/worker/profile/update',         fd, mp);
 export const toggleAvailability             = (d = {})        => API.post('/api/worker/availability',           d);
-export const deleteAccount                  = ()              => API.delete('/api/worker/account/delete');        // legacy
+export const deleteAccount                  = ()              => API.delete('/api/worker/account/delete');
 export const getPublicWorkerProfile         = (id)            => API.get(`/api/worker/public/${id}`);
 export const getAllKarigars                 = ()              => API.get('/api/worker/all');
 export const getLeaderboard                 = ()              => API.get('/api/worker/leaderboard');
@@ -82,14 +150,10 @@ export const markAllWorkerNotificationsRead = ()              => API.patch('/api
 export const deleteWorkerNotification       = (id)            => API.delete(`/api/worker/notifications/${id}`);
 export const clearAllWorkerNotifications    = ()              => API.delete('/api/worker/notifications/clear-all');
 
-// ── WORKER SETTINGS — Password change (NEW) ───────────────────────────────────
-// Step 1: request OTP → SMS sent to registered mobile
+// ── WORKER SETTINGS — Password change ────────────────────────────────────────
 export const sendPasswordChangeOtp    = ()  => API.post('/api/worker/settings/password/send-otp');
-// Step 2: submit OTP → returns { verifiedToken }
 export const verifyPasswordChangeOtp  = (d) => API.post('/api/worker/settings/password/verify-otp',  d);
-// Step 3: set new password with verifiedToken
 export const changePasswordWithOtp    = (d) => API.post('/api/worker/settings/password/change',       d);
-// Permanent delete: requires verifiedToken + confirmText === "DELETE"
 export const deleteAccountPermanently = (d) => API.delete('/api/worker/account/delete-permanent',     { data: d });
 
 // ── WORKER COMPLAINTS & SUPPORT ───────────────────────────────────────────────
@@ -140,7 +204,7 @@ export const getClientNotifications         = ()   => API.get('/api/client/notif
 export const markClientNotificationRead     = (id) => API.patch(`/api/client/notifications/${id}/read`);
 export const markAllClientNotificationsRead = ()   => API.patch('/api/client/notifications/mark-all-read');
 export const deleteClientNotification       = (id) => API.delete(`/api/client/notifications/${id}`);
-export const clearAllClientNotifications    = ()   => API.delete('/api/client/notifications/clear-all');
+export const clearAllClientNotificationsRead = ()  => API.delete('/api/client/notifications/clear-all');
 
 // ── CLIENT COMPLAINTS ─────────────────────────────────────────────────────────
 export const searchWorkerForComplaint = (query) => API.get('/api/client/complaints/search-worker', { params: { query } });
@@ -194,5 +258,7 @@ export const getImageUrl = (path, fallback = '/admin.png') => {
     if (path.startsWith('http')) return path;
     return `${BASE_URL}/${path}`;
 };
+export const clearAllClientNotifications = () =>
+  API.delete('/client/notifications/clear');
 
 export default API;
