@@ -511,9 +511,17 @@ exports.updateWorkerProfile = async (req, res) => {
             if (req.body[f] !== undefined) w[f] = req.body[f];
         });
         w.address = w.address || {};
-        ['city', 'pincode', 'locality'].forEach(f => {
+        ['city', 'pincode', 'locality', 'fullAddress', 'village'].forEach(f => {
             if (req.body[f] !== undefined) w.address[f] = req.body[f];
         });
+        if (req.body.latitude !== undefined) {
+            const lat = Number(req.body.latitude);
+            w.address.latitude = Number.isFinite(lat) ? lat : undefined;
+        }
+        if (req.body.longitude !== undefined) {
+            const lon = Number(req.body.longitude);
+            w.address.longitude = Number.isFinite(lon) ? lon : undefined;
+        }
         if (req.body.skills) {
             try { w.skills = JSON.parse(req.body.skills).filter(s => s?.name?.trim()); } catch {}
         }

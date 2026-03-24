@@ -10,7 +10,9 @@ import { FraudStatsBar } from '../../components/fraud/FraudStatsBar';
 import { useFraudSocket } from '../../hooks/useFraudSocket';
 import {
   fetchFraudActions,
+  fetchFraudComplaintStats,
   fetchFraudQueue,
+  fetchModelMetrics,
 } from '../../store/slices/fraudSlice';
 
 import {
@@ -115,7 +117,7 @@ function HistoryPanel() {
                       </div>
                     </div>
                     {item.reason && (
-                      <p className="mt-1.5 md:mt-2 text-[10px] md:text-sm text-gray-600 border-t border-gray-200/50 pt-1.5 md:pt-2 mt-1.5 md:mt-2">
+                      <p className="mt-1.5 md:mt-2 text-[10px] md:text-sm text-gray-600 border-t border-gray-200/50 pt-1.5 md:pt-2">
                         <span className="font-semibold text-gray-700">Reason:</span> {item.reason}
                       </p>
                     )}
@@ -141,6 +143,8 @@ export default function FraudMonitor() {
       await Promise.all([
         dispatch(fetchFraudQueue()).unwrap(),
         dispatch(fetchFraudActions()).unwrap(),
+        dispatch(fetchModelMetrics()).unwrap(),
+        dispatch(fetchFraudComplaintStats()).unwrap(),
       ]);
 
       if (showToast) {
@@ -161,6 +165,8 @@ export default function FraudMonitor() {
     Promise.all([
       dispatch(fetchFraudQueue()).unwrap(),
       dispatch(fetchFraudActions()).unwrap(),
+      dispatch(fetchModelMetrics()).unwrap(),
+      dispatch(fetchFraudComplaintStats()).unwrap(),
     ])
       .catch(() => {})
       .finally(() => {
@@ -180,7 +186,7 @@ export default function FraudMonitor() {
       }
     },
     onActionTaken: () => {
-      dispatch(fetchFraudActions());
+      refreshMonitor(false);
     },
   });
 
@@ -189,6 +195,18 @@ export default function FraudMonitor() {
   return (
     <div className="bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 pb-20">
       <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6 py-4 md:py-8">
+        <div className="mb-4 md:mb-6 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => refreshMonitor(true)}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-md transition-all hover:from-orange-600 hover:to-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh Queue'}
+          </button>
+        </div>
+
         {/* Stats Bar */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

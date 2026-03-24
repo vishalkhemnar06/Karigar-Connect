@@ -14,10 +14,12 @@ const User      = require('../models/userModel');
 const Rating    = require('../models/ratingModel');
 const AIHistory = require('../models/aiHistoryModel');
 const Location  = require('../models/locationModel');
+const crypto = require('crypto');
 const { createNotification }           = require('../utils/notificationHelper');
 const { checkWorkerScheduleConflict, validateWorkTime, canStartJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
-const { sendCustomSms } = require('../utils/smsHelper');
+const { sendCustomSms, sendPasswordChangeOtpSms } = require('../utils/smsHelper');
+const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const faceClient = require('../utils/faceServiceClient');
 
 const parseJSON   = (v, fb) => { if (!v) return fb; try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return fb; } };
@@ -94,6 +96,29 @@ const getLatestWorkerLocationMap = async (workerIds = []) => {
     latest.forEach((row) => {
         map.set(String(row._id), { lat: row.lat, lng: row.lng, updatedAt: row.updatedAt });
     });
+
+    // Fallback: if live tracking is unavailable, use coordinates saved in worker profile.
+    const missingIds = objectIds
+        .map((id) => String(id))
+        .filter((id) => !map.has(id));
+
+    if (missingIds.length) {
+        const fallbackWorkers = await User.find({
+            _id: { $in: missingIds },
+            role: 'worker',
+            'address.latitude': { $ne: null },
+            'address.longitude': { $ne: null },
+        }).select('address.latitude address.longitude').lean();
+
+        fallbackWorkers.forEach((w) => {
+            map.set(String(w._id), {
+                lat: Number(w.address?.latitude),
+                lng: Number(w.address?.longitude),
+                updatedAt: null,
+            });
+        });
+    }
+
     return map;
 };
 
@@ -512,19 +537,97 @@ exports.updateClientProfile = async (req, res) => {
     try {
         const c = await User.findById(req.user.id);
         if (!c || c.role !== 'client') return res.status(404).json({ message: 'Not found.' });
+        
+        // Basic fields
         if (req.body.email          !== undefined) c.email          = req.body.email;
         if (req.body.workplaceInfo  !== undefined) c.workplaceInfo  = req.body.workplaceInfo;
+        if (req.body.socialProfile  !== undefined) c.socialProfile  = req.body.socialProfile;
+        if (req.body.gender !== undefined) {
+            if (!['Male', 'Female', 'Other'].includes(req.body.gender)) {
+                return res.status(400).json({ message: 'Invalid gender value.' });
+            }
+            c.gender = req.body.gender;
+        }
+        if (req.body.age !== undefined) {
+            const ageNum = Number(req.body.age);
+            if (!Number.isFinite(ageNum) || ageNum <= 0) {
+                return res.status(400).json({ message: 'Age must be a positive number.' });
+            }
+            if (ageNum < 18) {
+                return res.status(400).json({ message: 'Age must be 18 or above.' });
+            }
+            c.age = ageNum;
+            c.ageVerified = ageNum >= 18;
+        }
+        if (req.body.dob !== undefined) {
+            const dobDate = new Date(req.body.dob);
+            if (Number.isNaN(dobDate.getTime())) {
+                return res.status(400).json({ message: 'Birth date is invalid.' });
+            }
+            if (dobDate > new Date()) {
+                return res.status(400).json({ message: 'Birth date cannot be in the future.' });
+            }
+            c.dob = dobDate;
+        }
 
+        // Address fields
         c.address = c.address || {};
         if (req.body.city          !== undefined) c.address.city          = req.body.city;
         if (req.body.pincode       !== undefined) c.address.pincode       = req.body.pincode;
+        if (req.body.locality      !== undefined) c.address.locality      = req.body.locality;
         if (req.body.homeLocation  !== undefined) c.address.homeLocation  = req.body.homeLocation;
         if (req.body.houseNumber   !== undefined) c.address.houseNumber   = req.body.houseNumber;
+        if (req.body.fullAddress   !== undefined) c.address.fullAddress   = req.body.fullAddress;
+        if (req.body.village       !== undefined) c.address.village       = req.body.village;
+        if (req.body.latitude !== undefined) {
+            const lat = Number(req.body.latitude);
+            c.address.latitude = Number.isFinite(lat) ? lat : undefined;
+        }
+        if (req.body.longitude !== undefined) {
+            const lon = Number(req.body.longitude);
+            c.address.longitude = Number.isFinite(lon) ? lon : undefined;
+        }
 
+        // NEW: Security & Verification Fields
+        if (req.body.ageVerified !== undefined) c.ageVerified = req.body.ageVerified === 'true' || req.body.ageVerified === true;
+        if (req.body.emergencyContactName !== undefined || req.body.emergencyContactMobile !== undefined) {
+            c.emergencyContact = c.emergencyContact || {};
+            if (req.body.emergencyContactName !== undefined) c.emergencyContact.name = req.body.emergencyContactName;
+            if (req.body.emergencyContactMobile !== undefined) c.emergencyContact.mobile = req.body.emergencyContactMobile;
+        }
+        if (req.body.profession !== undefined) c.profession = req.body.profession;
+        if (req.body.signupReason !== undefined) c.signupReason = req.body.signupReason;
+        if (req.body.previousHiringExperience !== undefined) {
+            c.previousHiringExperience = req.body.previousHiringExperience === 'true' ? true : req.body.previousHiringExperience === 'false' ? false : null;
+        }
+        if (req.body.preferredPaymentMethod !== undefined) c.preferredPaymentMethod = req.body.preferredPaymentMethod;
+        if (req.body.businessRegistrationNumber !== undefined) c.businessRegistrationNumber = req.body.businessRegistrationNumber;
+        if (req.body.gstTaxId !== undefined) c.gstTaxId = req.body.gstTaxId;
+        if (req.body.insuranceDetails !== undefined) c.insuranceDetails = req.body.insuranceDetails;
+        if (req.body.securityQuestion !== undefined) c.securityQuestion = req.body.securityQuestion;
+        if (req.body.securityAnswer !== undefined) c.securityAnswer = req.body.securityAnswer;
+        if (req.body.termsPaymentAccepted !== undefined) c.termsPaymentAccepted = req.body.termsPaymentAccepted === 'true' || req.body.termsPaymentAccepted === true;
+        if (req.body.termsDisputePolicyAccepted !== undefined) c.termsDisputePolicyAccepted = req.body.termsDisputePolicyAccepted === 'true' || req.body.termsDisputePolicyAccepted === true;
+        if (req.body.termsDataPrivacyAccepted !== undefined) c.termsDataPrivacyAccepted = req.body.termsDataPrivacyAccepted === 'true' || req.body.termsDataPrivacyAccepted === true;
+        if (req.body.termsWorkerProtectionAccepted !== undefined) c.termsWorkerProtectionAccepted = req.body.termsWorkerProtectionAccepted === 'true' || req.body.termsWorkerProtectionAccepted === true;
+
+        // File uploads
         if (req.file) c.photo = req.file.path;
+        if (req.files) {
+            if (req.files.proofOfResidence && req.files.proofOfResidence[0]) {
+                c.proofOfResidence = req.files.proofOfResidence[0].path;
+            }
+            if (req.files.secondaryIdProof && req.files.secondaryIdProof[0]) {
+                c.secondaryIdProof = req.files.secondaryIdProof[0].path;
+            }
+            if (req.files.professionalCertification && req.files.professionalCertification[0]) {
+                c.professionalCertification = req.files.professionalCertification[0].path;
+            }
+        }
+
         await c.save();
         await logAuditEvent({ userId: c._id, role: 'client', action: 'profile_update', req, metadata: { fields: Object.keys(req.body || {}) } });
-        return res.json(await User.findById(c._id).select('-password -resetPasswordToken -resetPasswordExpire'));
+        return res.json(await User.findById(c._id).select('-password -resetPasswordToken -resetPasswordExpire -securityAnswer -addressVerificationOtp -passwordChangeOtp'));
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
@@ -1330,6 +1433,129 @@ exports.clearClientAIHistory = async (req, res) => {
         await AIHistory.deleteMany({ userId: req.user.id });
         return res.json({ message: 'Cleared.' });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CLIENT SETTINGS — PASSWORD CHANGE (OTP FLOW)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// STEP 1: Send OTP to registered mobile
+exports.sendClientPasswordChangeOtp = async (req, res) => {
+    try {
+        const client = await User.findById(req.user.id).select('mobile name role');
+        if (!client || client.role !== 'client') {
+            return res.status(404).json({ message: 'Client not found.' });
+        }
+        if (!client.mobile) {
+            return res.status(400).json({ message: 'No mobile number linked to your account.' });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+        client.passwordChangeOtp = crypto.createHash('sha256').update(otp).digest('hex');
+        client.passwordChangeOtpExpiry = expiry;
+        client.passwordChangeVerifiedToken = undefined;
+        client.passwordChangeVerifiedTokenExpiry = undefined;
+        await client.save({ validateBeforeSave: false });
+
+        await sendPasswordChangeOtpSms(client.mobile, otp, client.name);
+
+        return res.json({
+            message: `OTP sent to your registered mobile number ending in ${client.mobile.slice(-4)}.`,
+            mobile: `xxxxxx${client.mobile.slice(-4)}`,
+        });
+    } catch (err) {
+        console.error('sendClientPasswordChangeOtp:', err);
+        return res.status(500).json({ message: 'Failed to send OTP. Please try again.' });
+    }
+};
+
+// STEP 2: Verify OTP and return a short-lived verified token
+exports.verifyClientPasswordChangeOtp = async (req, res) => {
+    try {
+        const { otp } = req.body;
+        if (!otp?.trim()) return res.status(400).json({ message: 'OTP is required.' });
+
+        const client = await User.findById(req.user.id)
+            .select('+passwordChangeOtp +passwordChangeOtpExpiry role');
+
+        if (!client || client.role !== 'client') {
+            return res.status(404).json({ message: 'Client not found.' });
+        }
+
+        if (!client.passwordChangeOtp || !client.passwordChangeOtpExpiry) {
+            return res.status(400).json({ message: 'No OTP request found. Please request a new OTP first.' });
+        }
+
+        if (Date.now() > new Date(client.passwordChangeOtpExpiry).getTime()) {
+            return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+        }
+
+        const hashedInput = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+        if (hashedInput !== client.passwordChangeOtp) {
+            return res.status(400).json({ message: 'Incorrect OTP. Please check and try again.' });
+        }
+
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        client.passwordChangeVerifiedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+        client.passwordChangeVerifiedTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+        client.passwordChangeOtp = undefined;
+        client.passwordChangeOtpExpiry = undefined;
+        await client.save({ validateBeforeSave: false });
+
+        return res.json({ message: 'OTP verified.', verifiedToken: rawToken });
+    } catch (err) {
+        console.error('verifyClientPasswordChangeOtp:', err);
+        return res.status(500).json({ message: 'Verification failed. Please try again.' });
+    }
+};
+
+// STEP 3: Change password with verified token
+exports.changeClientPasswordWithOtp = async (req, res) => {
+    try {
+        const { verifiedToken, newPassword } = req.body;
+        if (!verifiedToken?.trim()) return res.status(400).json({ message: 'Verification session missing.' });
+        if (!validateStrongPassword(newPassword || '').isValid) {
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
+        }
+
+        const client = await User.findById(req.user.id)
+            .select('+password +passwordChangeVerifiedToken +passwordChangeVerifiedTokenExpiry role');
+
+        if (!client || client.role !== 'client') {
+            return res.status(404).json({ message: 'Client not found.' });
+        }
+
+        if (!client.passwordChangeVerifiedToken || Date.now() > new Date(client.passwordChangeVerifiedTokenExpiry).getTime()) {
+            return res.status(400).json({ message: 'Session expired. Please verify OTP again.' });
+        }
+
+        const hashedToken = crypto.createHash('sha256').update(verifiedToken.trim()).digest('hex');
+        if (hashedToken !== client.passwordChangeVerifiedToken) {
+            return res.status(400).json({ message: 'Invalid session. Please start over.' });
+        }
+
+        client.password = newPassword;
+        client.passwordChangeOtp = undefined;
+        client.passwordChangeOtpExpiry = undefined;
+        client.passwordChangeVerifiedToken = undefined;
+        client.passwordChangeVerifiedTokenExpiry = undefined;
+        await client.save();
+
+        await logAuditEvent({
+            userId: client._id,
+            role: 'client',
+            action: 'password_change_via_otp',
+            req,
+            metadata: { method: 'otp_verified' },
+        });
+
+        return res.json({ message: 'Password changed successfully. Please log in again.' });
+    } catch (err) {
+        console.error('changeClientPasswordWithOtp:', err);
+        return res.status(500).json({ message: 'Failed to change password.' });
+    }
 };
 
 exports.deleteClientAccount = async (req, res) => {

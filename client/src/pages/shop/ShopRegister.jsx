@@ -6,6 +6,8 @@ import React, { useState, useCallback, memo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
+import Header from '../../components/Header';
+import { PASSWORD_POLICY_TEXT, isStrongPassword, getPasswordStrength, getPasswordChecks } from '../../constants/passwordPolicy';
 import {
     Store, User, Phone, Mail, Lock, MapPin, FileText,
     CheckCircle, ChevronRight, ChevronLeft, Upload, Tag,
@@ -258,6 +260,9 @@ const ShopRegister = () => {
         if (f) setGstnCertificate(f);
     }, []);
 
+    const passwordStrength = getPasswordStrength(password);
+    const passwordChecks = getPasswordChecks(password);
+
     const captureLocation = useCallback(async () => {
         setLocationError('');
         if (!navigator.geolocation) {
@@ -386,7 +391,7 @@ const ShopRegister = () => {
         if (!email) return toast.error('Enter email address.');
         if (!mobileVerified) return toast.error('Please verify your mobile number.');
         if (!emailVerified) return toast.error('Please verify your email address.');
-        if (!password || password.length < 6) return toast.error('Password must be 6+ characters.');
+        if (!password || !isStrongPassword(password)) return toast.error(PASSWORD_POLICY_TEXT);
         if (password !== confirmPwd) return toast.error('Passwords do not match.');
         if (!ownerName) return toast.error('Enter owner name.');
         if (!shopName) return toast.error('Enter shop name.');
@@ -422,37 +427,47 @@ const ShopRegister = () => {
 
     // ── SUCCESS SCREEN ──────────────────────────────────────────────────────
     if (submitted) return (
-        <div className="min-h-screen bg-gradient-to-br from-green-50 to-white flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-md w-full text-center border border-green-100">
-                <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
-                    <CheckCircle size={48} className="text-green-500" />
+        <>
+            <Header />
+            <div className="min-h-screen bg-gradient-to-br from-green-50 to-white flex items-center justify-center p-4 pt-24">
+                <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-md w-full text-center border border-green-100">
+                    <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
+                        <CheckCircle size={48} className="text-green-500" />
+                    </div>
+                    <h2 className="text-2xl font-black text-gray-900 mb-2">Registration Submitted!</h2>
+                    <p className="text-gray-500 mb-1">Your shop <span className="font-bold text-gray-800">"{shopName}"</span> has been submitted for review.</p>
+                    <p className="text-orange-600 font-bold text-sm mb-8 bg-orange-50 rounded-xl p-3">
+                        ⏰ We will contact you within 24 hours.
+                    </p>
+                    <Link to="/login"
+                        className="block w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-xl font-black hover:shadow-lg transition-all">
+                        Back to Login
+                    </Link>
                 </div>
-                <h2 className="text-2xl font-black text-gray-900 mb-2">Registration Submitted!</h2>
-                <p className="text-gray-500 mb-1">Your shop <span className="font-bold text-gray-800">"{shopName}"</span> has been submitted for review.</p>
-                <p className="text-orange-600 font-bold text-sm mb-8 bg-orange-50 rounded-xl p-3">
-                    ⏰ We will contact you within 24 hours.
-                </p>
-                <Link to="/login"
-                    className="block w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-xl font-black hover:shadow-lg transition-all">
-                    Back to Login
-                </Link>
             </div>
-        </div>
+        </>
     );
 
     const STEPS = ['Verify Contact', 'Shop Details', 'Documents'];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-xl">
+        <>
+            <Header />
+            <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50 flex items-center justify-center p-4 pt-24">
+                <div className="w-full max-w-xl">
                 {/* Header */}
-                <div className="text-center mb-7">
-                    <div className="inline-flex items-center gap-2 bg-orange-100 px-4 py-2 rounded-full mb-3">
-                        <Store size={18} className="text-orange-600" />
-                        <span className="font-black text-orange-700 text-sm uppercase tracking-wide">Shop Registration</span>
+                <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-6 mb-7 text-center relative overflow-hidden shadow-lg">
+                    <Link
+                        to="/register"
+                        className="absolute left-4 top-4 inline-flex items-center text-white/90 hover:text-white text-sm font-medium"
+                    >
+                        <ChevronLeft size={16} className="mr-1" /> Back
+                    </Link>
+                    <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3 backdrop-blur-sm mt-2">
+                        <Store className="h-7 w-7 text-white" />
                     </div>
-                    <h1 className="text-3xl font-black text-gray-900">Register Your Shop</h1>
-                    <p className="text-gray-500 text-sm mt-1.5">Join KarigarConnect & serve verified workers</p>
+                    <h1 className="text-3xl font-bold text-white">Create a Shop Account</h1>
+                    <p className="text-orange-100 mt-1.5 text-sm">Join KarigarConnect to serve verified workers and clients</p>
                 </div>
 
                 {/* Step indicator */}
@@ -499,7 +514,7 @@ const ShopRegister = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <Field label="Password" required>
                                         <Input type={showPwd ? 'text' : 'password'}
-                                            placeholder="Min 6 characters"
+                                            placeholder="Strong password"
                                             value={password} onChange={onPassword} required
                                             rightSlot={
                                                 <button type="button" onClick={togglePwd}
@@ -507,10 +522,46 @@ const ShopRegister = () => {
                                                     {showPwd ? <EyeOff size={14}/> : <Eye size={14}/>}
                                                 </button>
                                             } />
+                                        <p className="text-xs text-gray-500 mt-1">{PASSWORD_POLICY_TEXT}</p>
+                                        {password && (
+                                            <div className="mt-2 space-y-2">
+                                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full ${passwordStrength.color} rounded-full transition-all duration-300`}
+                                                        style={{ width: passwordStrength.width }}
+                                                    />
+                                                </div>
+                                                <p className={`text-xs font-semibold ${passwordStrength.text}`}>
+                                                    Strength: {passwordStrength.label}
+                                                </p>
+                                                <div className="space-y-1 text-[11px]">
+                                                    <p className={passwordChecks.minLength ? 'text-green-600' : 'text-red-500'}>
+                                                        {passwordChecks.minLength ? '✓' : '✗'} At least 7 characters
+                                                    </p>
+                                                    <p className={passwordChecks.uppercase ? 'text-green-600' : 'text-red-500'}>
+                                                        {passwordChecks.uppercase ? '✓' : '✗'} One uppercase letter
+                                                    </p>
+                                                    <p className={passwordChecks.lowercase ? 'text-green-600' : 'text-red-500'}>
+                                                        {passwordChecks.lowercase ? '✓' : '✗'} One lowercase letter
+                                                    </p>
+                                                    <p className={passwordChecks.number ? 'text-green-600' : 'text-red-500'}>
+                                                        {passwordChecks.number ? '✓' : '✗'} One number
+                                                    </p>
+                                                    <p className={passwordChecks.special ? 'text-green-600' : 'text-red-500'}>
+                                                        {passwordChecks.special ? '✓' : '✗'} One special character
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
                                     </Field>
                                     <Field label="Confirm Password" required>
                                         <Input type="password" placeholder="Re-enter"
                                             value={confirmPwd} onChange={onConfirmPwd} required />
+                                        {confirmPwd && (
+                                            <p className={`text-xs mt-1 ${password === confirmPwd ? 'text-green-600' : 'text-red-500'}`}>
+                                                {password === confirmPwd ? '✓ Passwords match' : '✗ Passwords do not match'}
+                                            </p>
+                                        )}
                                     </Field>
                                 </div>
 
@@ -657,8 +708,9 @@ const ShopRegister = () => {
                     Already registered?{' '}
                     <Link to="/login" className="text-orange-600 font-bold hover:underline">Login here</Link>
                 </p>
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 

@@ -12,6 +12,7 @@ const crypto     = require('crypto');
 const nodemailer = require('nodemailer');
 const twilio     = require('twilio');
 const path       = require('path');
+const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 // ── JWT helper ────────────────────────────────────────────────────────────────
 const signToken = (id) =>
@@ -191,6 +192,10 @@ exports.registerShop = async (req, res) => {
             address, city, pincode, locality, idType,
             latitude, longitude,
         } = req.body;
+
+        if (!validateStrongPassword(password || '').isValid) {
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
+        }
 
         const shop = await Shop.findOne({ mobile });
         if (!shop)             return res.status(400).json({ message: 'Please verify mobile first.' });

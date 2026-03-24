@@ -193,7 +193,7 @@ exports.registerWorker = async (req, res) => {
     try {
         const {
             name, dob, mobile, email, password, confirmPassword,
-            city, pincode, locality, overallExperience, experience,
+            city, pincode, locality, fullAddress, village, latitude, longitude, overallExperience, experience,
             aadharNumber, gender, eShramNumber, idDocumentType,
             emergencyContactName, emergencyContactMobile, phoneType, skills, references,
         } = req.body;
@@ -238,7 +238,15 @@ exports.registerWorker = async (req, res) => {
             karigarId: generateKarigarId(),
             role: 'worker', name: name.trim(), dob, mobile, phoneType,
             email: email || null, password,
-            address:   { city, pincode, locality },
+            address:   {
+                city,
+                pincode,
+                locality,
+                fullAddress,
+                village,
+                latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
+                longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
+            },
             idProof:   { idType: idDocumentType || 'Aadhar Card', filePath: idProofFile.path },
             photo:     photoFile.path,
             gender,    aadharNumber, eShramNumber,
@@ -342,7 +350,16 @@ exports.registerClient = async (req, res) => {
     try {
         const {
             name, mobile, email, password, confirmPassword,
-            city, pincode, homeLocation, houseNumber, idType, workplaceInfo, socialProfile,
+            age, dob, gender,
+            city, pincode, locality, homeLocation, houseNumber, fullAddress, village, latitude, longitude, idType, workplaceInfo, socialProfile,
+            // NEW HIGH PRIORITY Security Fields
+            ageVerified, emergencyContactName, emergencyContactMobile,
+            profession, signupReason, previousHiringExperience, preferredPaymentMethod,
+            // NEW MEDIUM PRIORITY Fields
+            businessRegistrationNumber, gstTaxId, professionalCertification, insuranceDetails,
+            securityQuestion, securityAnswer,
+            // T&C acceptance
+            termsPaymentAccepted, termsDisputePolicyAccepted, termsDataPrivacyAccepted, termsWorkerProtectionAccepted,
         } = req.body;
 
         // ── Validation ────────────────────────────────────────────────────────
@@ -355,20 +372,76 @@ exports.registerClient = async (req, res) => {
         if (!validateStrongPassword(password).isValid)
             return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
 
+        const ageNum = Number(age);
+        if (!Number.isFinite(ageNum) || ageNum <= 0) {
+            return res.status(400).json({ message: 'Age must be a positive number.' });
+        }
+        if (ageNum < 18) {
+            return res.status(400).json({ message: 'Age must be 18 or above.' });
+        }
+
+        if (!dob) {
+            return res.status(400).json({ message: 'Birth date is required.' });
+        }
+        const dobDate = new Date(dob);
+        if (Number.isNaN(dobDate.getTime())) {
+            return res.status(400).json({ message: 'Birth date is invalid.' });
+        }
+        if (dobDate > new Date()) {
+            return res.status(400).json({ message: 'Birth date cannot be in the future.' });
+        }
+
+        const ageFromDob = (() => {
+            const now = new Date();
+            let years = now.getFullYear() - dobDate.getFullYear();
+            const m = now.getMonth() - dobDate.getMonth();
+            if (m < 0 || (m === 0 && now.getDate() < dobDate.getDate())) years--;
+            return years;
+        })();
+        if (ageFromDob < 18) {
+            return res.status(400).json({ message: 'Birth date indicates age below 18.' });
+        }
+
+        if (!['Male', 'Female', 'Other'].includes(gender)) {
+            return res.status(400).json({ message: 'Gender is required.' });
+        }
+
+        const toBool = (v) => v === true || v === 'true';
+
+        // NEW: Security validations
+        if (!toBool(ageVerified) && ageNum < 18)
+            return res.status(400).json({ message: 'Must be 18 or older to register.' });
+        if (!emergencyContactMobile || !emergencyContactName)
+            return res.status(400).json({ message: 'Emergency contact details are required.' });
+        if (!toBool(termsPaymentAccepted) || !toBool(termsDisputePolicyAccepted) || !toBool(termsDataPrivacyAccepted) || !toBool(termsWorkerProtectionAccepted))
+            return res.status(400).json({ message: 'You must accept all terms and conditions.' });
+
         if (await User.findOne({ mobile }))
             return res.status(409).json({ message: 'Mobile number is already registered.' });
         if (await User.findOne({ email }))
             return res.status(409).json({ message: 'Email is already registered.' });
 
-        // ── File URLs ─────────────────────────────────────────────────────────
+        // ── File URLs & Device Fingerprinting ─────────────────────────────────
         const photoFile     = safeGet(req.files, 'photo');
         const idProofFile   = safeGet(req.files, 'idProof');
+        const proofOfResidenceFile = safeGet(req.files, 'proofOfResidence');
+        const secondaryIdFile = safeGet(req.files, 'secondaryIdProof');
+        const certificationFile = safeGet(req.files, 'professionalCertification');
         const livePhotoFile = safeGet(req.files, 'livePhoto');
 
         if (!livePhotoFile)
             return res.status(400).json({ message: 'Live face photo is required for identity verification.' });
         if (!idProofFile)
             return res.status(400).json({ message: 'ID proof is required for identity verification.' });
+
+        // NEW: Capture IP & device fingerprint
+        const clientIp = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+        const userAgent = req.headers['user-agent'] || 'unknown';
+        const crypto = require('crypto');
+        const deviceFingerprint = crypto
+            .createHash('sha256')
+            .update(`${clientIp}${userAgent}`)
+            .digest('hex');
 
         // ── Face match + duplicate check for clients ─────────────────────────
         const faceServiceUp = await faceClient.isAvailable();
@@ -451,14 +524,76 @@ exports.registerClient = async (req, res) => {
             console.log(`[FaceVerification] Client verified — similarity=${similarity.toFixed(3)} ✅ no duplicate found`);
         }
 
+        // NEW: Generate address verification OTP
+        const addressOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const { sendAddressVerificationOtp } = require('../utils/smsHelper');
+        const addressDisplay = `${fullAddress}, ${city}`;
+        
+        try {
+            await sendAddressVerificationOtp(mobile, addressOtp, addressDisplay);
+            console.log(`[AddressOTP] Sent to ${mobile} for address: ${addressDisplay}`);
+        } catch (err) {
+            console.warn(`[AddressOTP] Failed to send: ${err.message}`);
+            // Continue registration even if OTP send fails
+        }
+
         // ── Create client ─────────────────────────────────────────────────────
         const user   = await User.create({
             karigarId: generateKarigarId(),
             role: 'client', name: name.trim(), mobile, email,
+            age: ageNum,
+            dob: dobDate,
+            gender,
             password,
             photo:     photoFile?.path || null,
-            address:   { city, pincode, homeLocation, houseNumber },
+            address:   {
+                city,
+                pincode,
+                locality,
+                homeLocation,
+                houseNumber,
+                fullAddress,
+                village,
+                latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
+                longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
+            },
             idProof:   { idType: idType || 'Aadhar', filePath: idProofFile?.path || null },
+            
+            // NEW high priority security fields
+            ageVerified: ageNum >= 18,
+            emergencyContact: {
+                name: emergencyContactName?.trim() || '',
+                mobile: emergencyContactMobile?.trim() || '',
+            },
+            proofOfResidence: proofOfResidenceFile?.path || null,
+            secondaryIdProof: secondaryIdFile?.path || null,
+            addressVerificationOtp: addressOtp,
+            addressVerificationOtpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 min
+            
+            // NEW medium priority fields
+            profession: profession?.trim() || '',
+            signupReason: signupReason || '',
+            previousHiringExperience: previousHiringExperience === 'true' ? true : previousHiringExperience === 'false' ? false : null,
+            preferredPaymentMethod: preferredPaymentMethod || '',
+            businessRegistrationNumber: businessRegistrationNumber?.trim() || '',
+            gstTaxId: gstTaxId?.trim() || '',
+            professionalCertification: certificationFile?.path || '',
+            insuranceDetails: insuranceDetails?.trim() || '',
+            securityQuestion: securityQuestion?.trim() || '',
+            securityAnswer: securityAnswer?.trim() || '',
+            
+            // Device & IP tracking
+            deviceFingerprint,
+            signupIpAddress: clientIp,
+            signupUserAgent: userAgent,
+            
+            // T&C acceptance
+            termsPaymentAccepted: toBool(termsPaymentAccepted),
+            termsDisputePolicyAccepted: toBool(termsDisputePolicyAccepted),
+            termsDataPrivacyAccepted: toBool(termsDataPrivacyAccepted),
+            termsWorkerProtectionAccepted: toBool(termsWorkerProtectionAccepted),
+            
+            // Legacy fields
             workplaceInfo, socialProfile,
             verificationStatus: 'approved',  // clients auto-approved
             faceEmbedding,
@@ -479,11 +614,56 @@ exports.registerClient = async (req, res) => {
                 photo: user.photo, karigarId: user.karigarId,
             },
             faceVerification: faceVerificationStatus,
+            addressVerificationNeeded: true, // Client needs to verify address with OTP
         });
 
     } catch (err) {
         console.error('registerClient:', err);
         return res.status(500).json({ message: err.message || 'Registration failed.' });
+    }
+};
+
+// ── NEW: Verify Address OTP (Called by client after registration) ───────────────
+exports.verifyAddressOtp = async (req, res) => {
+    try {
+        const { clientId, otp } = req.body;
+        
+        if (!clientId || !otp) {
+            return res.status(400).json({ message: 'Client ID and OTP are required.' });
+        }
+
+        const client = await User.findById(clientId).select('+addressVerificationOtp');
+        if (!client || client.role !== 'client') {
+            return res.status(404).json({ message: 'Client not found.' });
+        }
+
+        if (!client.addressVerificationOtp) {
+            return res.status(400).json({ message: 'No pending address verification.' });
+        }
+
+        if (Date.now() > client.addressVerificationOtpExpiry) {
+            return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+        }
+
+        if (client.addressVerificationOtp !== otp.trim()) {
+            return res.status(400).json({ message: 'Invalid OTP.' });
+        }
+
+        // OTP verified, mark address as verified
+        client.addressVerified = true;
+        client.addressVerificationOtp = undefined; // Clear OTP
+        client.addressVerificationOtpExpiry = undefined;
+        await client.save();
+
+        console.log(`[AddressVerification] Client ${client.karigarId} address verified ✅`);
+
+        return res.json({
+            message: 'Address verified successfully!',
+            addressVerified: true,
+        });
+    } catch (err) {
+        console.error('verifyAddressOtp:', err);
+        return res.status(500).json({ message: 'Verification failed.' });
     }
 };
 

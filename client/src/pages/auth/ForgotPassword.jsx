@@ -1,12 +1,23 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import { Mail, ArrowLeft, Shield, CheckCircle } from 'lucide-react';
 
 const ForgotPassword = () => {
+    const navigate = useNavigate();
     const [identifier, setIdentifier] = useState('');
     const [isSent, setIsSent] = useState(false);
+
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        const role = localStorage.getItem('role');
+        if (!token || !role) return;
+
+        if (role === 'client') navigate('/client/settings', { replace: true });
+        else if (role === 'worker') navigate('/worker/settings', { replace: true });
+        else if (role === 'admin') navigate('/admin/dashboard', { replace: true });
+    }, [navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();

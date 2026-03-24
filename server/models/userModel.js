@@ -24,6 +24,7 @@ const userSchema = new mongoose.Schema({
     karigarId: { type: String, required: true, unique: true },
     role: { type: String, required: true, enum: ['worker', 'client', 'admin'] },
     name: { type: String, required: true },
+    age: { type: Number, min: 0 },
     dob: { type: Date },
     phoneType: { type: String, enum: ['Smartphone', 'Feature Phone'], default: 'Smartphone' },
     mobile: { type: String, required: true, unique: true },
@@ -35,6 +36,8 @@ const userSchema = new mongoose.Schema({
     address: {
         city: String, pincode: String, locality: String,
         homeLocation: String, houseNumber: String,
+        fullAddress: String, village: String,
+        latitude: Number, longitude: Number,
     },
     idProof: {
         idType: String,
@@ -69,7 +72,54 @@ const userSchema = new mongoose.Schema({
     rejectedAt: { type: Date, default: undefined },
     rejectionReason: { type: String, default: null, trim: true, maxlength: 500 },
 
-    // Client fields
+    // Client fields — Basic Security & Verification
+    ageVerified: { type: Boolean, default: false },
+    emergencyContact: { name: String, mobile: String }, // Already has for worker, extending for client
+    proofOfResidence: { type: String }, // File path to uploaded utility bill/lease/bank statement
+    secondaryIdType: { type: String }, // e.g., "PAN", "Voter", "Driving License"
+    secondaryIdProof: { type: String }, // File path
+    addressVerificationOtp: { type: String, select: false }, // OTP for address verification
+    addressVerificationOtpExpiry: { type: Date, select: false },
+    addressVerified: { type: Boolean, default: false },
+    
+    // Client fields — Profession & Intent
+    profession: { type: String }, // e.g., "Homeowner", "Contractor", "Business Owner"
+    signupReason: { 
+        type: String, 
+        enum: ['Home Service', 'Event', 'Business Project', 'Other', ''], 
+        default: '' 
+    },
+    previousHiringExperience: { type: Boolean, default: null }, // true/false/null
+    hriredThroughOtherPlatforms: { type: Boolean, default: null },
+    
+    // Client fields — Payment & Preferences
+    preferredPaymentMethod: { 
+        type: String, 
+        enum: ['UPI', 'Card', 'Bank', 'Wallet', ''], 
+        default: '' 
+    },
+    
+    // Client fields — Device & Security
+    deviceFingerprint: { type: String }, // IP + user-agent hash for fraud detection
+    securityQuestion: { type: String }, // Custom security Q&A
+    securityAnswer: { type: String, select: false },
+    signupIpAddress: { type: String },
+    signupUserAgent: { type: String },
+    
+    // Client fields — Optional Professional
+    businessRegistrationNumber: { type: String },
+    gstTaxId: { type: String },
+    professionalCertification: { type: String },
+    insuranceDetails: { type: String },
+    referralClientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Existing client referral
+    
+    // Client fields — T&C Acceptance (separate checkboxes)
+    termsPaymentAccepted: { type: Boolean, default: false },
+    termsDisputePolicyAccepted: { type: Boolean, default: false },
+    termsDataPrivacyAccepted: { type: Boolean, default: false },
+    termsWorkerProtectionAccepted: { type: Boolean, default: false },
+    
+    // Legacy fields
     workplaceInfo: { type: String },
     socialProfile: { type: String },
     starredWorkers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

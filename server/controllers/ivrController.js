@@ -159,8 +159,8 @@ const TTS_LANG_MAP = {
 };
 
 const TTS_VOICE_MAP = {
-    hi: process.env.TWILIO_TTS_VOICE_HI || 'hi-IN-Standard-A',
-    mr: process.env.TWILIO_TTS_VOICE_MR || 'mr-IN-Standard-A',
+    hi: process.env.TWILIO_TTS_VOICE_HI || 'hi-IN-Chirp3-HD-Kore',
+    mr: process.env.TWILIO_TTS_VOICE_MR || 'mr-IN-Chirp3-HD-Kore',
     en: process.env.TWILIO_TTS_VOICE_EN || 'en-IN-Chirp3-HD-Kore',
 };
 

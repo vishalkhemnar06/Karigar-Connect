@@ -5,7 +5,7 @@ const multer   = require('multer');
 const {
     registerWorker, registerClient,
     loginWithPassword, loginWithOtp,
-    sendOtp, verifyOtp,
+    sendOtp, verifyOtp, verifyAddressOtp,
     getWorkerApplicationStatus,
     previewFaceSimilarity,
     forgotPassword, resetPassword,
@@ -20,8 +20,9 @@ const previewUpload = multer({
     limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-router.post('/send-otp',    sendOtp);
-router.post('/verify-otp',  verifyOtp);
+router.post('/send-otp',           sendOtp);
+router.post('/verify-otp',         verifyOtp);
+router.post('/verify-address-otp', verifyAddressOtp);
 router.post('/worker-application-status', getWorkerApplicationStatus);
 router.post('/face-similarity-preview',
     previewUpload.fields([
@@ -45,9 +46,12 @@ router.post('/register/worker',
 
 router.post('/register/client',
     clientUpload.fields([
-        { name: 'photo',      maxCount: 1 },
-        { name: 'idProof',    maxCount: 1 },
-        { name: 'livePhoto',  maxCount: 1 }, // ← face verification capture
+        { name: 'photo',               maxCount: 1 },
+        { name: 'idProof',             maxCount: 1 },
+        { name: 'livePhoto',           maxCount: 1 }, // ← face verification capture
+        { name: 'proofOfResidence',    maxCount: 1 }, // NEW: utility bill/lease/bank stmt
+        { name: 'secondaryIdProof',    maxCount: 1 }, // NEW: PAN/Voter/DL
+        { name: 'professionalCertification', maxCount: 1 }, // NEW: business cert
     ]),
     registerClient
 );

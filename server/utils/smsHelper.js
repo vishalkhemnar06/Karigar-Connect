@@ -58,6 +58,14 @@ exports.sendPasswordChangeOtpSms = async (to, otp, name) => {
     );
 };
 
+// ── NEW: Address Verification OTP ──────────────────────────────────────────────
+exports.sendAddressVerificationOtp = async (to, otp, address) => {
+    await sendSms(
+        to,
+        `Your KarigarConnect address verification OTP is ${otp}. We sent this to the address: ${address}. Valid for 10 minutes. Do not share this with anyone.`
+    );
+};
+
 // ── GROUP / JOB HELPERS ───────────────────────────────────────────────────────
 exports.sendGroupInviteSms = async (to) => {
     await sendSms(to, 'You have received a group invitation on KarigarConnect. Open the app to respond.');

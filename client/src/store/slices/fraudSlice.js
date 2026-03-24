@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import {
   dismissFraudQueueItem,
+  getAdminClientComplaintStats,
+  getAdminWorkerComplaintStats,
   getFraudActions,
   getFraudMetrics,
   getFraudQueue,
@@ -37,10 +39,32 @@ export const fetchFraudActions = createAsyncThunk('fraud/fetchActions', async (p
   }
 });
 
+export const fetchFraudComplaintStats = createAsyncThunk('fraud/fetchComplaintStats', async (_, { rejectWithValue }) => {
+  try {
+    const [clientStatsRes, workerStatsRes] = await Promise.all([
+      getAdminClientComplaintStats(),
+      getAdminWorkerComplaintStats(),
+    ]);
+
+    return {
+      client: clientStatsRes?.data || {},
+      worker: workerStatsRes?.data || {},
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return rejectWithValue(getErrorMessage(error, 'Failed to load complaint stats.'));
+  }
+});
+
 export const triggerFullScan = createAsyncThunk('fraud/triggerFullScan', async (_, { dispatch, rejectWithValue }) => {
   try {
     const { data } = await runFraudScan();
-    dispatch(fetchFraudQueue());
+    await Promise.allSettled([
+      dispatch(fetchFraudQueue()).unwrap(),
+      dispatch(fetchFraudActions()).unwrap(),
+      dispatch(fetchModelMetrics()).unwrap(),
+      dispatch(fetchFraudComplaintStats()).unwrap(),
+    ]);
     return data;
   } catch (error) {
     return rejectWithValue(getErrorMessage(error, 'Failed to run fraud scan.'));
@@ -52,6 +76,8 @@ export const takeAdminAction = createAsyncThunk('fraud/takeAdminAction', async (
     const { data } = await takeFraudAction(payload);
     dispatch(fetchFraudQueue());
     dispatch(fetchFraudActions());
+    dispatch(fetchModelMetrics());
+    dispatch(fetchFraudComplaintStats());
     return { ...data, userId: payload.userId };
   } catch (error) {
     return rejectWithValue(getErrorMessage(error, 'Failed to apply fraud action.'));
@@ -62,6 +88,9 @@ export const dismissAlert = createAsyncThunk('fraud/dismissAlert', async (userId
   try {
     await dismissFraudQueueItem(userId);
     dispatch(fetchFraudQueue());
+    dispatch(fetchFraudActions());
+    dispatch(fetchModelMetrics());
+    dispatch(fetchFraudComplaintStats());
     return userId;
   } catch (error) {
     return rejectWithValue(getErrorMessage(error, 'Failed to dismiss alert.'));
@@ -72,9 +101,15 @@ const initialState = {
   alerts: [],
   history: [],
   metrics: null,
+  complaintStats: {
+    client: null,
+    worker: null,
+    fetchedAt: null,
+  },
   selectedAlert: null,
   loading: false,
   error: null,
+  complaintStatsLoading: false,
   scanLoading: false,
   scanStatus: null,
   actionLoading: false,
@@ -126,6 +161,17 @@ const fraudSlice = createSlice({
       })
       .addCase(fetchFraudActions.fulfilled, (state, action) => {
         state.history = Array.isArray(action.payload) ? action.payload : [];
+      })
+      .addCase(fetchFraudComplaintStats.pending, state => {
+        state.complaintStatsLoading = true;
+      })
+      .addCase(fetchFraudComplaintStats.fulfilled, (state, action) => {
+        state.complaintStatsLoading = false;
+        state.complaintStats = action.payload;
+      })
+      .addCase(fetchFraudComplaintStats.rejected, (state, action) => {
+        state.complaintStatsLoading = false;
+        state.error = action.payload;
       })
       .addCase(triggerFullScan.pending, state => {
         state.scanLoading = true;

@@ -24,7 +24,7 @@ function StatCard({ label, value, sub, accent }) {
 
 export function FraudStatsBar() {
     const dispatch = useDispatch();
-    const { metrics, alerts, scanStatus, scanLoading } = useSelector(s => s.fraud);
+    const { metrics, alerts, complaintStats, scanStatus, scanLoading } = useSelector(s => s.fraud);
 
     useEffect(() => { dispatch(fetchModelMetrics()); }, [dispatch]);
 
@@ -32,6 +32,8 @@ export function FraudStatsBar() {
     const medium = alerts.filter(a => a.risk_level === 'MEDIUM').length;
     const wm     = metrics?.worker || {};
     const cm     = metrics?.client || {};
+    const clientPending = complaintStats?.client?.pending ?? 0;
+    const workerPending = (complaintStats?.worker?.byStatus?.submitted || 0) + (complaintStats?.worker?.byStatus?.inReview || 0);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
@@ -41,6 +43,8 @@ export function FraudStatsBar() {
                 <StatCard label="Total Flagged"  value={alerts.length}          sub="in queue"                     accent="#6366f1" />
                 <StatCard label="High Risk"      value={high}                   sub="immediate review needed"       accent="#ef4444" />
                 <StatCard label="Medium Risk"    value={medium}                 sub="review recommended"            accent="#f97316" />
+                <StatCard label="Client Complaints" value={clientPending}       sub="pending"                      accent="#dc2626" />
+                <StatCard label="Worker Tickets"   value={workerPending}       sub="submitted + in-review"        accent="#b45309" />
                 <StatCard label="Last Scan"
                     value={scanStatus ? scanStatus.scanned?.toLocaleString() : '—'}
                     sub={scanStatus ? `${scanStatus.flagged_count} flagged` : 'not yet run'}
