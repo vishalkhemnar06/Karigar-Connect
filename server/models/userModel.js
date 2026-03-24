@@ -1,3 +1,8 @@
+// server/models/userModel.js — UPDATED
+// Changes from previous version:
+//   - Added leaderboardDiscount virtual (computed from points for frontend display)
+//   - All original fields and hooks preserved exactly
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -82,13 +87,28 @@ const userSchema = new mongoose.Schema({
     resetPasswordToken: String,
     resetPasswordExpire: Date,
 
-    // Password-Change OTP Fields (NEW)
+    // Password-Change OTP Fields
     passwordChangeOtp: { type: String, select: false },
     passwordChangeOtpExpiry: { type: Date, select: false },
     passwordChangeVerifiedToken: { type: String, select: false },
     passwordChangeVerifiedTokenExpiry: { type: Date, select: false },
 
-}, { timestamps: true });
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+
+// ── VIRTUAL: leaderboard discount percentage (read-only, for frontend display) ─
+// Mirrors couponController calcDiscount logic so workers can see their tier
+// in the leaderboard / dashboard without hitting the coupon endpoint.
+userSchema.virtual('leaderboardDiscount').get(function () {
+    if (this.role !== 'worker') return 0;
+    const pts = this.points || 0;
+    // Note: completed jobs not available here (no join), so we use points only.
+    // The actual coupon discount uses points + completedJobs*5 — this is just display.
+    if (pts >= 200) return 20;
+    if (pts >= 100) return 15;
+    if (pts >= 50)  return 10;
+    if (pts >= 25)  return 5;
+    return 0;
+});
 
 // CRITICAL: Hash password before saving to DB
 userSchema.pre('save', async function (next) {

@@ -1,3 +1,7 @@
+// src/pages/worker/Settings.jsx
+// MOBILE-FRIENDLY & ENHANCED VERSION
+// Features: Responsive design, touch-friendly, modern animations, password strength meter, OTP countdown
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../../api';
@@ -6,11 +10,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Lock, Smartphone, Eye, EyeOff, ShieldAlert,
     ChevronRight, LogOut, Loader2, CheckCircle2,
-    AlertTriangle, User, Key, Trash2
+    AlertTriangle, User, Key, Trash2, Shield,
+    Fingerprint, AlertCircle, Clock, Mail,
+    Phone, Info, ArrowLeft, Home, ShieldCheck,
+    Sparkles, Zap
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. CHANGE PASSWORD SECTION (ENHANCED)
+// 1. CHANGE PASSWORD SECTION (ENHANCED WITH STRENGTH METER)
 // ─────────────────────────────────────────────────────────────────────────────
 function ChangePasswordSection() {
     const [step, setStep] = useState('idle');
@@ -102,9 +109,9 @@ function ChangePasswordSection() {
         if (p.match(/[0-9]/)) score++;
         if (p.match(/[^a-zA-Z0-9]/)) score++;
         
-        if (score <= 2) return { label: 'Weak', color: 'bg-red-500', text: 'text-red-600', width: '33%' };
-        if (score <= 4) return { label: 'Medium', color: 'bg-yellow-500', text: 'text-yellow-600', width: '66%' };
-        return { label: 'Strong', color: 'bg-green-500', text: 'text-green-600', width: '100%' };
+        if (score <= 2) return { label: 'Weak', color: 'bg-red-500', text: 'text-red-600', bgLight: 'bg-red-50', width: '33%' };
+        if (score <= 4) return { label: 'Medium', color: 'bg-yellow-500', text: 'text-yellow-600', bgLight: 'bg-yellow-50', width: '66%' };
+        return { label: 'Strong', color: 'bg-green-500', text: 'text-green-600', bgLight: 'bg-green-50', width: '100%' };
     };
     
     const strength = getPasswordStrength(newPassword);
@@ -117,18 +124,18 @@ function ChangePasswordSection() {
         >
             <button
                 onClick={() => setExpanded(!expanded)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 hover:bg-gray-50 transition-colors active:bg-gray-100"
             >
                 <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center">
-                        <Key size={16} className="text-orange-600" />
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-r from-orange-100 to-amber-100 flex items-center justify-center">
+                        <Key size={14} className="text-orange-600" />
                     </div>
                     <div className="text-left">
-                        <p className="font-bold text-gray-900 text-sm">Change Password</p>
-                        <p className="text-xs text-gray-400 mt-0.5">Secure your account with OTP verification</p>
+                        <p className="font-bold text-gray-900 text-xs sm:text-sm">Change Password</p>
+                        <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">Secure your account with OTP verification</p>
                     </div>
                 </div>
-                <ChevronRight size={16} className={`text-gray-400 transition-transform duration-300 ${expanded ? 'rotate-90' : ''}`} />
+                <ChevronRight size={16} className={`text-gray-400 transition-transform duration-300 flex-shrink-0 ${expanded ? 'rotate-90' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -140,53 +147,78 @@ function ChangePasswordSection() {
                         transition={{ duration: 0.3 }}
                         className="overflow-hidden"
                     >
-                        <div className="px-5 pb-5 pt-2">
+                        <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-2 space-y-4">
                             {step === 'done' && (
-                                <div className="text-center py-6">
-                                    <CheckCircle2 size={48} className="text-green-500 mx-auto mb-3" />
-                                    <p className="font-bold text-gray-900 text-lg">Password Updated!</p>
-                                    <p className="text-sm text-gray-500 mt-2">Logging you out for security...</p>
+                                <motion.div 
+                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    className="text-center py-6 sm:py-8"
+                                >
+                                    <motion.div
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        transition={{ type: 'spring', delay: 0.2 }}
+                                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-4 shadow-lg"
+                                    >
+                                        <CheckCircle2 size={32} className="text-white" />
+                                    </motion.div>
+                                    <p className="font-bold text-gray-900 text-lg sm:text-xl">Password Updated!</p>
+                                    <p className="text-xs sm:text-sm text-gray-500 mt-2">Logging you out for security...</p>
                                     <Loader2 size={20} className="animate-spin mx-auto mt-4 text-orange-500" />
-                                </div>
+                                </motion.div>
                             )}
 
                             {step === 'idle' && (
-                                <button
+                                <motion.button
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
                                     onClick={handleSendOtp}
                                     disabled={loading}
-                                    className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-bold text-sm transition-all duration-200 transform hover:scale-[1.02]"
+                                    className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-bold text-sm transition-all active:scale-95 shadow-md"
                                 >
                                     {loading ? <Loader2 size={16} className="animate-spin" /> : <Smartphone size={16} />}
                                     Send OTP to Mobile
-                                </button>
+                                </motion.button>
                             )}
 
                             {step === 'otp_sent' && (
-                                <div className="space-y-4">
-                                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                                        <p className="text-xs text-green-700">
-                                            <CheckCircle2 size={12} className="inline mr-1" />
-                                            OTP sent to <b>{maskedMobile}</b>
-                                        </p>
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="space-y-4"
+                                >
+                                    <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                                        <div className="flex items-start gap-2">
+                                            <CheckCircle2 size={14} className="text-green-600 flex-shrink-0 mt-0.5" />
+                                            <p className="text-xs sm:text-sm text-green-700">
+                                                OTP sent to <span className="font-bold">{maskedMobile}</span>
+                                            </p>
+                                        </div>
                                     </div>
-                                    <input
-                                        type="number"
-                                        value={otp}
-                                        onChange={e => setOtp(e.target.value)}
-                                        placeholder="Enter 6-digit OTP"
-                                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-xl font-black tracking-widest focus:ring-2 focus:ring-orange-300 outline-none transition-all"
-                                        autoFocus
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={otp}
+                                            onChange={e => setOtp(e.target.value)}
+                                            placeholder="Enter 6-digit OTP"
+                                            className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-center text-base sm:text-xl font-black tracking-widest focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all"
+                                            autoFocus
+                                        />
+                                        <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    </div>
                                     <button
                                         onClick={handleVerifyOtp}
-                                        disabled={loading || !otp}
-                                        className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50"
+                                        disabled={loading || !otp || otp.length < 4}
+                                        className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-bold transition-all disabled:opacity-50 active:scale-95"
                                     >
                                         {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Verify OTP'}
                                     </button>
-                                    <div className="flex justify-between text-xs">
+                                    <div className="flex justify-between items-center text-xs">
                                         {countdown > 0 ? (
-                                            <span className="text-gray-400">Resend in {countdown}s</span>
+                                            <div className="flex items-center gap-1 text-gray-400">
+                                                <Clock size={12} />
+                                                <span>Resend in {countdown}s</span>
+                                            </div>
                                         ) : (
                                             <button onClick={handleSendOtp} className="text-orange-500 font-bold hover:underline">
                                                 Resend OTP
@@ -196,74 +228,109 @@ function ChangePasswordSection() {
                                             Cancel
                                         </button>
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
 
                             {step === 'otp_verified' && (
-                                <div className="space-y-4">
-                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                        <p className="text-xs text-blue-700">
-                                            <ShieldAlert size={12} className="inline mr-1" />
-                                            Verified! Set your new password
-                                        </p>
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="space-y-4"
+                                >
+                                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                                        <div className="flex items-start gap-2">
+                                            <ShieldAlert size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                                            <p className="text-xs sm:text-sm text-blue-700">
+                                                Verified! Set your new password
+                                            </p>
+                                        </div>
                                     </div>
+                                    
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">New Password</label>
+                                        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">New Password</label>
                                         <div className="relative">
                                             <input
                                                 type={showPwd ? 'text' : 'password'}
                                                 value={newPassword}
                                                 onChange={e => setNewPassword(e.target.value)}
-                                                className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-orange-300"
+                                                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all"
                                                 placeholder="Enter new password"
                                             />
                                             <button
                                                 onClick={() => setShowPwd(!showPwd)}
-                                                className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                             >
                                                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
-                                        {strength && (
-                                            <div className="mt-2">
+                                        {strength && newPassword && (
+                                            <div className="mt-3 space-y-1">
                                                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                                    <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
+                                                    <motion.div 
+                                                        className={`h-full ${strength.color} rounded-full`} 
+                                                        style={{ width: strength.width }}
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: strength.width }}
+                                                        transition={{ duration: 0.5 }}
+                                                    />
                                                 </div>
-                                                <p className={`text-xs mt-1 ${strength.text}`}>
-                                                    Password strength: {strength.label}
-                                                </p>
+                                                <div className="flex justify-between items-center">
+                                                    <p className={`text-[10px] sm:text-xs ${strength.text} font-medium`}>
+                                                        {strength.label} password
+                                                    </p>
+                                                    <p className="text-[10px] text-gray-400">
+                                                        {newPassword.length}/min 6 chars
+                                                    </p>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
+
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm Password</label>
+                                        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">Confirm Password</label>
                                         <div className="relative">
                                             <input
                                                 type={showConfirm ? 'text' : 'password'}
                                                 value={confirmPwd}
                                                 onChange={e => setConfirmPwd(e.target.value)}
-                                                className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-orange-300"
+                                                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all"
                                                 placeholder="Confirm new password"
                                             />
                                             <button
                                                 onClick={() => setShowConfirm(!showConfirm)}
-                                                className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                             >
                                                 {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
                                         {confirmPwd && newPassword !== confirmPwd && (
-                                            <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                                            <motion.p 
+                                                initial={{ opacity: 0, y: -5 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="text-[10px] sm:text-xs text-red-500 mt-1 flex items-center gap-1"
+                                            >
+                                                <AlertCircle size={10} /> Passwords do not match
+                                            </motion.p>
+                                        )}
+                                        {confirmPwd && newPassword === confirmPwd && newPassword.length >= 6 && (
+                                            <motion.p 
+                                                initial={{ opacity: 0, y: -5 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="text-[10px] sm:text-xs text-green-500 mt-1 flex items-center gap-1"
+                                            >
+                                                <CheckCircle2 size={10} /> Passwords match
+                                            </motion.p>
                                         )}
                                     </div>
+
                                     <button
                                         onClick={handleChangePassword}
                                         disabled={loading || newPassword !== confirmPwd || newPassword.length < 6}
-                                        className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl font-bold transition-all disabled:opacity-50"
+                                        className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 active:scale-95 shadow-md"
                                     >
                                         {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Update Password'}
                                     </button>
-                                </div>
+                                </motion.div>
                             )}
                         </div>
                     </motion.div>
@@ -286,6 +353,14 @@ function DeleteAccountSection() {
     const [maskedMobile, setMaskedMobile] = useState('');
     const [verifiedToken, setVerifiedToken] = useState('');
     const [countdown, setCountdown] = useState(0);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        if (countdown > 0) {
+            timerRef.current = setTimeout(() => setCountdown(c => c - 1), 1000);
+        }
+        return () => clearTimeout(timerRef.current);
+    }, [countdown]);
 
     const handleSendOtp = async () => {
         setLoading(true);
@@ -303,6 +378,7 @@ function DeleteAccountSection() {
     };
 
     const handleVerifyOtp = async () => {
+        if (!otp.trim()) return toast.error('Please enter OTP');
         setLoading(true);
         try {
             const { data } = await api.verifyPasswordChangeOtp({ otp });
@@ -335,18 +411,18 @@ function DeleteAccountSection() {
         <motion.div className="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
             <button
                 onClick={() => setOpen(!open)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-red-50 transition-colors"
+                className="w-full flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 hover:bg-red-50 transition-colors active:bg-red-100"
             >
                 <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center">
-                        <Trash2 size={16} className="text-red-600" />
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-red-100 flex items-center justify-center">
+                        <Trash2 size={14} className="text-red-600" />
                     </div>
                     <div className="text-left">
-                        <p className="font-bold text-red-700 text-sm">Delete Account</p>
-                        <p className="text-xs text-gray-400 mt-0.5">Permanent and irreversible action</p>
+                        <p className="font-bold text-red-700 text-xs sm:text-sm">Delete Account</p>
+                        <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">Permanent and irreversible action</p>
                     </div>
                 </div>
-                <ChevronRight size={16} className={`text-gray-400 transition-transform duration-300 ${open ? 'rotate-90' : ''}`} />
+                <ChevronRight size={16} className={`text-gray-400 transition-transform duration-300 flex-shrink-0 ${open ? 'rotate-90' : ''}`} />
             </button>
 
             <AnimatePresence>
@@ -358,13 +434,19 @@ function DeleteAccountSection() {
                         transition={{ duration: 0.3 }}
                         className="overflow-hidden"
                     >
-                        <div className="px-5 pb-5 pt-2 space-y-4">
+                        <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-2 space-y-4">
                             {step === 'confirm' && (
-                                <div className="bg-red-50 p-4 rounded-xl border border-red-200">
-                                    <div className="flex items-start gap-2">
-                                        <AlertTriangle size={16} className="text-red-600 mt-0.5" />
+                                <motion.div 
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="bg-red-50 p-4 rounded-xl border border-red-200"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                                            <AlertTriangle size={16} className="text-red-600" />
+                                        </div>
                                         <div>
-                                            <p className="text-sm text-red-700 font-semibold mb-2">
+                                            <p className="text-sm text-red-700 font-bold mb-2">
                                                 Warning: This action cannot be undone!
                                             </p>
                                             <p className="text-xs text-red-600 leading-relaxed">
@@ -374,53 +456,77 @@ function DeleteAccountSection() {
                                     </div>
                                     <button
                                         onClick={handleSendOtp}
-                                        className="w-full mt-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition-colors"
+                                        className="w-full mt-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg text-sm font-bold transition-all active:scale-95"
                                     >
                                         Continue to Delete
                                     </button>
-                                </div>
+                                </motion.div>
                             )}
 
                             {step === 'otp_sent' && (
-                                <div className="space-y-3">
-                                    <p className="text-xs text-gray-600">Enter OTP sent to {maskedMobile}</p>
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="space-y-3"
+                                >
+                                    <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                                        <p className="text-xs text-green-700">
+                                            <CheckCircle2 size={12} className="inline mr-1" />
+                                            OTP sent to <span className="font-bold">{maskedMobile}</span>
+                                        </p>
+                                    </div>
                                     <input
                                         type="number"
                                         value={otp}
                                         onChange={e => setOtp(e.target.value)}
-                                        placeholder="6-digit OTP"
-                                        className="w-full border border-gray-200 rounded-xl p-3 text-center font-bold"
+                                        placeholder="Enter 6-digit OTP"
+                                        className="w-full border-2 border-gray-200 rounded-xl p-3 text-center font-bold text-lg tracking-widest focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all"
+                                        autoFocus
                                     />
                                     <button
                                         onClick={handleVerifyOtp}
-                                        disabled={!otp}
-                                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50"
+                                        disabled={!otp || otp.length < 4}
+                                        className="w-full py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg font-bold transition-all disabled:opacity-50 active:scale-95"
                                     >
                                         Verify & Continue
                                     </button>
-                                </div>
+                                    {countdown > 0 ? (
+                                        <p className="text-center text-xs text-gray-400">Resend in {countdown}s</p>
+                                    ) : (
+                                        <button onClick={handleSendOtp} className="text-center text-xs text-red-500 font-bold w-full">
+                                            Resend OTP
+                                        </button>
+                                    )}
+                                </motion.div>
                             )}
 
                             {step === 'otp_verified' && (
-                                <div className="space-y-3">
-                                    <p className="text-xs font-bold text-gray-700">
-                                        Type <span className="text-red-600 text-base">DELETE</span> to permanently remove your account:
-                                    </p>
-                                    <input
-                                        type="text"
-                                        value={confirmText}
-                                        onChange={e => setConfirmText(e.target.value)}
-                                        placeholder="Type DELETE here"
-                                        className="w-full border-2 border-red-300 rounded-xl p-3 text-center font-bold text-red-600 bg-red-50"
-                                    />
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="space-y-3"
+                                >
+                                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                                        <p className="text-xs font-bold text-gray-700 mb-3 text-center">
+                                            Type <span className="text-red-600 text-lg font-black">DELETE</span> to permanently remove your account:
+                                        </p>
+                                        <input
+                                            type="text"
+                                            value={confirmText}
+                                            onChange={e => setConfirmText(e.target.value)}
+                                            placeholder="Type DELETE here"
+                                            className="w-full border-2 border-red-300 rounded-xl p-3 text-center font-bold text-red-600 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100 outline-none transition-all uppercase"
+                                            autoFocus
+                                        />
+                                    </div>
                                     <button
                                         onClick={handleDelete}
                                         disabled={confirmText !== 'DELETE' || loading}
-                                        className="w-full py-3 bg-red-700 hover:bg-red-800 text-white rounded-lg font-black transition-colors disabled:opacity-50"
+                                        className="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg font-black transition-all disabled:opacity-50 active:scale-95 shadow-md"
                                     >
                                         {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'DELETE ACCOUNT PERMANENTLY'}
                                     </button>
-                                </div>
+                                </motion.div>
                             )}
                         </div>
                     </motion.div>
@@ -453,53 +559,76 @@ const Settings = () => {
 
     const handleLogout = () => {
         toast.custom((t) => (
-            <div className="bg-white rounded-xl shadow-lg p-4 max-w-sm w-full">
-                <p className="text-gray-800 mb-3">Are you sure you want to logout?</p>
-                <div className="flex gap-2">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white rounded-2xl shadow-xl p-5 max-w-sm w-full mx-4"
+            >
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                        <LogOut size={18} className="text-red-600" />
+                    </div>
+                    <p className="font-bold text-gray-900">Logout Confirmation</p>
+                </div>
+                <p className="text-gray-600 text-sm mb-4">Are you sure you want to logout from your account?</p>
+                <div className="flex gap-3">
                     <button
                         onClick={() => {
                             localStorage.clear();
                             toast.dismiss(t.id);
                             navigate('/login');
                         }}
-                        className="flex-1 bg-red-500 text-white py-2 rounded-lg text-sm font-bold"
+                        className="flex-1 bg-gradient-to-r from-red-500 to-red-600 text-white py-2.5 rounded-xl text-sm font-bold active:scale-95"
                     >
                         Logout
                     </button>
                     <button
                         onClick={() => toast.dismiss(t.id)}
-                        className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-sm font-bold"
+                        className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-bold active:scale-95"
                     >
                         Cancel
                     </button>
                 </div>
-            </div>
+            </motion.div>
         ), { duration: 5000 });
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-            <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
-                {/* Header with animation */}
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
+            <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-24">
+                {/* Header with back button */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-8"
+                    className="mb-6 sm:mb-8"
                 >
-                    <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                        Settings
-                    </h1>
-                    <p className="text-sm text-gray-500 mt-2">
-                        Manage your account and security settings
-                    </p>
+                    <div className="flex items-center gap-3 mb-2">
+                        <button
+                            onClick={() => navigate(-1)}
+                            className="p-2 rounded-xl hover:bg-white/50 transition-all active:scale-95"
+                        >
+                            <ArrowLeft size={20} className="text-gray-600" />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                                Settings
+                            </h1>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                                Manage your account and security settings
+                            </p>
+                        </div>
+                    </div>
                 </motion.div>
 
                 {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="text-center">
-                            <Loader2 className="animate-spin text-orange-500 mx-auto mb-4" size={40} />
-                            <p className="text-gray-500">Loading your settings...</p>
-                        </div>
+                    <div className="flex flex-col items-center justify-center py-20">
+                        <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                            className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full"
+                        />
+                        <p className="text-gray-500 mt-4 text-sm">Loading your settings...</p>
                     </div>
                 ) : (
                     <motion.div
@@ -508,81 +637,115 @@ const Settings = () => {
                         transition={{ delay: 0.2 }}
                         className="space-y-4"
                     >
-                        {/* Account Info Card */}
+                        {/* Account Info Card - Enhanced */}
                         {profile && (
                             <motion.div
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
                             >
-                                <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-                                    <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-                                        <User size={16} className="text-blue-600" />
+                                <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-4 sm:px-5 py-3 sm:py-4 border-b border-orange-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 flex items-center justify-center">
+                                            <User size={14} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-900 text-xs sm:text-sm">Account Information</p>
+                                            <p className="text-[10px] sm:text-xs text-gray-500">Your profile details</p>
+                                        </div>
                                     </div>
-                                    <p className="font-bold text-gray-900 text-sm">Account Information</p>
                                 </div>
-                                <div className="px-5 py-4 space-y-3">
+                                <div className="px-4 sm:px-5 py-4 space-y-3">
                                     <div className="flex justify-between items-center py-2">
-                                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Full Name</span>
-                                        <span className="font-bold text-gray-800">{profile.name}</span>
+                                        <span className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                            <User size={10} /> Full Name
+                                        </span>
+                                        <span className="font-bold text-gray-800 text-sm">{profile.name}</span>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-t border-gray-100">
-                                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Karigar ID</span>
-                                        <span className="font-mono text-sm font-bold text-gray-800">{profile.karigarId}</span>
+                                        <span className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                            <Fingerprint size={10} /> Karigar ID
+                                        </span>
+                                        <span className="font-mono text-xs sm:text-sm font-bold text-gray-800">{profile.karigarId}</span>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-t border-gray-100">
-                                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Mobile Number</span>
-                                        <span className="font-bold text-gray-800">
+                                        <span className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                            <Phone size={10} /> Mobile Number
+                                        </span>
+                                        <span className="font-bold text-gray-800 text-sm">
                                             {profile.mobile?.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
                                         </span>
                                     </div>
                                     {profile.email && (
                                         <div className="flex justify-between items-center py-2 border-t border-gray-100">
-                                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Email</span>
-                                            <span className="text-sm text-gray-600">{profile.email}</span>
+                                            <span className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                                <Mail size={10} /> Email
+                                            </span>
+                                            <span className="text-xs sm:text-sm text-gray-600 truncate max-w-[200px]">{profile.email}</span>
                                         </div>
                                     )}
+                                    <div className="flex justify-between items-center py-2 border-t border-gray-100">
+                                        <span className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                            <ShieldCheck size={10} /> Verification Status
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                                            <CheckCircle2 size={10} /> Verified
+                                        </span>
+                                    </div>
                                 </div>
                             </motion.div>
                         )}
 
                         {/* Security Section */}
                         <div className="space-y-3">
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Security</p>
+                            <div className="flex items-center gap-2 px-1">
+                                <Shield size={12} className="text-gray-400" />
+                                <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">Security</p>
+                            </div>
                             <ChangePasswordSection />
                         </div>
 
-                        {/* Logout Button */}
-                        <button
+                        {/* Logout Button - Enhanced */}
+                        <motion.button
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.98 }}
                             onClick={handleLogout}
-                            className="w-full bg-white border border-gray-100 rounded-2xl shadow-sm px-5 py-4 flex items-center gap-3 hover:bg-red-50 transition-all group"
+                            className="w-full bg-white border border-gray-100 rounded-2xl shadow-sm px-4 sm:px-5 py-3 sm:py-4 flex items-center gap-3 hover:bg-red-50 transition-all group"
                         >
-                            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-red-100">
-                                <LogOut size={16} className="text-gray-500 group-hover:text-red-600" />
+                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-red-100 transition-all">
+                                <LogOut size={14} className="text-gray-500 group-hover:text-red-600" />
                             </div>
                             <div className="text-left flex-grow">
-                                <p className="font-bold text-gray-900 text-sm">Log Out</p>
-                                <p className="text-xs text-gray-400">Sign out of your account</p>
+                                <p className="font-bold text-gray-900 text-xs sm:text-sm">Log Out</p>
+                                <p className="text-[10px] sm:text-xs text-gray-400">Sign out of your account</p>
                             </div>
-                            <ChevronRight size={16} className="text-gray-300" />
-                        </button>
+                            <ChevronRight size={16} className="text-gray-300 group-hover:text-red-400 transition-colors" />
+                        </motion.button>
 
                         {/* Delete Account */}
                         <DeleteAccountSection />
 
-                        {/* App Info */}
+                        {/* App Info - Enhanced */}
                         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div className="flex justify-between px-5 py-4 items-center">
+                            <div className="flex justify-between px-4 sm:px-5 py-3 sm:py-4 items-center">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
-                                        <Lock size={16} className="text-gray-600" />
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-r from-gray-100 to-gray-200 flex items-center justify-center">
+                                        <Sparkles size={14} className="text-gray-600" />
                                     </div>
                                     <div>
-                                        <p className="font-bold text-gray-900 text-sm">App Version</p>
-                                        <p className="text-xs text-gray-400">Karigar Platform</p>
+                                        <p className="font-bold text-gray-900 text-xs sm:text-sm">Karigar Platform</p>
+                                        <p className="text-[10px] sm:text-xs text-gray-400">Connecting skilled workers</p>
                                     </div>
                                 </div>
-                                <span className="text-sm font-bold text-gray-400">v2.2.0</span>
+                                <div className="text-right">
+                                    <span className="text-sm font-bold text-gray-400">v2.2.0</span>
+                                    <p className="text-[8px] text-gray-300">Latest</p>
+                                </div>
+                            </div>
+                            <div className="border-t border-gray-100 px-4 sm:px-5 py-3 bg-gray-50">
+                                <p className="text-[9px] text-gray-400 text-center">
+                                        © {new Date().getFullYear()} KarigarConnect — Secure & Verified
+                                </p>
                             </div>
                         </div>
                     </motion.div>

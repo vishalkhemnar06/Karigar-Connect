@@ -1,15 +1,5 @@
 // server/server.js
-// UPDATED: Added workerComplaintRoutes at /api/worker/complaints
-//          (mounted BEFORE /api/worker to avoid route conflicts)
-// BUGFIX (v2.3):
-//   1. /api/admin/fraud-notify now correctly routed — Python posts to this
-//      exact path (hyphen, not /fraud/notify). Solved by mounting
-//      adminFraudRoutes at both /api/admin/fraud AND /api/admin/fraud-notify
-//      so the router's POST /notify handler fires at both URLs.
-//   2. FRAUD_SERVICE_URL falls back to http://127.0.0.1:5001 (IPv4) instead
-//      of http://localhost:5001 — Node.js on modern systems resolves
-//      "localhost" to ::1 (IPv6), causing ECONNREFUSED when Python only
-//      listens on 127.0.0.1 (IPv4).
+// UPDATED: Added /api/admin/complaints route for client-against-worker complaint management
 // All original code preserved exactly.
 
 const express  = require('express');
@@ -22,20 +12,26 @@ const axios    = require('axios');
 
 dotenv.config();
 
-const authRoutes             = require('./routes/authRoutes');
-const adminRoutes            = require('./routes/adminRoutes');
-const workerRoutes           = require('./routes/workerRoutes');
-const clientRoutes           = require('./routes/clientRoutes');
-const aiRoutes               = require('./routes/aiRoutes');
-const groupRoutes            = require('./routes/groupRoutes');
-const jobRoutes              = require('./routes/jobRoutes');
-const adminFraudRoutes       = require('./routes/adminFraudRoutes');
-const clientComplaintRoutes  = require('./routes/clientComplaintRoutes');
-const adminWorkerComplaintRoutes = require('./routes/adminWorkerComplaintRoutes');
-const workerComplaintRoutes  = require('./routes/workerComplaintRoutes');
-const communityRoutes        = require('./routes/communityRoutes');
-const adminCommunityRoutes   = require('./routes/adminCommunityRoutes');
-const locationRoutes         = require('./routes/locationRoutes');
+const authRoutes                 = require('./routes/authRoutes');
+const adminRoutes                = require('./routes/adminRoutes');
+const workerRoutes               = require('./routes/workerRoutes');
+const clientRoutes               = require('./routes/clientRoutes');
+const aiRoutes                   = require('./routes/aiRoutes');
+const groupRoutes                = require('./routes/groupRoutes');
+const jobRoutes                  = require('./routes/jobRoutes');
+const adminFraudRoutes           = require('./routes/adminFraudRoutes');
+const clientComplaintRoutes      = require('./routes/clientComplaintRoutes');
+const adminComplaintRoutes       = require('./routes/adminComplaintRoutes');       // ← NEW: client-vs-worker complaints (ClientComplaint model)
+const adminWorkerComplaintRoutes = require('./routes/adminWorkerComplaintRoutes'); // ← existing: worker support tickets (Complaint model)
+const workerComplaintRoutes      = require('./routes/workerComplaintRoutes');
+const communityRoutes            = require('./routes/communityRoutes');
+const adminCommunityRoutes       = require('./routes/adminCommunityRoutes');
+const locationRoutes             = require('./routes/locationRoutes');
+
+// ── Shop & Coupon routes ──────────────────────────────────────────────────────
+const shopRoutes       = require('./routes/shopRoutes');
+const adminShopRoutes  = require('./routes/adminShopRoutes');
+const couponRoutes     = require('./routes/couponRoutes');
 
 const app = express();
 
@@ -43,8 +39,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const allowedOrigins = process.env.FRONTEND_URL
-    ? [process.env.FRONTEND_URL, 'http://localhost:5173']
-    : ['http://localhost:5173'];
+    ? [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://192.168.0.103:5173']
+    : ['http://localhost:5173', 'http://192.168.0.103:5173'];
 
 app.use(cors({
     origin: (origin, cb) => {
@@ -55,19 +51,27 @@ app.use(cors({
 }));
 
 // ── Static files ──────────────────────────────────────────────────────────────
+// Serve the ENTIRE uploads/ directory at /uploads.
+const uploadsRoot = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsRoot)) {
+    fs.mkdirSync(uploadsRoot, { recursive: true });
+    console.log('📁  Created uploads/ directory');
+}
+app.use('/uploads', express.static(uploadsRoot, { maxAge: '1d', index: false }));
+console.log('📂  Serving static files from:', uploadsRoot);
+
+// Legacy specific subdirectory mounts kept for backward compatibility
 const legacyStaticDirs = [
-    { url: '/uploads/photos',  dir: 'uploads/photos'  },
-    { url: '/uploads/ai',      dir: 'uploads/ai'      },
-    { url: '/uploads/clients', dir: 'uploads/clients' },
+    { url: '/uploads/photos',    dir: 'uploads/photos'    },
+    { url: '/uploads/ai',        dir: 'uploads/ai'        },
+    { url: '/uploads/clients',   dir: 'uploads/clients'   },
+    { url: '/uploads/community', dir: 'uploads/community' },
 ];
 legacyStaticDirs.forEach(({ url, dir }) => {
     const abs = path.join(__dirname, dir);
-    if (fs.existsSync(abs)) app.use(url, express.static(abs));
+    if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true });
+    app.use(url, express.static(abs));
 });
-
-const communityUploadDir = path.join(__dirname, 'uploads/community');
-if (!fs.existsSync(communityUploadDir)) fs.mkdirSync(communityUploadDir, { recursive: true });
-app.use('/uploads/community', express.static(communityUploadDir));
 
 // ── Database ──────────────────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGO_URI)
@@ -77,22 +81,22 @@ mongoose.connect(process.env.MONGO_URI)
 // ── Routes — specific paths BEFORE their parent prefix ────────────────────────
 app.use('/api/auth',                     authRoutes);
 
-// FIX 1: Mount adminFraudRoutes at /api/admin/fraud for browser requests.
-// FIX 2: ALSO mount it at /api/admin/fraud-notify so that Python's
-//         _notify_node() which POSTs to /api/admin/fraud-notify hits the
-//         router's  POST /notify  handler (registered in adminFraudRoutes.js).
-//         Without this second mount Python got a 404 which cascaded into the
-//         502 Bad Gateway the browser was seeing on /api/admin/fraud/* routes.
 app.use('/api/admin/fraud',              adminFraudRoutes);
-app.use('/api/admin/fraud-notify',       adminFraudRoutes);   // FIX: dual-mount
-
-app.use('/api/admin/worker-complaints',  adminWorkerComplaintRoutes);
+app.use('/api/admin/fraud-notify',       adminFraudRoutes);
+app.use('/api/admin/complaints',         adminComplaintRoutes);       // ← NEW: client-vs-worker complaints
+app.use('/api/admin/worker-complaints',  adminWorkerComplaintRoutes); // ← existing: worker support tickets
 app.use('/api/admin/community',          adminCommunityRoutes);
+app.use('/api/admin/shops',              adminShopRoutes);
 app.use('/api/admin',                    adminRoutes);
+
 app.use('/api/client/complaints',        clientComplaintRoutes);
 app.use('/api/client',                   clientRoutes);
+
 app.use('/api/worker/complaints',        workerComplaintRoutes);
+app.use('/api/worker/coupons',           couponRoutes);
 app.use('/api/worker',                   workerRoutes);
+
+app.use('/api/shop',                     shopRoutes);
 app.use('/api/community',                communityRoutes);
 app.use('/api/ai',                       aiRoutes);
 app.use('/api/groups',                   groupRoutes);
@@ -100,15 +104,12 @@ app.use('/api/jobs',                     jobRoutes);
 app.use('/api/location',                 locationRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.3.0' }));
+app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.5.0' }));
 app.get('/api/health', (req, res) => res.json({
     status: 'ok', uptime: process.uptime(),
     db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
 }));
 
-// FIX 3: Use explicit IPv4 in fallback URL.
-//         "localhost" resolves to ::1 (IPv6) on modern Node.js systems.
-//         Python's fraud service binds to 127.0.0.1 (IPv4), so ::1 → ECONNREFUSED.
 app.get('/api/fraud/health', async (req, res) => {
     try {
         const fraudUrl = process.env.FRAUD_SERVICE_URL || 'http://127.0.0.1:5001';
@@ -148,8 +149,9 @@ app.use((err, req, res, next) => {
 
 // ── Start server ──────────────────────────────────────────────────────────────
 const PORT   = process.env.PORT || 5000;
-const server = app.listen(PORT, () =>
-    console.log(`🚀  Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`)
+const server = app.listen(PORT, '0.0.0.0', () =>
+    console.log(`🚀  Server running on port ${PORT}`)
 );
+
 process.on('SIGTERM', () => { server.close(async () => { await mongoose.connection.close().catch(console.error); process.exit(0); }); });
 process.on('SIGINT',  () => { server.close(async () => { await mongoose.connection.close().catch(console.error); process.exit(0); }); });

@@ -1,6 +1,6 @@
 // client/src/pages/worker/JobRequests.jsx
-// ENHANCED UI VERSION - All original functionality preserved
-// Enhanced with: Modern gradients, animations, card designs, better visual hierarchy
+// MOBILE-FRIENDLY VERSION - All original functionality preserved
+// Enhanced with: Better touch targets, responsive layouts, mobile-optimized interactions
 
 import { useState, useEffect, useRef } from 'react';
 import { getAvailableJobs, getJobDetails, applyForJob, applyForSubTask, getWorkerProfile, getImageUrl } from '../../api/index';
@@ -13,7 +13,7 @@ import {
     Navigation, Loader2, Award, TrendingUp, Zap, Gift, 
     Search, Filter, RefreshCw, Eye, Bookmark, Share2,
     Building, Sparkles, Crown, Target, Layers, Heart,
-    MessageCircle  // ← Added this missing import
+    MessageCircle, X
 } from 'lucide-react';
 
 // ── Skill normalisation helper ──────────────────────────────────────────────
@@ -65,7 +65,7 @@ function MiniMap({ lat, lng }) {
     return <div ref={ref} className="w-full rounded-xl overflow-hidden border border-gray-200 mt-2" style={{ height: 150 }} />;
 }
 
-// ── Skill Selection Modal (Enhanced) ──────────────────────────────────────────
+// ── Skill Selection Modal (Mobile Optimized) ──────────────────────────────────
 function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
     const [selected, setSelected] = useState([]);
     const [applying, setApplying] = useState(false);
@@ -123,20 +123,26 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
             onClick={onClose}
         >
             <motion.div
-                initial={{ scale: 0.9, y: 50, opacity: 0 }}
-                animate={{ scale: 1, y: 0, opacity: 1 }}
-                exit={{ scale: 0.9, y: 50, opacity: 0 }}
-                className="bg-white w-full sm:rounded-3xl shadow-2xl sm:max-w-md rounded-t-3xl p-6"
+                initial={{ y: '100%', opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="bg-white w-full sm:rounded-3xl shadow-2xl sm:max-w-md rounded-t-3xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl flex items-center justify-center shadow-lg">
-                        <Briefcase size={20} className="text-white" />
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0">
+                            <Briefcase size={18} className="text-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg sm:text-xl font-black text-gray-900">Select Positions</h3>
+                            <p className="text-xs text-gray-500 truncate max-w-[180px] sm:max-w-[200px]">{job?.title}</p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-xl font-black text-gray-900">Select Positions</h3>
-                        <p className="text-xs text-gray-500 truncate max-w-[200px]">{job?.title}</p>
-                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-all">
+                        <X size={20} className="text-gray-400" />
+                    </button>
                 </div>
 
                 <p className="text-sm text-gray-500 mb-4">Select up to 2 positions to apply for</p>
@@ -150,7 +156,7 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                             className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3 mb-4 text-sm text-amber-700 flex items-center gap-2"
                         >
                             <AlertCircle size={14} />
-                            {alert}
+                            <span className="flex-1">{alert}</span>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -158,7 +164,7 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                 {options.length === 0 ? (
                     <p className="text-sm text-gray-400 text-center py-6">No open positions available for this job.</p>
                 ) : (
-                    <div className="space-y-3 mb-5 max-h-96 overflow-y-auto custom-scrollbar">
+                    <div className="space-y-3 mb-5 max-h-[50vh] overflow-y-auto custom-scrollbar">
                         {options.map(opt => {
                             const isSel = selected.includes(opt.skill);
                             const perW = opt.budgetBlock
@@ -167,10 +173,9 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                             return (
                                 <motion.button
                                     key={opt.skill}
-                                    whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => toggle(opt.skill)}
-                                    className={`w-full flex items-start gap-3 p-4 rounded-2xl border-2 text-left transition-all ${
+                                    className={`w-full flex items-start gap-3 p-3 sm:p-4 rounded-2xl border-2 text-left transition-all active:scale-98 ${
                                         isSel ? 'border-orange-400 bg-gradient-to-r from-orange-50 to-amber-50' : 'border-gray-200 bg-white hover:border-orange-200'
                                     }`}
                                 >
@@ -179,8 +184,8 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                                     }`}>
                                         {isSel && <span className="text-white text-xs font-bold">✓</span>}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span className="font-bold text-gray-800 capitalize text-sm">{opt.skill}</span>
                                             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                                                 {opt.count} slot{opt.count > 1 ? 's' : ''}
@@ -204,21 +209,17 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                     </div>
                 )}
 
-                <div className="flex gap-3 mt-2">
-                    <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+                <div className="flex gap-3 mt-2 sticky bottom-0 bg-white pt-2">
+                    <button
                         onClick={onClose}
-                        className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-2xl font-semibold hover:bg-gray-50 transition-all"
+                        className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-2xl font-semibold hover:bg-gray-50 transition-all active:scale-98"
                     >
                         Cancel
-                    </motion.button>
-                    <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+                    </button>
+                    <button
                         onClick={handleApply}
                         disabled={applying || !selected.length}
-                        className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-2xl font-bold disabled:opacity-60 transition-all shadow-md"
+                        className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-2xl font-bold disabled:opacity-60 transition-all shadow-md active:scale-98"
                     >
                         {applying ? (
                             <span className="flex items-center justify-center gap-2">
@@ -228,14 +229,14 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                         ) : (
                             `Apply (${selected.length})`
                         )}
-                    </motion.button>
+                    </button>
                 </div>
             </motion.div>
         </motion.div>
     );
 }
 
-// ── Job Detail Modal (Enhanced) ───────────────────────────────────────────────
+// ── Job Detail Modal (Mobile Optimized) ───────────────────────────────────────
 function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -259,10 +260,10 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
 
     if (loading) {
         return (
-            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-                <div className="bg-white rounded-2xl p-8 text-center">
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl p-6 text-center max-w-[280px]">
                     <Loader2 size={32} className="animate-spin text-orange-500 mx-auto mb-3" />
-                    <p className="text-gray-500">Loading job details...</p>
+                    <p className="text-gray-500 text-sm">Loading job details...</p>
                 </div>
             </div>
         );
@@ -271,10 +272,10 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
     if (error || !job) {
         return (
             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl p-6 text-center max-w-sm">
+                <div className="bg-white rounded-2xl p-6 text-center max-w-[280px]">
                     <AlertCircle size={48} className="text-red-500 mx-auto mb-3" />
-                    <p className="text-gray-600">{error || 'Job not found.'}</p>
-                    <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-100 rounded-xl">Close</button>
+                    <p className="text-gray-600 text-sm">{error || 'Job not found.'}</p>
+                    <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-100 rounded-xl text-sm">Close</button>
                 </div>
             </div>
         );
@@ -290,17 +291,18 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                 onClick={onClose}
             >
                 <motion.div
-                    initial={{ y: 50, opacity: 0 }}
+                    initial={{ y: '100%', opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: 50, opacity: 0 }}
+                    exit={{ y: '100%', opacity: 0 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                     className="bg-white w-full sm:rounded-3xl shadow-2xl sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-5 flex-shrink-0">
+                    <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 sm:px-6 py-4 sm:py-5 flex-shrink-0">
                         <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                                <h2 className="text-white font-black text-xl leading-tight">{job.title}</h2>
+                            <div className="flex-1 min-w-0">
+                                <h2 className="text-white font-black text-lg sm:text-xl leading-tight line-clamp-2">{job.title}</h2>
                                 <div className="flex flex-wrap gap-2 mt-2">
                                     {job.urgent && (
                                         <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
@@ -319,50 +321,48 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                     )}
                                 </div>
                             </div>
-                            <motion.button
-                                whileHover={{ scale: 1.05, rotate: 90 }}
-                                whileTap={{ scale: 0.95 }}
+                            <button
                                 onClick={onClose}
-                                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white"
+                                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white flex-shrink-0 active:scale-95"
                             >
                                 ✕
-                            </motion.button>
+                            </button>
                         </div>
                     </div>
 
-                    {/* Body */}
-                    <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5 custom-scrollbar">
+                    {/* Body with improved scrolling */}
+                    <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 custom-scrollbar">
                         {/* Client Info */}
                         {job.postedBy && (
                             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4">
-                                <div className="flex items-start gap-4">
+                                <div className="flex items-start gap-3 sm:gap-4">
                                     <img
                                         src={getImageUrl(job.postedBy.photo)}
                                         alt={job.postedBy.name}
-                                        className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-md"
+                                        className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-white shadow-md flex-shrink-0"
                                         onError={e => { e.target.src = '/admin.png'; }}
                                     />
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-bold text-gray-900 text-lg">{job.postedBy.name}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-bold text-gray-900 text-base sm:text-lg truncate">{job.postedBy.name}</span>
                                             {job.postedBy.verificationStatus === 'approved' && (
-                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 flex-shrink-0">
                                                     <CheckCircle size={10} /> Verified
                                                 </span>
                                             )}
                                         </div>
                                         {job.postedBy.mobile && (
-                                            <a href={`tel:${job.postedBy.mobile}`} className="text-sm text-blue-600 font-semibold mt-1 inline-flex items-center gap-1">
+                                            <a href={`tel:${job.postedBy.mobile}`} className="text-sm text-blue-600 font-semibold mt-1 inline-flex items-center gap-1 break-all">
                                                 <Phone size={12} /> {job.postedBy.mobile}
                                             </a>
                                         )}
                                         {job.clientStats && (
                                             <div className="flex gap-3 mt-3">
-                                                <div className="bg-white rounded-xl px-3 py-1.5 text-center shadow-sm">
+                                                <div className="bg-white rounded-xl px-3 py-1.5 text-center shadow-sm flex-1">
                                                     <div className="text-sm font-black text-blue-600">{job.clientStats.completedJobs}</div>
                                                     <div className="text-[9px] text-gray-500">Completed</div>
                                                 </div>
-                                                <div className="bg-white rounded-xl px-3 py-1.5 text-center shadow-sm">
+                                                <div className="bg-white rounded-xl px-3 py-1.5 text-center shadow-sm flex-1">
                                                     <div className="text-sm font-black text-blue-600">{job.clientStats.totalJobsPosted}</div>
                                                     <div className="text-[9px] text-gray-500">Total Jobs</div>
                                                 </div>
@@ -379,11 +379,11 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                 <Briefcase size={12} /> About the Job
                             </p>
                             <div className="bg-gray-50 rounded-2xl p-4">
-                                <p className="text-sm text-gray-700 leading-relaxed">{job.description || job.title}</p>
+                                <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
                             </div>
                         </div>
 
-                        {/* Open Positions */}
+                        {/* Open Positions - Mobile optimized grid */}
                         {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -397,8 +397,8 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                         const isMatch = workerSkills.length > 0 && workerSkills.includes(normSkill(sk));
                                         return (
                                             <div key={sk} className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
-                                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                    <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex flex-wrap items-center gap-2">
                                                         <span className="font-bold text-orange-700 capitalize text-sm">{sk}</span>
                                                         {isMatch && (
                                                             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
@@ -410,7 +410,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                                         {count} slot{count > 1 ? 's' : ''}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-4 mt-1.5 text-xs">
+                                                <div className="flex flex-wrap items-center gap-4 mt-1.5 text-xs">
                                                     {slotEx?.hoursEstimated && (
                                                         <span className="text-orange-600 flex items-center gap-1">
                                                             <Clock size={10} /> ~{slotEx.hoursEstimated}h
@@ -429,7 +429,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                             </div>
                         )}
 
-                        {/* Budget Breakdown */}
+                        {/* Budget Breakdown - Mobile optimized */}
                         {(job.relevantBudgetBlocks || []).length > 0 && (
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -441,17 +441,24 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                         const perW = Math.round(b.subtotal / count);
                                         return (
                                             <div key={i}>
-                                                <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex justify-between items-center">
+                                                <div className="bg-gray-50 px-3 sm:px-4 py-2 border-b border-gray-100 flex flex-wrap justify-between items-center gap-2">
                                                     <span className="text-xs font-bold text-gray-700 capitalize">{b.skill}</span>
                                                     <span className="text-xs text-gray-400">{b.hours}h total · {count} worker{count > 1 ? 's' : ''}</span>
                                                 </div>
-                                                {Array.from({ length: count }).map((_, wi) => (
-                                                    <div key={wi} className="flex justify-between px-4 py-2 border-b border-gray-50 last:border-0 bg-white text-sm">
-                                                        <span className="text-gray-600 capitalize">{b.skill} Worker {count > 1 ? wi + 1 : ''}</span>
-                                                        <span className="font-bold text-green-600">₹{perW.toLocaleString()}</span>
-                                                    </div>
-                                                ))}
-                                                <div className="flex justify-between px-4 py-2 bg-orange-50 text-sm font-bold">
+                                                <div className="divide-y divide-gray-50">
+                                                    {Array.from({ length: Math.min(count, 3) }).map((_, wi) => (
+                                                        <div key={wi} className="flex justify-between px-3 sm:px-4 py-2 bg-white text-sm">
+                                                            <span className="text-gray-600 capitalize text-xs sm:text-sm">{b.skill} Worker {count > 1 ? wi + 1 : ''}</span>
+                                                            <span className="font-bold text-green-600">₹{perW.toLocaleString()}</span>
+                                                        </div>
+                                                    ))}
+                                                    {count > 3 && (
+                                                        <div className="px-3 sm:px-4 py-2 bg-gray-50 text-center text-xs text-gray-500">
+                                                            +{count - 3} more workers
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex justify-between px-3 sm:px-4 py-2 bg-orange-50 text-sm font-bold">
                                                     <span className="capitalize text-gray-700">{b.skill} total</span>
                                                     <span className="text-orange-600">₹{b.subtotal?.toLocaleString()}</span>
                                                 </div>
@@ -470,13 +477,13 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                 </p>
                                 <div className="bg-gray-50 rounded-2xl p-3 space-y-1">
                                     {job.scheduledDate && (
-                                        <p className="text-sm text-gray-700 flex items-center gap-2">
-                                            <Calendar size={14} />
+                                        <p className="text-sm text-gray-700 flex items-center gap-2 break-words">
+                                            <Calendar size={14} className="flex-shrink-0" />
                                             {new Date(job.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                                         </p>
                                     )}
-                                    {job.scheduledTime && <p className="text-sm text-gray-700">🕐 {job.scheduledTime}</p>}
-                                    {job.shift && <p className="text-sm text-gray-600">{job.shift}</p>}
+                                    {job.scheduledTime && <p className="text-sm text-gray-700 break-words">🕐 {job.scheduledTime}</p>}
+                                    {job.shift && <p className="text-sm text-gray-600 break-words">{job.shift}</p>}
                                     {job.duration && <p className="text-sm text-gray-500">⏱ {job.duration}</p>}
                                 </div>
                             </div>
@@ -489,13 +496,13 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                             </p>
                             <div className="bg-gray-50 rounded-2xl p-3 space-y-1">
                                 {job.location?.fullAddress && (
-                                    <p className="text-sm text-gray-700 flex items-start gap-2">
+                                    <p className="text-sm text-gray-700 flex items-start gap-2 break-words">
                                         <Building size={14} className="flex-shrink-0 mt-0.5" />
-                                        {job.location.fullAddress}
+                                        <span className="flex-1">{job.location.fullAddress}</span>
                                     </p>
                                 )}
                                 {job.location?.city && (
-                                    <p className="text-sm text-gray-600 flex items-center gap-2">
+                                    <p className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
                                         <MapPin size={14} />
                                         {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
                                     </p>
@@ -513,12 +520,17 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                                     <MessageCircle size={12} /> Client's Answers
                                 </p>
                                 <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
-                                    {job.qaAnswers.filter(q => q.answer).map((qa, i) => (
-                                        <div key={i} className="p-4 border-b border-amber-100 last:border-0">
-                                            <p className="text-xs font-bold text-amber-700 mb-1">Q: {qa.question}</p>
-                                            <p className="text-sm text-gray-800">A: {qa.answer}</p>
+                                    {job.qaAnswers.filter(q => q.answer).slice(0, 3).map((qa, i) => (
+                                        <div key={i} className="p-3 sm:p-4 border-b border-amber-100 last:border-0">
+                                            <p className="text-xs font-bold text-amber-700 mb-1 break-words">Q: {qa.question}</p>
+                                            <p className="text-sm text-gray-800 break-words">A: {qa.answer}</p>
                                         </div>
                                     ))}
+                                    {job.qaAnswers.filter(q => q.answer).length > 3 && (
+                                        <div className="p-2 text-center text-xs text-gray-500">
+                                            +{job.qaAnswers.filter(q => q.answer).length - 3} more answers
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -528,41 +540,39 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {job.photos.map((p, i) => (
+                                    {job.photos.slice(0, 6).map((p, i) => (
                                         <img key={i} src={getImageUrl(p)} alt="" className="w-full aspect-square object-cover rounded-xl border border-gray-200" />
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        <div className="bg-gray-50 rounded-2xl px-4 py-3 text-xs text-gray-500 flex items-center justify-between">
+                        <div className="bg-gray-50 rounded-2xl px-3 sm:px-4 py-3 text-xs text-gray-500 flex flex-wrap items-center justify-between gap-2">
                             <span className="flex items-center gap-1"><Users size={12} /> {job.applicantCount || 0} applied</span>
                             <span className="flex items-center gap-1"><Briefcase size={12} /> {job.workersRequired} worker{job.workersRequired !== 1 ? 's' : ''} needed</span>
                         </div>
                     </div>
 
                     {/* Footer */}
-                    <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 pb-5 pt-4 flex-shrink-0">
+                    <div className="sticky bottom-0 bg-white border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-5 pt-3 sm:pt-4 flex-shrink-0">
                         {job.hasApplied ? (
-                            <div className="w-full text-center py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200">
-                                ✓ Applied{job.myAppliedSkills?.length > 0 ? ` for: ${job.myAppliedSkills.join(', ')}` : ''}
+                            <div className="w-full text-center py-3 sm:py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200 text-sm">
+                                ✓ Applied{job.myAppliedSkills?.length > 0 ? ` for: ${job.myAppliedSkills.slice(0, 2).join(', ')}${job.myAppliedSkills.length > 2 ? '...' : ''}` : ''}
                             </div>
                         ) : job.isAssigned ? (
-                            <div className="w-full text-center py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200">
+                            <div className="w-full text-center py-3 sm:py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200 text-sm">
                                 ✓ You're Assigned
                             </div>
                         ) : isAvailable ? (
-                            <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
+                            <button
                                 onClick={() => setShowSkillPicker(true)}
-                                className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-black rounded-2xl text-base flex items-center justify-center gap-2 transition-all shadow-lg"
+                                className="w-full py-3 sm:py-3.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-black rounded-2xl text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-lg active:scale-98"
                             >
-                                <Briefcase size={18} /> Select Position & Apply
-                            </motion.button>
+                                <Briefcase size={16} /> Select Position & Apply
+                            </button>
                         ) : (
-                            <div className="w-full text-center py-3.5 bg-red-50 border border-red-200 text-red-600 rounded-2xl font-bold text-sm flex items-center justify-center gap-2">
-                                <AlertCircle size={16} /> Turn ON availability to apply
+                            <div className="w-full text-center py-3 sm:py-3.5 bg-red-50 border border-red-200 text-red-600 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2">
+                                <AlertCircle size={14} /> Turn ON availability to apply
                             </div>
                         )}
                     </div>
@@ -581,7 +591,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
     );
 }
 
-// ── Sub-Task Card (Enhanced) ───────────────────────────────────────────────────
+// ── Sub-Task Card (Mobile Optimized) ───────────────────────────────────────────
 function SubTaskCard({ job, isAvailable, applying, onApply }) {
     const earnings = (job.relevantBudgetBlocks || []).reduce((s, b) => s + (b.subtotal || 0), 0);
     const hours = job.workerSlots?.[0]?.hoursEstimated;
@@ -593,21 +603,21 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
             whileHover={{ y: -2 }}
             className="bg-white rounded-2xl border-2 border-orange-200 shadow-md hover:shadow-xl transition-all overflow-hidden"
         >
-            <div className="h-1.5 bg-gradient-to-r from-orange-400 to-red-500" />
-            <div className="p-5">
-                <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="h-1 bg-gradient-to-r from-orange-400 to-red-500" />
+            <div className="p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
                             <span className="text-[10px] bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 px-2.5 py-1 rounded-full font-bold uppercase tracking-wide flex items-center gap-1">
                                 <Zap size={10} /> Urgent Sub-task
                             </span>
                         </div>
-                        <h3 className="font-bold text-gray-900 text-lg leading-snug capitalize">{job.subTaskSkill} Task</h3>
+                        <h3 className="font-bold text-gray-900 text-base sm:text-lg leading-snug capitalize break-words">{job.subTaskSkill} Task</h3>
                         <p className="text-xs text-gray-500 mt-1 truncate">{job.parentJobTitle || job.title}</p>
                     </div>
                     {earnings > 0 && (
                         <div className="text-right flex-shrink-0">
-                            <div className="text-xl font-black text-green-600">₹{earnings.toLocaleString()}</div>
+                            <div className="text-lg sm:text-xl font-black text-green-600">₹{earnings.toLocaleString()}</div>
                             <div className="text-[10px] text-gray-400">Your earnings</div>
                         </div>
                     )}
@@ -615,20 +625,20 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
 
                 <div className="flex flex-wrap gap-2 text-xs mb-3">
                     {job.scheduledTime && (
-                        <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-semibold flex items-center gap-1">
+                        <span className="bg-blue-50 text-blue-600 px-2 sm:px-3 py-1 rounded-full font-semibold flex items-center gap-1 text-xs">
                             <Clock size={10} /> {job.scheduledTime}
                         </span>
                     )}
                     {hours && (
-                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full">~{hours}h</span>
+                        <span className="bg-gray-100 text-gray-600 px-2 sm:px-3 py-1 rounded-full text-xs">~{hours}h</span>
                     )}
                     {job.location?.city && (
-                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full flex items-center gap-1">
+                        <span className="bg-gray-100 text-gray-600 px-2 sm:px-3 py-1 rounded-full flex items-center gap-1 text-xs">
                             <MapPin size={10} /> {job.location.city}
                         </span>
                     )}
                     {job.scheduledDate && (
-                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full flex items-center gap-1">
+                        <span className="bg-gray-100 text-gray-600 px-2 sm:px-3 py-1 rounded-full flex items-center gap-1 text-xs">
                             <Calendar size={10} /> {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                         </span>
                     )}
@@ -636,27 +646,25 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
 
                 <div className="flex items-center justify-end pt-2 border-t border-gray-100">
                     {job.hasApplied ? (
-                        <span className="text-xs px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200">
+                        <span className="text-xs px-3 sm:px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200">
                             Applied ✓
                         </span>
                     ) : job.isAssigned ? (
-                        <span className="text-xs px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-xl font-bold border border-green-200">
+                        <span className="text-xs px-3 sm:px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-xl font-bold border border-green-200">
                             ✓ Assigned
                         </span>
                     ) : (
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                        <button
                             onClick={() => isAvailable ? onApply(job) : toast.error('Turn ON availability to apply.')}
                             disabled={applying[job._id]}
-                            className={`text-xs px-5 py-2 rounded-xl font-bold disabled:opacity-60 transition-all ${
+                            className={`text-xs px-4 sm:px-5 py-2 rounded-xl font-bold disabled:opacity-60 transition-all active:scale-95 ${
                                 isAvailable 
                                     ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-md' 
                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             }`}
                         >
                             {applying[job._id] ? <Loader2 size={12} className="animate-spin" /> : '⚡ Apply Now'}
-                        </motion.button>
+                        </button>
                     )}
                 </div>
             </div>
@@ -664,7 +672,7 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
     );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Main Component (Mobile Optimized) ─────────────────────────────────────────────
 export default function JobRequests() {
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -766,45 +774,45 @@ export default function JobRequests() {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center h-96">
+            <div className="flex flex-col items-center justify-center h-96 px-4">
                 <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                     className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full"
                 />
-                <p className="mt-4 text-gray-500 font-semibold">Loading available jobs...</p>
+                <p className="mt-4 text-gray-500 font-semibold text-sm">Loading available jobs...</p>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-4 md:p-8">
-            <div className="max-w-3xl mx-auto space-y-6 pb-20">
-                {/* Header */}
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-3 sm:p-4 md:p-8">
+            <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6 pb-20">
+                {/* Header - Mobile Optimized */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-gradient-to-r from-orange-500 to-red-500 rounded-3xl p-6 text-white shadow-xl"
+                    className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white shadow-xl"
                 >
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                            <Briefcase size={24} className="text-white" />
+                    <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                            <Briefcase size={20} className="text-white" />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-black">Available Jobs</h1>
-                            <p className="text-white/90 text-sm mt-1">Find your next opportunity</p>
+                            <h1 className="text-2xl sm:text-3xl font-black">Available Jobs</h1>
+                            <p className="text-white/90 text-xs sm:text-sm mt-0.5">Find your next opportunity</p>
                         </div>
                     </div>
-                    <div className="flex gap-3 mt-3">
-                        <span className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1 text-sm">
-                            <Briefcase size={12} /> {jobs.length} Total Jobs
+                    <div className="flex flex-wrap gap-2 mt-3">
+                        <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm">
+                            <Briefcase size={10} /> {jobs.length} Total Jobs
                         </span>
-                        <span className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1 text-sm">
-                            <Sparkles size={12} /> {filtered.length} Showing
+                        <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm">
+                            <Sparkles size={10} /> {filtered.length} Showing
                         </span>
                         {workerSkills.length > 0 && (
-                            <span className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1 text-sm">
-                                <Star size={12} /> Skills: {workerSkills.slice(0, 2).join(', ')}{workerSkills.length > 2 ? '...' : ''}
+                            <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm">
+                                <Star size={10} /> Skills: {workerSkills.slice(0, 2).join(', ')}{workerSkills.length > 2 ? '...' : ''}
                             </span>
                         )}
                     </div>
@@ -817,14 +825,14 @@ export default function JobRequests() {
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
-                            className="bg-red-50 border-2 border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3"
+                            className="bg-red-50 border-2 border-red-200 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 sm:gap-3"
                         >
-                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                                <AlertCircle size={20} className="text-red-500" />
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <AlertCircle size={16} className="text-red-500" />
                             </div>
-                            <div>
-                                <p className="text-sm font-bold text-red-700">You are not available</p>
-                                <p className="text-xs text-red-500">Turn ON availability from the header to apply for jobs.</p>
+                            <div className="flex-1">
+                                <p className="text-xs sm:text-sm font-bold text-red-700">You are not available</p>
+                                <p className="text-[10px] sm:text-xs text-red-500">Turn ON availability from the header to apply for jobs.</p>
                             </div>
                         </motion.div>
                     )}
@@ -833,35 +841,31 @@ export default function JobRequests() {
                 {/* Search & Filters */}
                 <div className="space-y-3">
                     <div className="relative">
-                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search size={16} className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Search jobs by title, skill, location..."
-                            className="w-full pl-11 pr-4 border-2 border-gray-200 rounded-2xl py-3 text-sm focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all"
+                            className="w-full pl-9 sm:pl-11 pr-3 sm:pr-4 border-2 border-gray-200 rounded-xl sm:rounded-2xl py-2.5 sm:py-3 text-sm focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all"
                         />
                     </div>
 
                     <div className="flex gap-2">
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                        <button
                             onClick={() => setShowFilters(!showFilters)}
-                            className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:border-orange-300 transition-all"
+                            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-gray-200 rounded-xl text-xs sm:text-sm font-semibold text-gray-600 hover:border-orange-300 transition-all active:scale-95"
                         >
-                            <Filter size={14} />
+                            <Filter size={12} />
                             Filters
-                            <ChevronDown size={14} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-                        </motion.button>
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                            <ChevronDown size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                        </button>
+                        <button
                             onClick={loadJobs}
-                            className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:border-orange-300 transition-all"
+                            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-gray-200 rounded-xl text-xs sm:text-sm font-semibold text-gray-600 hover:border-orange-300 transition-all active:scale-95"
                         >
-                            <RefreshCw size={14} />
+                            <RefreshCw size={12} />
                             Refresh
-                        </motion.button>
+                        </button>
                     </div>
 
                     <AnimatePresence>
@@ -872,11 +876,11 @@ export default function JobRequests() {
                                 exit={{ opacity: 0, height: 0 }}
                                 className="overflow-hidden"
                             >
-                                <div className="flex gap-2 pt-2">
+                                <div className="flex flex-col sm:flex-row gap-2 pt-2">
                                     <select
                                         value={filterSkill}
                                         onChange={e => setFilterSkill(e.target.value)}
-                                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
+                                        className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
                                     >
                                         <option value="all">All Skills</option>
                                         {allSkills.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
@@ -884,7 +888,7 @@ export default function JobRequests() {
                                     <select
                                         value={filterCity}
                                         onChange={e => setFilterCity(e.target.value)}
-                                        className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
+                                        className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
                                     >
                                         <option value="all">All Cities</option>
                                         {allCities.map(c => <option key={c} value={c}>{c}</option>)}
@@ -908,36 +912,36 @@ export default function JobRequests() {
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-center py-20 bg-white rounded-3xl shadow-xl border border-gray-100"
+                        className="text-center py-12 sm:py-20 bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100 mx-2 sm:mx-0"
                     >
                         <motion.div
                             animate={{ y: [0, -10, 0] }}
                             transition={{ duration: 2, repeat: Infinity }}
-                            className="text-6xl mb-4"
+                            className="text-5xl sm:text-6xl mb-3 sm:mb-4"
                         >
                             📭
                         </motion.div>
-                        <p className="font-bold text-gray-800 text-xl mb-2">No jobs posted yet</p>
-                        <p className="text-gray-400 text-sm">Check back later for new opportunities</p>
+                        <p className="font-bold text-gray-800 text-lg sm:text-xl mb-2">No jobs posted yet</p>
+                        <p className="text-gray-400 text-xs sm:text-sm px-4">Check back later for new opportunities</p>
                     </motion.div>
                 ) : filtered.length === 0 ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-center py-20 bg-white rounded-3xl shadow-xl border border-gray-100"
+                        className="text-center py-12 sm:py-20 bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100 mx-2 sm:mx-0"
                     >
-                        <Search size={48} className="text-gray-300 mx-auto mb-4" />
-                        <p className="font-bold text-gray-800 text-xl mb-2">No matches found</p>
-                        <p className="text-gray-400 text-sm mb-4">Try adjusting your filters</p>
+                        <Search size={40} className="text-gray-300 mx-auto mb-3" />
+                        <p className="font-bold text-gray-800 text-lg sm:text-xl mb-2">No matches found</p>
+                        <p className="text-gray-400 text-xs sm:text-sm mb-4">Try adjusting your filters</p>
                         <button
                             onClick={() => { setSearch(''); setFilterSkill('all'); setFilterCity('all'); }}
-                            className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold hover:shadow-lg transition-all"
+                            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold hover:shadow-lg transition-all active:scale-95 text-sm"
                         >
                             Show All Jobs
                         </button>
                     </motion.div>
                 ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-3 sm:space-y-4">
                         <AnimatePresence>
                             {filtered.map(job => (
                                 job.isSubTask ? (
@@ -958,30 +962,30 @@ export default function JobRequests() {
                                         className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all cursor-pointer overflow-hidden"
                                         onClick={() => setDetailId(job._id)}
                                     >
-                                        <div className={`h-1.5 ${job.urgent ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-100'}`} />
+                                        <div className={`h-1 ${job.urgent ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-100'}`} />
 
-                                        <div className="p-5">
-                                            <div className="flex items-start gap-4">
+                                        <div className="p-4 sm:p-5">
+                                            <div className="flex items-start gap-3 sm:gap-4">
                                                 <img
                                                     src={getImageUrl(job.postedBy?.photo)}
                                                     alt=""
-                                                    className="w-12 h-12 rounded-2xl object-cover border-2 border-orange-200 shadow-sm flex-shrink-0"
+                                                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl object-cover border-2 border-orange-200 shadow-sm flex-shrink-0"
                                                     onError={e => { e.target.src = '/admin.png'; }}
                                                 />
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                                                         <div>
-                                                            <h3 className="font-bold text-gray-900 text-base leading-tight line-clamp-1">
+                                                            <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-tight line-clamp-2">
                                                                 {job.title}
                                                             </h3>
-                                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                                                 <span className="text-xs text-gray-500">{job.postedBy?.name}</span>
                                                                 {job.postedBy?.verificationStatus === 'approved' && (
                                                                     <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full font-bold">✓</span>
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <div className="flex flex-col items-end gap-1">
+                                                        <div className="flex flex-row sm:flex-col items-center gap-1 sm:items-end">
                                                             {job.urgent && (
                                                                 <span className="text-xs bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                                                                     <Zap size={10} /> Urgent
@@ -1001,11 +1005,11 @@ export default function JobRequests() {
 
                                             {/* Open slots badges */}
                                             {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
-                                                <div className="flex flex-wrap gap-2 mt-3">
-                                                    {Object.entries(job.openSlotSummary).map(([sk, cnt]) => {
+                                                <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-3">
+                                                    {Object.entries(job.openSlotSummary).slice(0, 3).map(([sk, cnt]) => {
                                                         const isMatch = workerSkills.length > 0 && workerSkills.includes(normSkill(sk));
                                                         return (
-                                                            <span key={sk} className={`text-xs px-3 py-1 rounded-full font-bold capitalize flex items-center gap-1 ${
+                                                            <span key={sk} className={`text-xs px-2 sm:px-3 py-1 rounded-full font-bold capitalize flex items-center gap-1 ${
                                                                 isMatch ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-orange-100 text-orange-700 border border-orange-200'
                                                             }`}>
                                                                 <Briefcase size={10} />
@@ -1014,11 +1018,16 @@ export default function JobRequests() {
                                                             </span>
                                                         );
                                                     })}
+                                                    {Object.keys(job.openSlotSummary).length > 3 && (
+                                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                                                            +{Object.keys(job.openSlotSummary).length - 3} more
+                                                        </span>
+                                                    )}
                                                 </div>
                                             )}
 
                                             {/* Meta info */}
-                                            <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-gray-400">
+                                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-3 text-xs text-gray-400">
                                                 {job.scheduledDate && (
                                                     <span className="flex items-center gap-1">
                                                         <Calendar size={10} />
@@ -1040,21 +1049,21 @@ export default function JobRequests() {
                                             </div>
 
                                             {/* Footer */}
-                                            <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-                                                <div>
+                                            <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 gap-3">
+                                                <div className="flex-shrink-0">
                                                     {(() => {
                                                         const total = (job.relevantBudgetBlocks || []).reduce(
                                                             (sum, b) => sum + Math.round(b.subtotal / (b.count || 1)), 0
                                                         );
                                                         return total > 0 ? (
                                                             <>
-                                                                <div className="text-lg font-black text-green-600">₹{total.toLocaleString()}</div>
-                                                                <div className="text-[10px] text-gray-400">Your earning potential</div>
+                                                                <div className="text-base sm:text-lg font-black text-green-600">₹{total.toLocaleString()}</div>
+                                                                <div className="text-[8px] sm:text-[10px] text-gray-400">Your earning</div>
                                                             </>
                                                         ) : job.payment > 0 ? (
                                                             <>
-                                                                <div className="text-lg font-black text-green-600">₹{job.payment.toLocaleString()}</div>
-                                                                <div className="text-[10px] text-gray-400">Total budget</div>
+                                                                <div className="text-base sm:text-lg font-black text-green-600">₹{job.payment.toLocaleString()}</div>
+                                                                <div className="text-[8px] sm:text-[10px] text-gray-400">Budget</div>
                                                             </>
                                                         ) : (
                                                             <div className="text-xs text-gray-400">Tap for details</div>
@@ -1062,34 +1071,30 @@ export default function JobRequests() {
                                                     })()}
                                                 </div>
 
-                                                <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                                                    <motion.button
-                                                        whileHover={{ scale: 1.02 }}
-                                                        whileTap={{ scale: 0.98 }}
+                                                <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                                    <button
                                                         onClick={() => setDetailId(job._id)}
-                                                        className="text-xs px-4 py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-all"
+                                                        className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-all active:scale-95"
                                                     >
                                                         <Eye size={12} className="inline mr-1" />
                                                         Details
-                                                    </motion.button>
+                                                    </button>
                                                     {!job.hasApplied ? (
-                                                        <motion.button
-                                                            whileHover={{ scale: 1.02 }}
-                                                            whileTap={{ scale: 0.98 }}
+                                                        <button
                                                             onClick={() => isAvailable
                                                                 ? setApplyModal(job)
                                                                 : toast.error('Turn ON availability to apply.')}
                                                             disabled={applying[job._id]}
-                                                            className={`text-xs px-4 py-2 rounded-xl font-bold disabled:opacity-60 transition-all ${
+                                                            className={`text-xs px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold disabled:opacity-60 transition-all active:scale-95 ${
                                                                 isAvailable
                                                                     ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-md'
                                                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                                             }`}
                                                         >
                                                             {applying[job._id] ? <Loader2 size={12} className="animate-spin" /> : 'Apply'}
-                                                        </motion.button>
+                                                        </button>
                                                     ) : (
-                                                        <span className="text-xs px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200">
+                                                        <span className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200 whitespace-nowrap">
                                                             ✓ Applied
                                                         </span>
                                                     )}

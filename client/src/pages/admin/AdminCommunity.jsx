@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import logo from '../../assets/logo.jpg';
+import { getImageUrl } from '../../constants/config';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Users, Trash2, RefreshCw, ChevronLeft, Loader2,
@@ -447,11 +448,17 @@ const AdminPostCard = ({ post, onDelete, onRestore, onEdit, onHardDelete, onOpen
                             </div>
                         ) : (
                             <img
-                                src={post.author?.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.name || 'W')}&background=f97316&color=fff&bold=true`}
-                                alt={post.author?.name}
-                                className="w-10 h-10 rounded-2xl object-cover border-2 border-orange-100 shadow-sm"
-                                onError={e => { e.target.src = `https://ui-avatars.com/api/?name=W&background=f97316&color=fff&bold=true`; }}
-                            />
+  src={
+    post.author?.photo
+      ? getImageUrl(post.author.photo)
+      : `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.name || 'W')}&background=f97316&color=fff&bold=true`
+  }
+  alt={post.author?.name}
+  className="w-10 h-10 rounded-2xl object-cover border-2 border-orange-100 shadow-sm"
+  onError={(e) => {
+    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.name || 'W')}&background=f97316&color=fff&bold=true`;
+  }}
+/>
                         )}
                         <div>
                             <p className="font-bold text-gray-900 text-sm">
@@ -725,51 +732,75 @@ export default function AdminCommunity() {
             </AnimatePresence>
 
             {/* Enhanced Header */}
-            <motion.header
-                initial={{ y: -100 }}
-                animate={{ y: 0 }}
-                className="bg-gradient-to-r from-orange-500 to-red-500 shadow-xl sticky top-0 z-40"
-            >
-                <div className="flex items-center gap-4 p-4 md:p-5">
-                    <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => navigate('/admin/dashboard')}
-                        className="p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-all text-white"
-                    >
-                        <ChevronLeft size={20} />
-                    </motion.button>
-                    <motion.img
-                        whileHover={{ scale: 1.05 }}
+           <motion.header
+    initial={{ y: -100 }}
+    animate={{ y: 0 }}
+    transition={{ type: "spring", stiffness: 100 }}
+    className="bg-gradient-to-r from-orange-500 to-red-500 shadow-xl sticky top-0 z-40 w-full"
+>
+    <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10">
+        <div className="flex items-center justify-between gap-3 sm:gap-4 md:gap-6 py-3 sm:py-4 md:py-5">
+            {/* Left Section - Back Button & Logo */}
+            <div className="flex items-center gap-3 sm:gap-4 md:gap-5 flex-shrink-0">
+                <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => navigate('/admin/dashboard')}
+                    className="p-2 sm:p-2.5 md:p-3 bg-white/20 hover:bg-white/30 rounded-xl sm:rounded-2xl transition-all text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+                    aria-label="Go back to dashboard"
+                >
+                    <ChevronLeft size={20} className="sm:w-6 sm:h-6 md:w-7 md:h-7" />
+                </motion.button>
+                
+                <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    className="flex items-center gap-3 sm:gap-4 md:gap-5 cursor-pointer"
+                    onClick={() => navigate('/admin/dashboard')}
+                >
+                    <img
                         src={logo}
                         alt="Logo"
-                        className="w-10 h-10 rounded-full object-cover border-2 border-white/40 shadow-md"
+                        className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full object-cover border-2 border-white/40 shadow-md"
                     />
-                    <div className="flex-1">
-                        <h1 className="text-xl font-black text-white">Community Management</h1>
-                        <p className="text-orange-100 text-xs">Manage all worker & admin posts</p>
+                    <div className="hidden sm:block">
+                        <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-extrabold text-white leading-tight tracking-tight">
+                            Community Management
+                        </h1>
+                        <p className="text-orange-100 text-sm md:text-base hidden md:block mt-0.5">
+                            Manage all worker & admin posts
+                        </p>
                     </div>
-                    <div className="flex gap-2">
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setShowCreate(true)}
-                            className="flex items-center gap-2 bg-white text-orange-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-orange-50 transition-all shadow-md"
-                        >
-                            <Plus size={16} /> New Post
-                        </motion.button>
-                        <motion.button
-                            whileHover={{ scale: 1.05, rotate: 180 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => fetchData(page)}
-                            className="p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-all text-white"
-                        >
-                            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                        </motion.button>
-                    </div>
-                </div>
-            </motion.header>
+                </motion.div>
+            </div>
 
+            {/* Center Section - Mobile Title */}
+            <div className="flex-1 sm:hidden text-center">
+                <h1 className="text-base font-bold text-white truncate px-2">
+                    Community Management
+                </h1>
+                <p className="text-orange-100 text-xs truncate">
+                    Manage posts
+                </p>
+            </div>
+
+            {/* Right Section - Refresh Button Only */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                <motion.button
+                    whileHover={{ scale: 1.05, rotate: 180 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => fetchData(page)}
+                    className="p-2 sm:p-2.5 md:p-3 bg-white/20 hover:bg-white/30 rounded-xl sm:rounded-2xl transition-all text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+                    aria-label="Refresh"
+                >
+                    <RefreshCw 
+                        size={18} 
+                        className={`sm:w-5 sm:h-5 md:w-6 md:h-6 ${loading ? 'animate-spin' : ''}`} 
+                    />
+                </motion.button>
+            </div>
+        </div>
+    </div>
+</motion.header>
             <div className="p-4 md:p-6 max-w-7xl mx-auto">
                 {/* Enhanced Stats Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">

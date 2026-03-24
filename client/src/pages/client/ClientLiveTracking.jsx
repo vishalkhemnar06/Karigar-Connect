@@ -1,59 +1,48 @@
 // client/src/pages/client/ClientLiveTracking.jsx
-// ═══════════════════════════════════════════════════════════════════════════════
-// NEW PAGE — Client watches booked worker's live location
-//
-// Route: /client/live-tracking/:jobId
-//
-// What it does:
-//   - Polls GET /api/location/:jobId every 5 seconds
-//   - Shows all assigned workers as moving pins on a map
-//   - Shows client's own static pin (captured at booking time)
-//   - Displays each worker's last-seen time, distance, sharing status
-//   - Green "Live" badge when worker is actively sharing
-//
-// Add to your client routes in App.jsx / router:
-//   <Route path="/client/live-tracking/:jobId" element={<ClientLiveTracking />} />
-// ═══════════════════════════════════════════════════════════════════════════════
+// FIXED: Geolocation permission prompt now works properly
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import LiveMap from '../../components/LiveMap';
 import { getJobLocationData, initClientLocation } from '../../api';
+import { MapPin, Navigation, RefreshCw, AlertCircle, CheckCircle, Clock, User, Phone } from 'lucide-react';
 
 const POLL_INTERVAL = 5000; // ms — refresh worker positions
 
 // Haversine formula: distance in km between two lat/lng points
 function haversine(lat1, lng1, lat2, lng2) {
-    const R  = 6371;
+    const R = 6371;
     const dL = ((lat2 - lat1) * Math.PI) / 180;
     const dl = ((lng2 - lng1) * Math.PI) / 180;
-    const a  = Math.sin(dL / 2) ** 2 +
-               Math.cos((lat1 * Math.PI) / 180) *
-               Math.cos((lat2 * Math.PI) / 180) *
-               Math.sin(dl / 2) ** 2;
+    const a = Math.sin(dL / 2) ** 2 +
+              Math.cos((lat1 * Math.PI) / 180) *
+              Math.cos((lat2 * Math.PI) / 180) *
+              Math.sin(dl / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function timeAgo(dateStr) {
     if (!dateStr) return '—';
     const s = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-    if (s < 10)  return 'just now';
-    if (s < 60)  return `${s}s ago`;
+    if (s < 10) return 'just now';
+    if (s < 60) return `${s}s ago`;
     if (s < 3600) return `${Math.floor(s / 60)}m ago`;
     return `${Math.floor(s / 3600)}h ago`;
 }
 
 export default function ClientLiveTracking() {
-    const { jobId }  = useParams();
-    const navigate   = useNavigate();
+    const { jobId } = useParams();
+    const navigate = useNavigate();
 
     const [locationData, setLocationData] = useState(null);
-    const [loading,      setLoading]      = useState(true);
-    const [error,        setError]        = useState('');
-    const [lastRefresh,  setLastRefresh]  = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [lastRefresh, setLastRefresh] = useState(null);
+    const [isManualLocation, setIsManualLocation] = useState(false);
 
     // Client location capture state
-    const [clientLocStatus, setClientLocStatus] = useState('idle'); // idle | capturing | captured | error
+    const [clientLocStatus, setClientLocStatus] = useState('idle'); // idle | requesting | captured | error
+    const [clientLocation, setClientLocation] = useState(null);
     const pollRef = useRef(null);
 
     // ── Fetch location snapshot from server ────────────────────────────────
@@ -63,12 +52,18 @@ export default function ClientLiveTracking() {
             setLocationData(data);
             setError('');
             setLastRefresh(new Date());
+            
+            // Check if client location already exists on server
+            if (data?.clientLocation?.lat && clientLocStatus === 'idle') {
+                setClientLocStatus('captured');
+                setClientLocation(data.clientLocation);
+            }
         } catch (err) {
             setError(err?.response?.data?.message || 'Could not load location data.');
         } finally {
             setLoading(false);
         }
-    }, [jobId]);
+    }, [jobId, clientLocStatus]);
 
     useEffect(() => {
         fetchSnapshot();
@@ -76,265 +71,407 @@ export default function ClientLiveTracking() {
         return () => clearInterval(pollRef.current);
     }, [fetchSnapshot]);
 
-    // ── Capture client's static location once on page load ─────────────────
-    useEffect(() => {
-        // If no client location stored yet, capture it now
-        if (!navigator.geolocation) return;
+    // ── Request location permission with user interaction ─────────────────
+    const requestLocationPermission = useCallback(async () => {
+        if (!navigator.geolocation) {
+            setClientLocStatus('error');
+            setError('Geolocation is not supported by your browser.');
+            return;
+        }
 
-        const tryCapture = () => {
-            setClientLocStatus('capturing');
-            navigator.geolocation.getCurrentPosition(
-                async (pos) => {
+        setClientLocStatus('requesting');
+        
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                try {
+                    // Reverse geocode with Nominatim
+                    let address = '';
                     try {
-                        // Reverse geocode with Nominatim
-                        let address = '';
-                        try {
-                            const r = await fetch(
-                                `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
-                                { headers: { 'Accept-Language': 'en' } }
-                            );
-                            const g = await r.json();
-                            address = g.display_name || '';
-                        } catch {}
-
-                        await initClientLocation(
-                            jobId,
-                            pos.coords.latitude,
-                            pos.coords.longitude,
-                            address
+                        const r = await fetch(
+                            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
+                            { headers: { 'Accept-Language': 'en' } }
                         );
-                        setClientLocStatus('captured');
-                        // Refresh snapshot so the client pin appears immediately
-                        fetchSnapshot();
-                    } catch {
-                        setClientLocStatus('error');
+                        const g = await r.json();
+                        address = g.display_name || '';
+                    } catch (err) {
+                        console.warn('Reverse geocoding failed:', err);
                     }
-                },
-                () => setClientLocStatus('error'),
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+
+                    await initClientLocation(
+                        jobId,
+                        pos.coords.latitude,
+                        pos.coords.longitude,
+                        address
+                    );
+                    
+                    setClientLocation({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        address
+                    });
+                    setClientLocStatus('captured');
+                    
+                    // Refresh snapshot so the client pin appears immediately
+                    fetchSnapshot();
+                    
+                } catch (err) {
+                    console.error('Failed to save location:', err);
+                    setClientLocStatus('error');
+                    setError('Failed to save your location. Please try again.');
+                }
+            },
+            (err) => {
+                console.error('Geolocation error:', err);
+                setClientLocStatus('error');
+                
+                let errorMessage = 'Could not get your location. ';
+                switch (err.code) {
+                    case err.PERMISSION_DENIED:
+                        errorMessage = 'Location permission denied. Please enable location access in your browser settings to use live tracking.';
+                        break;
+                    case err.POSITION_UNAVAILABLE:
+                        errorMessage = 'Location information is unavailable.';
+                        break;
+                    case err.TIMEOUT:
+                        errorMessage = 'Location request timed out. Please try again.';
+                        break;
+                    default:
+                        errorMessage += 'Please check your location settings.';
+                }
+                setError(errorMessage);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }, [jobId, fetchSnapshot]);
+
+    // ── Manual location entry ──────────────────────────────────────────────
+    const [manualAddress, setManualAddress] = useState('');
+    const [manualLat, setManualLat] = useState('');
+    const [manualLng, setManualLng] = useState('');
+    const [savingManual, setSavingManual] = useState(false);
+
+    const saveManualLocation = async () => {
+        if (!manualAddress.trim() || !manualLat || !manualLng) {
+            setError('Please fill in all fields');
+            return;
+        }
+        
+        setSavingManual(true);
+        try {
+            await initClientLocation(
+                jobId,
+                parseFloat(manualLat),
+                parseFloat(manualLng),
+                manualAddress
             );
-        };
-
-        // Only capture if the snapshot shows no client location yet
-        // We wait for the first snapshot before deciding
-        const timer = setTimeout(() => {
-            if (!locationData?.clientLocation?.lat) {
-                tryCapture();
-            } else {
-                setClientLocStatus('captured');
-            }
-        }, 1500);
-
-        return () => clearTimeout(timer);
-    }, []); // eslint-disable-line — only run once
+            setClientLocation({
+                lat: parseFloat(manualLat),
+                lng: parseFloat(manualLng),
+                address: manualAddress
+            });
+            setClientLocStatus('captured');
+            setIsManualLocation(false);
+            fetchSnapshot();
+            toast.success('Location saved successfully!');
+        } catch (err) {
+            setError('Failed to save location. Please try again.');
+        } finally {
+            setSavingManual(false);
+        }
+    };
 
     // ── Derive map data ────────────────────────────────────────────────────
     const workers = locationData?.workers || [];
-    const clientMarker = locationData?.clientLocation?.lat
-        ? locationData.clientLocation
-        : null;
+    const clientMarker = clientLocation || locationData?.clientLocation;
 
     const workerMarkers = workers
         .filter(w => w.workerLocation?.lat && w.workerLocation?.lng)
         .map(w => ({
-            lat:           w.workerLocation.lat,
-            lng:           w.workerLocation.lng,
-            accuracy:      w.workerLocation.accuracy,
-            heading:       w.workerLocation.heading,
-            speed:         w.workerLocation.speed,
-            name:          w.workerName,
-            photo:         w.workerPhoto,
+            lat: w.workerLocation.lat,
+            lng: w.workerLocation.lng,
+            accuracy: w.workerLocation.accuracy,
+            heading: w.workerLocation.heading,
+            speed: w.workerLocation.speed,
+            name: w.workerName,
+            photo: w.workerPhoto,
             sharingActive: w.sharingActive,
         }));
 
     // Loading state
     if (loading) {
         return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', fontFamily: 'sans-serif' }}>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: 40, height: 40, border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'clt-spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-                    <div style={{ color: '#6b7280', fontSize: 14 }}>Loading tracking data…</div>
+            <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-amber-50">
+                <div className="text-center">
+                    <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm">Loading tracking data...</p>
                 </div>
-                <style>{`@keyframes clt-spin { to { transform: rotate(360deg); } }`}</style>
             </div>
         );
     }
 
     return (
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');`}</style>
-
-            {/* ── Header ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-                <button
-                    onClick={() => navigate(-1)}
-                    style={{ background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#374151', fontFamily: 'inherit' }}>
-                    ← Back
-                </button>
-                <div style={{ flex: 1 }}>
-                    <h1 style={{ fontSize: 20, fontWeight: 900, color: '#111827', margin: 0 }}>
-                        📍 Track Your Workers
-                    </h1>
-                    <p style={{ fontSize: 12, color: '#6b7280', margin: '3px 0 0', fontWeight: 500 }}>
-                        Live map updates every 5 seconds
-                    </p>
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50">
+            <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
+                {/* Header */}
+                <div className="flex flex-wrap items-center gap-3 mb-6">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-all active:scale-95"
+                    >
+                        ← Back
+                    </button>
+                    <div className="flex-1">
+                        <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                            Live Worker Tracking
+                        </h1>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                            Real-time location updates every 5 seconds
+                        </p>
+                    </div>
+                    {lastRefresh && (
+                        <div className="flex items-center gap-1 text-[11px] text-gray-400 bg-white px-3 py-1.5 rounded-full">
+                            <Clock size={12} />
+                            Updated: {lastRefresh.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </div>
+                    )}
                 </div>
-                {lastRefresh && (
-                    <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>
-                        Updated: {lastRefresh.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+
+                {/* Error Message */}
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-start gap-2">
+                        <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs sm:text-sm text-red-700 flex-1">{error}</p>
+                        <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">✕</button>
                     </div>
                 )}
-            </div>
 
-            {/* ── Error ── */}
-            {error && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
-                    ⚠️ {error}
-                </div>
-            )}
-
-            {/* ── No data yet ── */}
-            {!locationData && !error && (
-                <div style={{ background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 14, padding: '32px 24px', textAlign: 'center', marginBottom: 16 }}>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#111827', marginBottom: 6 }}>No Tracking Data Yet</div>
-                    <div style={{ fontSize: 13, color: '#6b7280' }}>
-                        Workers haven't started sharing their location. This page will auto-update every 5 seconds.
-                    </div>
-                </div>
-            )}
-
-            {/* ── Worker status cards ── */}
-            {workers.length > 0 && (
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-                    {workers.map((w, i) => {
-                        const hasLoc = w.workerLocation?.lat && w.workerLocation?.lng;
-                        const distKm = (hasLoc && clientMarker?.lat)
-                            ? haversine(w.workerLocation.lat, w.workerLocation.lng, clientMarker.lat, clientMarker.lng)
-                            : null;
-
-                        return (
-                            <div key={w.workerId?.toString() || i} style={{
-                                background: '#fff',
-                                border: `1.5px solid ${w.sharingActive ? '#bbf7d0' : '#e5e7eb'}`,
-                                borderRadius: 14,
-                                padding: '14px 16px',
-                                flex: '1 1 220px',
-                                minWidth: 0,
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                    {w.workerPhoto
-                                        ? <img src={w.workerPhoto} alt={w.workerName} style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fed7aa', flexShrink: 0 }} onError={e => { e.target.src = '/admin.png'; }} />
-                                        : <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#f97316,#fbbf24)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                                            {(w.workerName || 'W')[0].toUpperCase()}
-                                          </div>
-                                    }
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: 14, fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {w.workerName || 'Worker'}
-                                        </div>
-                                        <div style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 2,
-                                            background: w.sharingActive ? '#f0fdf4' : '#f9fafb',
-                                            border: `1px solid ${w.sharingActive ? '#bbf7d0' : '#e5e7eb'}`,
-                                            borderRadius: 99, padding: '2px 8px',
-                                        }}>
-                                            <div style={{
-                                                width: 6, height: 6, borderRadius: '50%',
-                                                background: w.sharingActive ? '#22c55e' : '#9ca3af',
-                                                animation: w.sharingActive ? 'clt-pulse 1.5s infinite' : 'none',
-                                            }} />
-                                            <span style={{ fontSize: 10, fontWeight: 700, color: w.sharingActive ? '#15803d' : '#6b7280' }}>
-                                                {w.sharingActive ? 'Live' : 'Paused'}
-                                            </span>
-                                        </div>
-                                    </div>
+                {/* Client Location Setup - Mobile Friendly */}
+                {clientLocStatus !== 'captured' && (
+                    <div className="bg-white rounded-xl border border-orange-100 p-4 mb-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                            <MapPin size={18} className="text-orange-500" />
+                            <h3 className="font-bold text-gray-800 text-sm">Set Your Location</h3>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-4">
+                            Share your current location so workers can navigate to you. This helps workers estimate arrival time.
+                        </p>
+                        
+                        {clientLocStatus === 'requesting' ? (
+                            <div className="flex items-center justify-center py-4">
+                                <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="ml-2 text-xs text-gray-500">Requesting location...</span>
+                            </div>
+                        ) : isManualLocation ? (
+                            <div className="space-y-3">
+                                <input
+                                    type="text"
+                                    value={manualAddress}
+                                    onChange={e => setManualAddress(e.target.value)}
+                                    placeholder="Full address"
+                                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-50"
+                                />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={manualLat}
+                                        onChange={e => setManualLat(e.target.value)}
+                                        placeholder="Latitude"
+                                        className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-orange-400"
+                                    />
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={manualLng}
+                                        onChange={e => setManualLng(e.target.value)}
+                                        placeholder="Longitude"
+                                        className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-orange-400"
+                                    />
                                 </div>
-
-                                <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.8 }}>
-                                    {w.workerMobile && (
-                                        <a href={`tel:${w.workerMobile}`} style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none', display: 'block' }}>
-                                            📞 {w.workerMobile}
-                                        </a>
-                                    )}
-                                    {hasLoc && (
-                                        <div>📌 {w.workerLocation.lat.toFixed(4)}, {w.workerLocation.lng.toFixed(4)}</div>
-                                    )}
-                                    {distKm !== null && (
-                                        <div>📏 {distKm < 1 ? `${Math.round(distKm * 1000)}m` : `${distKm.toFixed(1)} km`} from site</div>
-                                    )}
-                                    {w.workerLocation?.speed > 0 && (
-                                        <div>🚗 {(w.workerLocation.speed * 3.6).toFixed(1)} km/h</div>
-                                    )}
-                                    {w.workerLocation?.updatedAt && (
-                                        <div>🕐 {timeAgo(w.workerLocation.updatedAt)}</div>
-                                    )}
-                                    {!hasLoc && (
-                                        <div style={{ color: '#f97316', fontWeight: 600 }}>⏳ Waiting for worker to share location…</div>
-                                    )}
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={saveManualLocation}
+                                        disabled={savingManual}
+                                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+                                    >
+                                        {savingManual ? 'Saving...' : 'Save Location'}
+                                    </button>
+                                    <button
+                                        onClick={() => setIsManualLocation(false)}
+                                        className="px-4 py-2 border-2 border-gray-200 rounded-xl text-gray-600 text-sm font-semibold active:scale-95"
+                                    >
+                                        Cancel
+                                    </button>
                                 </div>
                             </div>
-                        );
-                    })}
-                </div>
-            )}
+                        ) : (
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <button
+                                    onClick={requestLocationPermission}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
+                                >
+                                    <Navigation size={16} />
+                                    Use My Current Location
+                                </button>
+                                <button
+                                    onClick={() => setIsManualLocation(true)}
+                                    className="flex-1 flex items-center justify-center gap-2 border-2 border-orange-200 text-orange-600 py-2.5 rounded-xl font-bold text-sm hover:bg-orange-50 transition-all active:scale-95"
+                                >
+                                    <MapPin size={16} />
+                                    Enter Address Manually
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-            {/* ── Map ── */}
-            <div style={{ marginBottom: 16 }}>
-                <LiveMap
-                    workerMarkers={workerMarkers}
-                    clientMarker={clientMarker}
-                    height="460px"
-                    showAccuracy={true}
-                />
+                {/* Location Captured Success Message */}
+                {clientLocStatus === 'captured' && clientLocation && (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-2">
+                        <CheckCircle size={16} className="text-green-500 flex-shrink-0" />
+                        <p className="text-xs sm:text-sm text-green-700 flex-1">
+                            Location set: {clientLocation.address || `${clientLocation.lat.toFixed(4)}, ${clientLocation.lng.toFixed(4)}`}
+                        </p>
+                        <button
+                            onClick={() => { setClientLocStatus('idle'); setIsManualLocation(false); }}
+                            className="text-green-600 hover:text-green-800 text-xs font-semibold"
+                        >
+                            Change
+                        </button>
+                    </div>
+                )}
+
+                {/* Worker Status Cards */}
+                {workers.length > 0 && (
+                    <div className="mb-4">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <User size={12} /> Assigned Workers ({workers.length})
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {workers.map((w, i) => {
+                                const hasLoc = w.workerLocation?.lat && w.workerLocation?.lng;
+                                const distKm = (hasLoc && clientMarker?.lat)
+                                    ? haversine(w.workerLocation.lat, w.workerLocation.lng, clientMarker.lat, clientMarker.lng)
+                                    : null;
+
+                                return (
+                                    <div key={w.workerId?.toString() || i} className={`bg-white rounded-xl border p-3 shadow-sm ${
+                                        w.sharingActive ? 'border-green-200' : 'border-gray-100'
+                                    }`}>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            {w.workerPhoto ? (
+                                                <img
+                                                    src={w.workerPhoto}
+                                                    alt={w.workerName}
+                                                    className="w-10 h-10 rounded-full object-cover border-2 border-orange-100"
+                                                    onError={e => { e.target.src = '/admin.png'; }}
+                                                />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold">
+                                                    {(w.workerName || 'W')[0].toUpperCase()}
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-gray-800 text-sm truncate">{w.workerName || 'Worker'}</p>
+                                                <div className="flex items-center gap-1 mt-0.5">
+                                                    <div className={`w-2 h-2 rounded-full ${w.sharingActive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                                                    <span className={`text-[10px] font-semibold ${w.sharingActive ? 'text-green-600' : 'text-gray-500'}`}>
+                                                        {w.sharingActive ? 'Live' : 'Paused'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {w.workerMobile && (
+                                                <a
+                                                    href={`tel:${w.workerMobile}`}
+                                                    className="p-1.5 bg-gray-100 rounded-lg text-gray-600 hover:bg-orange-100 hover:text-orange-600 transition-colors"
+                                                >
+                                                    <Phone size={14} />
+                                                </a>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-1 text-[11px] text-gray-500">
+                                            {hasLoc ? (
+                                                <>
+                                                    <div className="flex items-center gap-1">
+                                                        <MapPin size={10} />
+                                                        <span className="font-mono">{w.workerLocation.lat.toFixed(5)}, {w.workerLocation.lng.toFixed(5)}</span>
+                                                    </div>
+                                                    {distKm !== null && (
+                                                        <div className="flex items-center gap-1">
+                                                            <Navigation size={10} />
+                                                            <span>{distKm < 1 ? `${Math.round(distKm * 1000)}m` : `${distKm.toFixed(1)} km`} from your location</span>
+                                                        </div>
+                                                    )}
+                                                    {w.workerLocation?.speed > 0 && (
+                                                        <div>🚗 {(w.workerLocation.speed * 3.6).toFixed(1)} km/h</div>
+                                                    )}
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock size={10} />
+                                                        <span>Updated: {timeAgo(w.workerLocation.updatedAt)}</span>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="text-orange-500 font-medium">⏳ Waiting for worker to share location...</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* No Data State */}
+                {!locationData && !error && workers.length === 0 && (
+                    <div className="bg-white rounded-xl border border-orange-100 p-8 text-center mb-4">
+                        <MapPin size={48} className="text-gray-300 mx-auto mb-3" />
+                        <p className="font-bold text-gray-800">No Tracking Data Yet</p>
+                        <p className="text-xs text-gray-500 mt-1">Workers haven't started sharing their location. This page will auto-update every 5 seconds.</p>
+                    </div>
+                )}
+
+                {/* Map */}
+                {(workerMarkers.length > 0 || clientMarker) && (
+                    <div className="mb-4 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                        <LiveMap
+                            workerMarkers={workerMarkers}
+                            clientMarker={clientMarker}
+                            height="400px"
+                            showAccuracy={true}
+                        />
+                    </div>
+                )}
+
+                {/* Legend */}
+                <div className="bg-white rounded-xl border border-gray-100 p-3 mb-4 flex flex-wrap gap-4 justify-center">
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-orange-500 border-2 border-white shadow-sm" />
+                        <span className="text-[10px] sm:text-xs text-gray-600 font-medium">Worker (Live)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-gray-400 border-2 border-white shadow-sm" />
+                        <span className="text-[10px] sm:text-xs text-gray-600 font-medium">Worker (Paused)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm" />
+                        <span className="text-[10px] sm:text-xs text-gray-600 font-medium">Your Location</span>
+                    </div>
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                    <p className="text-xs font-bold text-orange-700 mb-2 flex items-center gap-1">
+                        <AlertCircle size={12} /> About Live Tracking
+                    </p>
+                    <ul className="text-[11px] text-orange-600 space-y-1 list-disc list-inside">
+                        <li>Worker positions update every 5 seconds when sharing is active</li>
+                        <li>Grey icon means sharing is paused — shows last known position</li>
+                        <li>Your location is captured once (you can update it anytime)</li>
+                        <li>Tracking is available while the job is scheduled or active</li>
+                    </ul>
+                </div>
             </div>
-
-            {/* ── Legend ── */}
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '14px 18px', marginBottom: 16, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#f97316', border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Worker position (live)</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#9ca3af', border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Worker position (sharing paused)</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#3b82f6', border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Your location (static)</span>
-                </div>
-            </div>
-
-            {/* ── Client location capture status ── */}
-            {clientLocStatus === 'capturing' && (
-                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#1d4ed8', fontWeight: 600 }}>
-                    📡 Capturing your location to show workers where to go…
-                </div>
-            )}
-            {clientLocStatus === 'error' && (
-                <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '10px 16px', marginBottom: 12, fontSize: 12, color: '#c2410c' }}>
-                    ⚠️ Could not capture your location. Workers will navigate using the job address on file.
-                </div>
-            )}
-
-            {/* ── Info ── */}
-            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 14, padding: '14px 18px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#c2410c', marginBottom: 6 }}>ℹ️ About Live Tracking</div>
-                <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: '#9a3412', lineHeight: 1.7 }}>
-                    <li>Worker positions update every 5 seconds when they are actively sharing</li>
-                    <li>A grey icon means the worker has paused sharing — their last known position is shown</li>
-                    <li>Your pin is static — it was captured once when you opened this page</li>
-                    <li>Tracking is only available while the job is scheduled or running</li>
-                </ul>
-            </div>
-
-            <style>{`
-                @keyframes clt-pulse {
-                    0%, 100% { box-shadow: 0 0 0 2px rgba(34,197,94,0.3); }
-                    50%       { box-shadow: 0 0 0 5px rgba(34,197,94,0.0); }
-                }
-                @keyframes clt-spin { to { transform: rotate(360deg); } }
-            `}</style>
         </div>
     );
 }

@@ -37,8 +37,8 @@ exports.getComplaints = async (req, res) => {
         const skip = (Number(page) - 1) * Number(limit);
 
         let query = Complaint.find(filter)
-            .populate('filedBy',     'name karigarId photo mobile role')
-            .populate('againstUser', 'name karigarId photo mobile')
+           .populate('filedBy', 'name karigarId photo mobile role completedJobs avgStars points experience')
+           .populate('againstUser', 'name karigarId photo mobile completedJobs avgStars points experience')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(Number(limit));
@@ -113,7 +113,7 @@ exports.getComplaintStats = async (req, res) => {
 exports.getComplaintById = async (req, res) => {
     try {
         const complaint = await Complaint.findById(req.params.id)
-            .populate('filedBy',     'name karigarId photo mobile role')
+           .populate('filedBy', 'name karigarId photo mobile role completedJobs avgStars points experience')
             .populate('againstUser', 'name karigarId photo mobile');
 
         if (!complaint) return res.status(404).json({ message: 'Complaint not found.' });
@@ -198,8 +198,8 @@ exports.takeAction = async (req, res) => {
             });
         }
 
-        const populated = await Complaint.findById(complaint._id)
-            .populate('filedBy',     'name karigarId photo mobile')
+       const populated = await Complaint.findById(complaint._id)
+    .populate('filedBy', 'name karigarId photo mobile completedJobs avgStars points experience')
             .populate('againstUser', 'name karigarId photo');
 
         return res.json({
@@ -252,7 +252,7 @@ exports.replyToComplaint = async (req, res) => {
         }
 
         const populated = await Complaint.findById(complaint._id)
-            .populate('filedBy',     'name karigarId photo mobile')
+    .populate('filedBy', 'name karigarId photo mobile completedJobs avgStars points experience')
             .populate('againstUser', 'name karigarId photo');
 
         return res.json({ message: 'Reply sent.', complaint: populated });
