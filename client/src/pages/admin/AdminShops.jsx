@@ -239,6 +239,8 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
     const logoUrl = getImageUrl(shop?.shopLogo, null);
     const photoUrl = getImageUrl(shop?.ownerPhoto, null);
     const idProofUrl = getImageUrl(shop?.idProof?.filePath || shop?.idProof, null);
+    const shopPhotoUrl = getImageUrl(shop?.shopPhoto, null);
+    const gstnCertUrl = getImageUrl(shop?.gstnCertificate, null);
 
     // Memoized values
     const stats = useMemo(() => ({
@@ -251,8 +253,10 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
     const allImages = useMemo(() => [
         ...(logoUrl ? [{ url: logoUrl, name: 'Shop Logo' }] : []),
         ...(photoUrl ? [{ url: photoUrl, name: 'Owner Photo' }] : []),
+        ...(shopPhotoUrl ? [{ url: shopPhotoUrl, name: 'Shop Photo' }] : []),
         ...(idProofUrl && !idProofUrl.toLowerCase().endsWith('.pdf') ? [{ url: idProofUrl, name: 'ID Proof' }] : []),
-    ], [logoUrl, photoUrl, idProofUrl]);
+        ...(gstnCertUrl && !gstnCertUrl.toLowerCase().endsWith('.pdf') ? [{ url: gstnCertUrl, name: 'GSTN Certificate' }] : []),
+    ], [logoUrl, photoUrl, shopPhotoUrl, idProofUrl, gstnCertUrl]);
 
     const handleImageClick = useCallback((url, index) => {
         setViewerImages(allImages.map(img => img.url));
@@ -356,6 +360,34 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
                                         <DetailRow label="Registered" value={new Date(shop.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })} icon={Calendar} color="purple" />
                                     </div>
                                 </section>
+
+                                {shop.shopLocation?.latitude && shop.shopLocation?.longitude && (
+                                    <section>
+                                        <h4 className="font-black text-gray-700 text-sm uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <div className="w-5 h-0.5 bg-blue-400 rounded-full" /> Live Location
+                                        </h4>
+                                        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 space-y-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="bg-white rounded-lg p-2">
+                                                    <p className="text-xs font-black text-gray-500 uppercase tracking-wider">Latitude</p>
+                                                    <p className="text-sm font-bold text-gray-800">{shop.shopLocation.latitude.toFixed(6)}</p>
+                                                </div>
+                                                <div className="bg-white rounded-lg p-2">
+                                                    <p className="text-xs font-black text-gray-500 uppercase tracking-wider">Longitude</p>
+                                                    <p className="text-sm font-bold text-gray-800">{shop.shopLocation.longitude.toFixed(6)}</p>
+                                                </div>
+                                            </div>
+                                            <a
+                                                href={`https://maps.google.com/?q=${shop.shopLocation.latitude},${shop.shopLocation.longitude}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-center transition-all text-sm"
+                                            >
+                                                Open in Google Maps
+                                            </a>
+                                        </div>
+                                    </section>
+                                )}
                             </>
                         )}
 
@@ -365,7 +397,7 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
                                 <h4 className="font-black text-gray-700 text-sm uppercase tracking-widest mb-3 flex items-center gap-2">
                                     <div className="w-5 h-0.5 bg-orange-400 rounded-full" /> Documents & Photos
                                 </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                                     <div className="space-y-2">
                                         <p className="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-1">
                                             <ImageIcon size={12} /> Shop Logo
@@ -373,7 +405,7 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
                                         {logoUrl ? (
                                             <div
                                                 className="cursor-pointer group relative overflow-hidden rounded-xl border-2 border-orange-100 bg-orange-50"
-                                                onClick={() => handleImageClick(logoUrl, 0)}
+                                                onClick={() => handleImageClick(logoUrl, allImages.findIndex(img => img.url === logoUrl))}
                                             >
                                                 <img src={logoUrl} onError={imgError()} alt="Shop Logo"
                                                     className="w-full h-40 object-contain" />
@@ -411,6 +443,28 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
                                     </div>
 
                                     <div className="space-y-2">
+                                        <p className="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                                            <ImageIcon size={12} /> Shop Photo
+                                        </p>
+                                        {shopPhotoUrl ? (
+                                            <div
+                                                className="cursor-pointer group relative overflow-hidden rounded-xl border-2 border-blue-100 bg-blue-50"
+                                                onClick={() => handleImageClick(shopPhotoUrl, allImages.findIndex(img => img.url === shopPhotoUrl))}
+                                            >
+                                                <img src={shopPhotoUrl} onError={imgError()} alt="Shop"
+                                                    className="w-full h-40 object-cover" />
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <Maximize2 size={24} className="text-white" />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="w-full h-40 bg-gray-100 rounded-xl flex items-center justify-center">
+                                                <p className="text-gray-400 text-xs">Not uploaded</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
                                         <p className="text-xs font-black text-gray-500 uppercase tracking-wider">
                                             ID Proof {shop.idProof?.idType ? `(${shop.idProof.idType})` : ''}
                                         </p>
@@ -422,6 +476,17 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
                                         />
                                     </div>
                                 </div>
+
+                                {gstnCertUrl && (
+                                    <div className="mt-5 pt-5 border-t-2 border-gray-100">
+                                        <p className="text-xs font-black text-gray-500 uppercase tracking-wider mb-3">GSTN Certificate</p>
+                                        <DocViewer
+                                            path={shop.gstnCertificate}
+                                            label="GSTN Certificate"
+                                            onImageClick={(url) => handleImageClick(url, allImages.findIndex(img => img.url === url))}
+                                        />
+                                    </div>
+                                )}
                             </section>
                         )}
 
@@ -795,50 +860,6 @@ const AdminShops = () => {
             />
 
             {/* Header */}
-          {/* Header Section - Clean Mobile Version */}
-<div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Left Section */}
-        <div className="flex items-center gap-3">
-            <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => navigate('/admin/dashboard')}
-                className="p-2 rounded-xl bg-gray-50 text-gray-600 hover:bg-orange-50 hover:text-orange-600 transition-all duration-200 group"
-                aria-label="Go back to dashboard"
-            >
-                <svg className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-            </motion.button>
-            
-            <div>
-                <h1 className="text-2xl font-bold text-gray-800">
-                    Shop Management
-                </h1>
-                <div className="flex items-center gap-2 mt-0.5">
-                    <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                        Active Dashboard
-                    </span>
-                </div>
-            </div>
-        </div>
-
-        {/* Right Section */}
-        <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={loadAll}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-xl text-gray-700 text-sm font-medium hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-        >
-            <RefreshCw size={16} className={`${loading ? 'animate-spin' : ''} transition-transform`} />
-            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
-        </motion.button>
-    </div>
-</div>
-<p className="text-xs text-gray-500 mb-4">Manage shops, verify vendors, and track performance</p>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

@@ -625,55 +625,8 @@ const AdminWorkerComplaints = () => {
     const hasActiveFilters = typeFilter !== 'all' || statusFilter !== 'all' || searchInput;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-3 sm:p-4 md:p-6">
+        <div className="bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-3 sm:p-4 md:p-6">
             <div className="max-w-5xl mx-auto space-y-3 sm:space-y-6">
-
-                {/* Header */}
-                <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-gradient-to-r from-orange-500 to-red-500 rounded-xl sm:rounded-2xl md:rounded-3xl p-3 sm:p-4 md:p-6 text-white shadow-lg"
-                >
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                            <motion.button
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => navigate('/admin/dashboard')}
-                                className="flex-shrink-0 flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white/20 hover:bg-white/30 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all backdrop-blur-sm active:scale-95"
-                            >
-                                <ArrowLeft size={14} />
-                                <span className="hidden sm:inline">Back</span>
-                            </motion.button>
-
-                            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                                <div className="flex-shrink-0 w-8 h-8 sm:w-10 md:w-12 sm:h-10 md:h-12 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                                    <MessageSquare size={18} className="text-white" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h1 className="text-base sm:text-xl md:text-2xl lg:text-3xl font-black leading-tight truncate">
-                                        Worker Support
-                                    </h1>
-                                    <p className="text-white/90 text-[9px] sm:text-[10px] md:text-sm mt-0.5 hidden xs:block">
-                                        Manage worker complaints &amp; help requests
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={loadData}
-                            disabled={loading}
-                            className="flex-shrink-0 p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-white/20 hover:bg-white/30 transition-all disabled:opacity-50 active:scale-95"
-                        >
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                        </motion.button>
-                    </div>
-
-                    <p className="text-white/90 text-[9px] mt-2 xs:hidden">
-                        Manage worker complaints &amp; help requests
-                    </p>
-                </motion.div>
 
                 {/* Stats */}
                 {stats && (

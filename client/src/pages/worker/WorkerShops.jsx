@@ -2,10 +2,13 @@
 // MOBILE-FRIENDLY VERSION - All original functionality preserved
 // Enhanced with: Better touch targets, responsive layouts, mobile-optimized interactions
 // FIXED: Bottom padding for scrollable areas, contact info from correct schema fields
+// MAP VIEW: Added Leaflet-based map to display shops with live locations
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
     Store, Tag, Package, Gift, RefreshCw, ChevronRight,
     MapPin, Star, Clock, CheckCircle, AlertCircle, Ticket,
@@ -213,6 +216,85 @@ const ShopCard = ({ shop, onClick }) => (
         </div>
     </div>
 );
+
+// ── SHOPS MAP MODAL (Leaflet-based) ──────────────────────────
+const ShopsMapModal = ({ shops, onClose }) => {
+    const mapContainer = useRef(null);
+    const map = useRef(null);
+    const markers = useRef([]);
+
+    useEffect(() => {
+        if (!mapContainer.current) return;
+
+        // Initialize map
+        if (!map.current) {
+            map.current = L.map(mapContainer.current).setView([20.5937, 78.9629], 5); // Center of India
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19,
+            }).addTo(map.current);
+        }
+
+        // Clear existing markers
+        markers.current.forEach(m => map.current.removeLayer(m));
+        markers.current = [];
+
+        // Add markers for shops with location
+        const bounds = L.latLngBounds();
+        shops.forEach(shop => {
+            if (shop.shopLocation?.latitude && shop.shopLocation?.longitude) {
+                const marker = L.marker([shop.shopLocation.latitude, shop.shopLocation.longitude])
+                    .bindPopup(`
+                        <div class="text-sm">
+                            <h3 class="font-bold text-orange-600">${shop.shopName}</h3>
+                            <p class="text-xs text-gray-600">${shop.category}</p>
+                            <p class="text-xs text-gray-600">${shop.address}, ${shop.city}</p>
+                            <p class="text-xs font-semibold text-blue-600 mt-1">Lat: ${shop.shopLocation.latitude.toFixed(4)}, Lng: ${shop.shopLocation.longitude.toFixed(4)}</p>
+                        </div>
+                    `)
+                    .addTo(map.current);
+                markers.current.push(marker);
+                bounds.extend([shop.shopLocation.latitude, shop.shopLocation.longitude]);
+            }
+        });
+
+        // Fit map to bounds
+        if (markers.current.length > 0) {
+            map.current.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        return () => {
+            // Don't destroy map on unmount, just keep it
+        };
+    }, [shops]);
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden w-full h-full max-w-4xl max-h-[90vh] flex flex-col">
+                <div className="flex items-center justify-between p-4 sm:p-6 bg-gradient-to-r from-blue-500 to-blue-600">
+                    <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                        <MapPin size={24} />
+                        Shops Map View
+                    </h2>
+                    <button
+                        onClick={onClose}
+                        className="text-white/80 hover:text-white p-2 hover:bg-white/20 rounded-full transition-all"
+                    >
+                        <X size={24} />
+                    </button>
+                </div>
+
+                <div id={mapContainer} ref={mapContainer} className="flex-1 bg-gray-100" style={{ height: '100%', minHeight: '400px' }} />
+
+                <div className="p-4 bg-gray-50 border-t">
+                    <p className="text-xs sm:text-sm text-gray-600">
+                        Showing {markers.current.length} shop(s) with location data. Click markers for details.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ── SHOP DETAIL MODAL (Mobile Optimized) ────────────────────
 const ShopDetailModal = ({ shop, discountPct, onClose }) => {
@@ -513,6 +595,35 @@ const ShopDetailModal = ({ shop, discountPct, onClose }) => {
       </div>
     </div>
 
+    {/* LIVE LOCATION & MAP */}
+    {shop?.shopLocation?.latitude && shop?.shopLocation?.longitude && (
+      <div className="bg-blue-50/60 rounded-xl p-3 sm:p-4 space-y-3">
+        <p className="text-[10px] sm:text-xs font-bold text-blue-500 uppercase mb-2 sm:mb-3 flex items-center gap-1">
+          <MapPin size={10} /> Live Location
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <div className="bg-white rounded-lg p-2 sm:p-2.5">
+            <p className="text-[10px] sm:text-xs text-gray-500 font-bold uppercase">Latitude</p>
+            <p className="text-xs sm:text-sm font-semibold text-gray-800 break-all">{shop.shopLocation.latitude.toFixed(6)}</p>
+          </div>
+          <div className="bg-white rounded-lg p-2 sm:p-2.5">
+            <p className="text-[10px] sm:text-xs text-gray-500 font-bold uppercase">Longitude</p>
+            <p className="text-xs sm:text-sm font-semibold text-gray-800 break-all">{shop.shopLocation.longitude.toFixed(6)}</p>
+          </div>
+        </div>
+
+        <a
+          href={`https://maps.google.com/?q=${shop.shopLocation.latitude},${shop.shopLocation.longitude}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 sm:py-2.5 rounded-lg text-center transition-all text-xs sm:text-sm active:scale-95"
+        >
+          View in Google Maps
+        </a>
+      </div>
+    )}
+
     {/* ABOUT */}
     {shop?.about && (
       <div className="bg-gray-50 rounded-xl p-3 sm:p-4">
@@ -549,6 +660,7 @@ const WorkerShops = () => {
     const [shops, setShops] = useState([]);
     const [myCoupons, setMyCoupons] = useState([]);
     const [selectedShop, setSelectedShop] = useState(null);
+    const [showMapModal, setShowMapModal] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [loadingShops, setLoadingShops] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -620,6 +732,13 @@ const WorkerShops = () => {
                     onClose={() => setSelectedShop(null)}
                 />
 
+                {showMapModal && (
+                    <ShopsMapModal
+                        shops={shops}
+                        onClose={() => setShowMapModal(false)}
+                    />
+                )}
+
                 <div className="p-3 sm:p-4 md:p-6 lg:p-6 max-w-6xl mx-auto pb-24 sm:pb-8">
                     {/* Header */}
                     <div className="mb-6 sm:mb-8">
@@ -642,11 +761,12 @@ const WorkerShops = () => {
                     <div className="flex gap-1 sm:gap-2 bg-white rounded-xl sm:rounded-2xl p-1 mb-4 sm:mb-6 shadow-sm overflow-x-auto scrollbar-hide">
                         {[
                             { key: 'shops', label: 'Browse Shops', icon: Store, count: shops.length },
+                            { key: 'maps', label: 'View Map', icon: MapPin, count: shops.filter(s => s.shopLocation?.latitude).length },
                             { key: 'coupons', label: 'My Coupons', icon: Ticket, count: myCoupons.length },
                         ].map(({ key, label, icon: Icon, count }) => (
                             <button
                                 key={key}
-                                onClick={() => setTab(key)}
+                                onClick={() => key === 'maps' ? setShowMapModal(true) : setTab(key)}
                                 className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
                                     tab === key
                                         ? 'bg-orange-600 text-white shadow-lg'

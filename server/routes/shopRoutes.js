@@ -51,6 +51,8 @@ router.post('/auth/register', upload.fields([
     { name: 'ownerPhoto', maxCount: 1 },
     { name: 'idProof',    maxCount: 1 },
     { name: 'shopLogo',   maxCount: 1 },
+    { name: 'shopPhoto',  maxCount: 1 },
+    { name: 'gstnCertificate', maxCount: 1 },
 ]), shopAuth.registerShop);
 
 router.post('/auth/login', shopAuth.loginShop);

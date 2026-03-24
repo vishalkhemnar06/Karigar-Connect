@@ -4,7 +4,7 @@
 // Mobile: hidden sidebar + bottom navigation bar
 
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
     Users, UserCheck, UserX, Clock, ShieldX,
     AlertTriangle, MessageSquare, Store, X as CloseIcon,
@@ -69,23 +69,38 @@ const AdminSidebar = ({
     onClose,
     activeFilter,
     onFilterChange,
+    currentSection,
+    onSectionChange,
     stats = {},
 }) => {
-    const navigate  = useNavigate();
     const location  = useLocation();
 
     const handleNav = (item) => {
         if (item.isFilter) {
             onFilterChange(item.filter);
         } else {
-            navigate(item.path);
+            const sectionMap = {
+                '/admin/fraud': 'fraud',
+                '/admin/complaints': 'complaints',
+                '/admin/worker-complaints': 'worker-complaints',
+                '/admin/community': 'community',
+                '/admin/shops': 'shops',
+            };
+            onSectionChange(sectionMap[item.path] || 'dashboard');
         }
         onClose();
     };
 
     const isActive = (item) => {
         if (item.isFilter) return activeFilter === item.filter;
-        return location.pathname === item.path;
+        const sectionMap = {
+            '/admin/fraud': 'fraud',
+            '/admin/complaints': 'complaints',
+            '/admin/worker-complaints': 'worker-complaints',
+            '/admin/community': 'community',
+            '/admin/shops': 'shops',
+        };
+        return currentSection === (sectionMap[item.path] || 'dashboard');
     };
 
     const getCount = (filter) => {
