@@ -187,62 +187,8 @@ export default function FraudMonitor() {
   const isRefreshing = refreshing || loading;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 pb-20">
+    <div className="bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 pb-20">
       <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6 py-4 md:py-8">
-        {/* Header - Mobile Optimized */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-5 md:mb-8"
-        >
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
-                <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-lg">
-                  <Radar size={14} className="md:size-5 text-white" />
-                </div>
-                <p className="text-[8px] md:text-xs font-bold uppercase tracking-[0.2em] md:tracking-[0.35em] text-orange-600">
-                  Admin Risk Console
-                </p>
-              </div>
-              <h1 className="text-xl md:text-2xl lg:text-4xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                Fraud Detection Monitor
-              </h1>
-              <p className="mt-2 md:mt-3 text-[11px] md:text-sm text-gray-600 leading-relaxed max-w-2xl">
-                Live risk queue backed by the Python fraud service. Review model signals, 
-                run scans, and take admin action.
-              </p>
-            </div>
-            
-            {/* Action Buttons - Mobile Optimized */}
-            <div className="flex flex-col xs:flex-row gap-2 md:gap-3">
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                type="button"
-                onClick={() => refreshMonitor(true)}
-                disabled={isRefreshing}
-                className="flex items-center justify-center gap-1.5 md:gap-2 rounded-lg md:rounded-xl border-2 border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 px-3 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-bold text-orange-700 shadow-sm transition-all hover:border-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isRefreshing ? (
-                  <RefreshCw size={12} className="md:size-4 animate-spin" />
-                ) : (
-                  <RefreshCw size={12} className="md:size-4" />
-                )}
-                {isRefreshing ? 'Refreshing...' : 'Refresh Queue'}
-              </motion.button>
-              
-              <Link
-                to="/admin/dashboard"
-                className="flex items-center justify-center gap-1.5 md:gap-2 rounded-lg md:rounded-xl border-2 border-gray-200 bg-white px-3 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
-              >
-                <ArrowLeft size={12} className="md:size-4" />
-                <span className="hidden xs:inline">Back To Dashboard</span>
-                <span className="inline xs:hidden">Back</span>
-              </Link>
-            </div>
-          </div>
-        </motion.div>
-
         {/* Stats Bar */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

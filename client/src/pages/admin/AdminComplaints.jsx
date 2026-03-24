@@ -853,42 +853,8 @@ export default function AdminComplaints() {
     const logic    = useComplaintsLogic();
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20">
-            <motion.header
-                initial={{ y: -100 }}
-                animate={{ y: 0 }}
-                className="bg-gradient-to-r from-orange-500 to-red-500 shadow-xl sticky top-0 z-40"
-            >
-                <div className="flex items-center gap-4 p-4 md:p-5">
-                    <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => navigate('/admin/dashboard')}
-                        className="p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-all text-white"
-                    >
-                        <ChevronLeft size={20} />
-                    </motion.button>
-                    <img
-                        src={logo}
-                        alt="Logo"
-                        className="w-10 h-10 rounded-full object-cover border-2 border-white/40 shadow-md"
-                    />
-                    <div className="flex-1">
-                        <h1 className="text-xl font-black text-white">Complaint Management</h1>
-                        <p className="text-orange-100 text-xs">Client complaints against workers</p>
-                    </div>
-                    <motion.button
-                        whileHover={{ scale: 1.05, rotate: 180 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={logic.fetchData}
-                        className="p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-all text-white"
-                    >
-                        <RefreshCw size={18} className={logic.loading ? 'animate-spin' : ''} />
-                    </motion.button>
-                </div>
-            </motion.header>
-
-            <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        <div className="bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-4 md:p-6">
+            <div className="max-w-7xl mx-auto">
                 <ComplaintsBody logic={logic} />
             </div>
         </div>

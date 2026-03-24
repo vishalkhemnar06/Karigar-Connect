@@ -75,6 +75,15 @@ exports.sendMobileOtp = async (req, res) => {
         if (!mobile || mobile.length !== 10)
             return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
 
+        // Check if shop is already registered with approved status
+        const existingShop = await Shop.findOne({ mobile });
+        if (existingShop && existingShop.verificationStatus === 'approved') {
+            return res.status(400).json({ 
+                message: 'This mobile number is already registered and approved. Please login instead.',
+                alreadyRegistered: true 
+            });
+        }
+
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
@@ -180,6 +189,7 @@ exports.registerShop = async (req, res) => {
             ownerName, mobile, email, password,
             shopName, gstNumber, category,
             address, city, pincode, locality, idType,
+            latitude, longitude,
         } = req.body;
 
         const shop = await Shop.findOne({ mobile });
@@ -196,13 +206,17 @@ exports.registerShop = async (req, res) => {
         const ownerPhotoPath = normPath(files.ownerPhoto?.[0]?.path);
         const idProofPath    = normPath(files.idProof?.[0]?.path);
         const shopLogoPath   = normPath(files.shopLogo?.[0]?.path);
+        const shopPhotoPath  = normPath(files.shopPhoto?.[0]?.path);
+        const gstnCertPath   = normPath(files.gstnCertificate?.[0]?.path);
 
         shop.ownerName  = ownerName;
         shop.email      = email;
         shop.password   = password;
         shop.shopName   = shopName;
         shop.shopLogo   = shopLogoPath;
+        shop.shopPhoto  = shopPhotoPath;
         shop.gstNumber  = gstNumber || null;
+        shop.gstnCertificate = gstnCertPath;
         shop.category   = category;
         shop.address    = address;
         shop.city       = city;
@@ -210,6 +224,15 @@ exports.registerShop = async (req, res) => {
         shop.locality   = locality || '';
         shop.ownerPhoto = ownerPhotoPath;
         shop.idProof    = { idType: idType || 'Aadhar Card', filePath: idProofPath };
+        
+        // Store location if provided
+        if (latitude && longitude) {
+            shop.shopLocation = {
+                latitude: parseFloat(latitude),
+                longitude: parseFloat(longitude),
+            };
+        }
+        
         shop.verificationStatus = 'pending';
 
         await shop.save();

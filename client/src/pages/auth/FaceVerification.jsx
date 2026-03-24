@@ -1,6 +1,6 @@
 // client/src/pages/auth/FaceVerification.jsx
 // Liveness detection using MediaPipe Face Mesh (loaded from CDN — no Vite issues).
-// Challenges: LOOK_STRAIGHT → BLINK → TURN_LEFT → TURN_RIGHT → LOOK_FINAL (auto-capture)
+// Challenges: LOOK_STRAIGHT → BLINK → LOOK_FINAL (auto-capture)
 //
 // Props:
 //   onComplete(result) — called when all challenges pass
@@ -37,25 +37,9 @@ const CHALLENGES = [
         type:        'event',
     },
     {
-        id:          'TURN_LEFT',
-        label:       'Turn your head to the left',
-        instruction: 'Slowly turn your head to YOUR left side',
-        icon:        '←',
-        durationMs:  800,
-        type:        'hold',
-    },
-    {
-        id:          'TURN_RIGHT',
-        label:       'Turn your head to the right',
-        instruction: 'Slowly turn your head to YOUR right side',
-        icon:        '→',
-        durationMs:  1000,
-        type:        'hold',
-    },
-    {
         id:          'LOOK_FINAL',
         label:       'Return to front and hold',
-        instruction: 'Bring your face back to the center and hold still for a moment',
+        instruction: 'Your face is now captured. Hold still for verification',
         icon:        '📸',
         durationMs:  1200,
         type:        'hold',
@@ -259,12 +243,6 @@ export default function FaceVerification({
                 break;
             case 'BLINK':
                 conditionMet = avgEAR < EAR_BLINK_THRESHOLD;
-                break;
-            case 'TURN_LEFT':  // user's left = camera right (positive x)
-                conditionMet = noseOff > HEAD_TURN_THRESHOLD;
-                break;
-            case 'TURN_RIGHT': // user's right = camera left (negative x)
-                conditionMet = noseOff < -HEAD_TURN_THRESHOLD;
                 break;
         }
 

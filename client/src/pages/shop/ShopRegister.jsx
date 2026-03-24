@@ -193,13 +193,21 @@ const ShopRegister = () => {
     const [pincode, setPincode]           = useState('');
     const [locality, setLocality]         = useState('');
 
+    // Location state
+    const [latitude, setLatitude]         = useState(null);
+    const [longitude, setLongitude]       = useState(null);
+    const [locationError, setLocationError] = useState('');
+
     // Documents state
     const [idType, setIdType]             = useState('Aadhar Card');
     const [ownerPhoto, setOwnerPhoto]     = useState(null);
     const [idProof, setIdProof]           = useState(null);
     const [shopLogo, setShopLogo]         = useState(null);
+    const [shopPhoto, setShopPhoto]       = useState(null);
+    const [gstnCertificate, setGstnCertificate] = useState(null);
     const [ownerPhotoPreview, setOwnerPhotoPreview] = useState(null);
     const [shopLogoPreview, setShopLogoPreview]     = useState(null);
+    const [shopPhotoPreview, setShopPhotoPreview]   = useState(null);
 
     // Stable onChange handlers (no remount)
     const onMobile = useCallback(e => setMobile(e.target.value), []);
@@ -238,6 +246,78 @@ const ShopRegister = () => {
         if (f) setIdProof(f);
     }, []);
 
+    const onShopPhoto = useCallback(e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        setShopPhoto(f);
+        setShopPhotoPreview(URL.createObjectURL(f));
+    }, []);
+
+    const onGstnCertificate = useCallback(e => {
+        const f = e.target.files[0];
+        if (f) setGstnCertificate(f);
+    }, []);
+
+    const captureLocation = useCallback(async () => {
+        setLocationError('');
+        if (!navigator.geolocation) {
+            setLocationError('Geolocation not supported by your browser');
+            return;
+        }
+        
+        try {
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude: lat, longitude: lon } = position.coords;
+                    setLatitude(lat);
+                    setLongitude(lon);
+                    toast.success(`Location captured: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+                    
+                    // Reverse geocoding to get address details
+                    try {
+                        const response = await fetch(
+                            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+                        );
+                        const data = await response.json();
+                        
+                        if (data.address) {
+                            // Extract address components
+                            const roadName = data.address.road || data.address.street || '';
+                            const houseNum = data.address.house_number || '';
+                            const village = data.address.village || data.address.hamlet || '';
+                            const city = data.address.city || data.address.town || data.address.county || '';
+                            const postcode = data.address.postcode || '';
+                            
+                            // Build full address
+                            const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
+                            
+                            // Auto-fill the address fields
+                            if (fullAddress) setAddress(fullAddress);
+                            if (city) setCity(city);
+                            if (village) setLocality(village);
+                            if (postcode) setPincode(postcode);
+                            
+                            toast.success('Address details auto-filled from location!');
+                        }
+                    } catch (geoErr) {
+                        console.log('Geocoding failed, but location captured:', geoErr);
+                    }
+                },
+                error => {
+                    let msg = 'Unable to get location';
+                    if (error.code === error.PERMISSION_DENIED) msg = 'Permission denied. Enable location in browser settings.';
+                    else if (error.code === error.POSITION_UNAVAILABLE) msg = 'Location information unavailable';
+                    setLocationError(msg);
+                    toast.error(msg);
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        } catch (err) {
+            setLocationError('Error capturing location');
+            toast.error('Error capturing location');
+        }
+    }, []);
+
     const togglePwd = useCallback(() => setShowPwd(v => !v), []);
 
     // OTP actions
@@ -245,10 +325,17 @@ const ShopRegister = () => {
         if (!mobile || mobile.length !== 10) return toast.error('Enter valid 10-digit mobile.');
         setLoading(true);
         try {
-            await api.shopSendMobileOtp({ mobile });
+            const res = await api.shopSendMobileOtp({ mobile });
             setMobileOtpSent(true);
             toast.success('OTP sent to mobile!');
-        } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
+        } catch (e) { 
+            const msg = e.response?.data?.message || 'Failed.';
+            if (e.response?.data?.alreadyRegistered) {
+                toast.error(msg);
+            } else {
+                toast.error(msg);
+            }
+        }
         finally { setLoading(false); }
     }, [mobile]);
 
@@ -264,7 +351,6 @@ const ShopRegister = () => {
 
     const sendEmailOtp = useCallback(async () => {
         if (!email) return toast.error('Enter email first.');
-        if (!mobileVerified) return toast.error('Verify mobile first.');
         setLoading(true);
         try {
             await api.shopSendEmailOtp({ email, mobile });
@@ -272,7 +358,7 @@ const ShopRegister = () => {
             toast.success('OTP sent to email!');
         } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
         finally { setLoading(false); }
-    }, [email, mobile, mobileVerified]);
+    }, [email, mobile]);
 
     const verifyEmailOtp = useCallback(async () => {
         setLoading(true);
@@ -285,39 +371,54 @@ const ShopRegister = () => {
     }, [mobile, emailOtp]);
 
     const goStep2 = useCallback(() => {
-        if (!mobileVerified) return toast.error('Verify mobile number.');
-        if (!emailVerified) return toast.error('Verify email address.');
-        if (!password || password.length < 6) return toast.error('Password must be 6+ characters.');
-        if (password !== confirmPwd) return toast.error('Passwords do not match.');
+        // Free navigation - no validation required
         setStep(2);
-    }, [mobileVerified, emailVerified, password, confirmPwd]);
+    }, []);
 
     const goStep3 = useCallback(() => {
-        if (!ownerName || !shopName || !address || !city) return toast.error('Fill all required fields.');
-        if (!category) return toast.error('Select shop category.');
-        if (category === 'Other' && !customCategory) return toast.error('Enter custom category.');
+        // Free navigation - no validation required
         setStep(3);
-    }, [ownerName, shopName, address, city, category, customCategory]);
+    }, []);
 
     const handleSubmit = useCallback(async () => {
+        // Validate all required fields before submission
+        if (!mobile || mobile.length !== 10) return toast.error('Enter valid 10-digit mobile number.');
+        if (!email) return toast.error('Enter email address.');
+        if (!mobileVerified) return toast.error('Please verify your mobile number.');
+        if (!emailVerified) return toast.error('Please verify your email address.');
+        if (!password || password.length < 6) return toast.error('Password must be 6+ characters.');
+        if (password !== confirmPwd) return toast.error('Passwords do not match.');
+        if (!ownerName) return toast.error('Enter owner name.');
+        if (!shopName) return toast.error('Enter shop name.');
+        if (!address) return toast.error('Enter full address.');
+        if (!city) return toast.error('Enter city name.');
+        if (!category) return toast.error('Select shop category.');
+        if (category === 'Other' && !customCategory) return toast.error('Enter custom category.');
+        if (!ownerPhoto) return toast.error('Upload owner profile photo.');
+        if (!idProof) return toast.error('Upload ID proof document.');
+        
         setLoading(true);
         try {
             const fd = new FormData();
             const finalCat = category === 'Other' ? customCategory : category;
             const fields = { ownerName, mobile, email, password, shopName, gstNumber,
-                             address, city, pincode, locality, idType, category: finalCat };
+                             address, city, pincode, locality, idType, category: finalCat,
+                             latitude: latitude || '', longitude: longitude || '' };
             Object.entries(fields).forEach(([k, v]) => fd.append(k, v || ''));
             if (ownerPhoto) fd.append('ownerPhoto', ownerPhoto);
             if (idProof)    fd.append('idProof', idProof);
             if (shopLogo)   fd.append('shopLogo', shopLogo);
+            if (shopPhoto)  fd.append('shopPhoto', shopPhoto);
+            if (gstnCertificate) fd.append('gstnCertificate', gstnCertificate);
 
             await api.shopRegister(fd);
             setSubmitted(true);
         } catch (e) {
             toast.error(e.response?.data?.message || 'Registration failed.');
         } finally { setLoading(false); }
-    }, [ownerName, mobile, email, password, shopName, gstNumber, address, city,
-        pincode, locality, idType, category, customCategory, ownerPhoto, idProof, shopLogo]);
+    }, [ownerName, mobile, email, password, confirmPwd, shopName, gstNumber, address, city,
+        pincode, locality, idType, category, customCategory, ownerPhoto, idProof, shopLogo,
+        shopPhoto, gstnCertificate, latitude, longitude, mobileVerified, emailVerified]);
 
     // ── SUCCESS SCREEN ──────────────────────────────────────────────────────
     if (submitted) return (
@@ -393,7 +494,7 @@ const ShopRegister = () => {
                                     otp={emailOtp} onOtpChange={onEmailOtp}
                                     onSend={sendEmailOtp} onVerify={verifyEmailOtp}
                                     otpSent={emailOtpSent} verified={emailVerified}
-                                    loading={loading} disabled={!mobileVerified} />
+                                    loading={loading} />
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <Field label="Password" required>
@@ -465,6 +566,27 @@ const ShopRegister = () => {
                                     </Field>
                                 </div>
 
+                                <button type="button" onClick={captureLocation}
+                                    className="w-full border-2 border-blue-400 text-blue-600 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-blue-50 transition-all">
+                                    {latitude && longitude ? (
+                                        <>
+                                            <span className="text-green-600">✓</span>
+                                            Location Captured: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <MapPin size={16} />
+                                            Capture Shop Location
+                                        </>
+                                    )}
+                                </button>
+
+                                {locationError && (
+                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                                        {locationError}
+                                    </div>
+                                )}
+
                                 <div className="flex gap-3">
                                     <button onClick={() => setStep(1)}
                                         className="flex-1 border-2 border-orange-200 text-orange-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-orange-50 transition-all">
@@ -499,6 +621,16 @@ const ShopRegister = () => {
                                     value={shopLogo} onChange={onShopLogo}
                                     accept="image/*" preview={shopLogoPreview}
                                     hint="Square image recommended" />
+
+                                <FileField label="Shop Photo"
+                                    value={shopPhoto} onChange={onShopPhoto}
+                                    accept="image/*" preview={shopPhotoPreview}
+                                    hint="A clear photo of your shop front" />
+
+                                <FileField label="GSTN Certificate (optional)"
+                                    value={gstnCertificate} onChange={onGstnCertificate}
+                                    accept="image/*,.pdf" 
+                                    hint="Upload GSTN certificate if available" />
 
                                 <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 text-xs text-orange-700 leading-relaxed">
                                     By submitting, you confirm that all information is accurate. Admin will review within 24 hours. You'll be notified via SMS once approved.

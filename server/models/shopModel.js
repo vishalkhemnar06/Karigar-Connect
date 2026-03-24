@@ -13,8 +13,17 @@ const shopSchema = new mongoose.Schema({
     // Shop Info
     shopName:    { type: String, required: true, trim: true },
     shopLogo:    { type: String },
+    shopPhoto:   { type: String },                    // Live shop photo during registration
     gstNumber:   { type: String, trim: true, default: null },
+    gstnCertificate: { type: String },                // GSTN certificate document
     category:    { type: String, required: true },   // from dropdown or manual
+
+    // Live Location (captured during shop registration)
+    shopLocation: {
+        latitude:  { type: Number },
+        longitude: { type: Number },
+        address:   { type: String },                // reverse geocoded address (optional)
+    },
 
     // Address
     address:     { type: String, required: true },

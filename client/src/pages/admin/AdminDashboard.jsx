@@ -10,7 +10,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
-import toast from 'react-hot-toast';
 import logo from '../../assets/logo.jpg';
 import {
     Check, X, ShieldX, Trash2, Eye, Users, UserCheck,
@@ -26,6 +25,11 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
 import AdminSidebar from '../../pages/admin/AdminSidebar';
+import FraudMonitor from '../../pages/admin/FraudMonitor';
+import AdminComplaints from '../../pages/admin/AdminComplaints';
+import AdminWorkerComplaints from '../../pages/admin/AdminWorkerComplaints';
+import AdminCommunity from '../../pages/admin/AdminCommunity';
+import AdminShops from '../../pages/admin/AdminShops';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modal: Verify Worker & Assign Points
@@ -40,7 +44,7 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
     const finalScore = Number(points) + (experience * 10);
 
     const handleSubmit = () => {
-        if (points < 1 || points > 50) { toast.error('Please assign points between 1 and 50.'); return; }
+        if (points < 1 || points > 50) { return; }
         onConfirm(worker._id, 'approved', points, feedback);
     };
 
@@ -447,16 +451,17 @@ const MobileUserCard = ({ user, currentAdminId, onViewDetails, onVerifyOpen, onC
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
-    const [workers,      setWorkers]      = useState([]);
-    const [clients,      setClients]      = useState([]);
-    const [loading,      setLoading]      = useState(true);
-    const [selectedUser, setSelectedUser] = useState(null);
-    const [userToVerify, setUserToVerify] = useState(null);
-    const [activeFilter, setActiveFilter] = useState('pending');
-    const [searchTerm,   setSearchTerm]   = useState('');
-    const [sortConfig,   setSortConfig]   = useState({ key: null, direction: 'asc' });
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [isLoggedIn,   setIsLoggedIn]   = useState(true);
+    const [workers,        setWorkers]        = useState([]);
+    const [clients,        setClients]        = useState([]);
+    const [loading,        setLoading]        = useState(true);
+    const [selectedUser,   setSelectedUser]   = useState(null);
+    const [userToVerify,   setUserToVerify]   = useState(null);
+    const [activeFilter,   setActiveFilter]   = useState('pending');
+    const [searchTerm,     setSearchTerm]     = useState('');
+    const [sortConfig,     setSortConfig]     = useState({ key: null, direction: 'asc' });
+    const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
+    const [isLoggedIn,     setIsLoggedIn]     = useState(true);
+    const [currentSection, setCurrentSection] = useState('dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops'
 
     const navigate = useNavigate();
     // const baseURL  = 'http://localhost:5000/';
@@ -488,7 +493,7 @@ const AdminDashboard = () => {
             setWorkers(workersRes.data);
             setClients(clientsRes.data);
         } catch {
-            if (!silent) toast.error('Failed to fetch data');
+            // silently fail when silent mode enabled
         } finally {
             if (!silent) setLoading(false);
         }
@@ -506,7 +511,6 @@ const AdminDashboard = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('role');
         localStorage.removeItem('user');
-        toast.success('Logged out successfully');
         navigate('/login');
     };
 
@@ -545,41 +549,37 @@ const AdminDashboard = () => {
     }));
 
     const handleStatusUpdate = async (workerId, status, points = 0, feedback = '') => {
-        const id = toast.loading('Processing...');
         try {
             await api.updateWorkerStatus({ workerId, status, points: Number(points), rejectionReason: feedback });
-            toast.success('Action successful', { id });
             setUserToVerify(null);
             fetchData(true);
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to update', { id });
+        } catch {
+            // silently handle errors
         }
     };
 
     const handleClaimWorker = async (workerId) => {
-        const id = toast.loading('Claiming worker...');
         try {
             await api.claimWorkerForReview(workerId);
-            toast.success('Worker claimed', { id });
             fetchData(true);
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Unable to claim worker', { id });
+        } catch {
+            // silently handle errors
         }
     };
 
     const handleDelete = async (userId, name, role) => {
         if (!window.confirm(`Delete ${role}: ${name}?`)) return;
-        const id = toast.loading('Deleting...');
         try {
             await api.deleteUser(userId);
-            toast.success('Deleted', { id });
             fetchData();
-        } catch { toast.error('Failed', { id }); }
+        } catch {
+            // silently handle errors
+        }
     };
 
     const exportApprovedWorkers = (format) => {
         const approved = workers.filter(w => w.verificationStatus === 'approved');
-        if (!approved.length) { toast.error('No approved workers'); return; }
+        if (!approved.length) { return; }
         if (format === 'excel') {
             const rows = approved.map(w => ({
                 'Karigar ID': w.karigarId, Name: w.name, Mobile: w.mobile,
@@ -611,16 +611,19 @@ const AdminDashboard = () => {
         return <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${colors[status]}`}>{status}</span>;
     };
 
-    const StatCard = ({ title, value, icon: Icon, color, gradient }) => (
-        <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${color} relative overflow-hidden group hover:shadow-md transition-shadow`}>
-            <div className={`absolute top-0 right-0 w-16 h-16 opacity-10 ${gradient} rounded-full -m-4 group-hover:scale-110 transition-transform`}></div>
-            <div className="relative z-10">
-                <p className="text-xs font-medium text-gray-500 mb-1">{title}</p>
-                <p className="text-xl lg:text-3xl font-bold text-gray-900">{value}</p>
+    const StatCard = ({ title, value, icon: Icon, color, gradient }) => {
+        if (!Icon) return null;  // Ensure Icon is used
+        return (
+            <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${color} relative overflow-hidden group hover:shadow-md transition-shadow`}>
+                <div className={`absolute top-0 right-0 w-16 h-16 opacity-10 ${gradient} rounded-full -m-4 group-hover:scale-110 transition-transform`}></div>
+                <div className="relative z-10">
+                    <p className="text-xs font-medium text-gray-500 mb-1">{title}</p>
+                    <p className="text-xl lg:text-3xl font-bold text-gray-900">{value}</p>
+                </div>
+                <div className={`absolute bottom-4 right-4 p-2 rounded-lg ${gradient} text-white`}><Icon size={18} /></div>
             </div>
-            <div className={`absolute bottom-4 right-4 p-2 rounded-lg ${gradient} text-white`}><Icon size={18} /></div>
-        </div>
-    );
+        );
+    };
 
     const SortHeader = ({ label, sortKey }) => (
         <button onClick={() => handleSort(sortKey)} className="flex items-center font-semibold text-gray-700 hover:text-orange-700 text-sm">
@@ -650,182 +653,195 @@ const AdminDashboard = () => {
                     onClose={() => setIsSidebarOpen(false)}
                     activeFilter={activeFilter}
                     onFilterChange={setActiveFilter}
+                    currentSection={currentSection}
+                    onSectionChange={setCurrentSection}
                     stats={stats}
                 />
 
                 {/* ── Main content ── */}
                 {/* pb-20 on mobile to clear the bottom nav bar */}
-                <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0">
-                    {/* Page title + action buttons */}
-                    <div className="flex flex-col lg:flex-row justify-between mb-8 space-y-4 lg:space-y-0">
-                        <div>
-                            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Admin Control Desk</h1>
-                            <p className="text-gray-500 text-sm">Manage, verify and rank professionals</p>
-                        </div>
-                        <div className="flex items-center">
-                            <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="text"
-                                    placeholder="Search..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-9 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 w-56 lg:w-72 text-sm"
-                                />
+                <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0 overflow-auto">
+                    {currentSection === 'dashboard' && (
+                        <>
+                            {/* Dashboard Section */}
+                            {/* Page title + action buttons */}
+                            <div className="flex flex-col lg:flex-row justify-between mb-8 space-y-4 lg:space-y-0">
+                                <div>
+                                    <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Admin Control Desk</h1>
+                                    <p className="text-gray-500 text-sm">Manage, verify and rank professionals</p>
+                                </div>
+                                <div className="flex items-center">
+                                    <div className="relative">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="pl-9 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 w-56 lg:w-72 text-sm"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* Stat Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
-                        <StatCard title="Total"    value={stats.totalWorkers} icon={Users}     color="border-orange-500" gradient="bg-orange-500" />
-                        <StatCard title="Pending"  value={stats.pending}      icon={Clock}     color="border-yellow-500" gradient="bg-yellow-500" />
-                        <StatCard title="Approved" value={stats.approved}     icon={UserCheck} color="border-green-500"  gradient="bg-green-500" />
-                        <StatCard title="Rejected" value={stats.rejected}     icon={UserX}     color="border-red-500"    gradient="bg-red-500" />
-                        <StatCard title="Blocked"  value={stats.blocked}      icon={ShieldX}   color="border-gray-500"   gradient="bg-gray-500" />
-                        <StatCard title="Clients"  value={stats.totalClients} icon={Users}     color="border-amber-500"  gradient="bg-amber-500" />
-                    </div>
+                            {/* Stat Cards */}
+                            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+                                <StatCard title="Total"    value={stats.totalWorkers} icon={Users}     color="border-orange-500" gradient="bg-orange-500" />
+                                <StatCard title="Pending"  value={stats.pending}      icon={Clock}     color="border-yellow-500" gradient="bg-yellow-500" />
+                                <StatCard title="Approved" value={stats.approved}     icon={UserCheck} color="border-green-500"  gradient="bg-green-500" />
+                                <StatCard title="Rejected" value={stats.rejected}     icon={UserX}     color="border-red-500"    gradient="bg-red-500" />
+                                <StatCard title="Blocked"  value={stats.blocked}      icon={ShieldX}   color="border-gray-500"   gradient="bg-gray-500" />
+                                <StatCard title="Clients"  value={stats.totalClients} icon={Users}     color="border-amber-500"  gradient="bg-amber-500" />
+                            </div>
 
-                    {/* Table */}
-                    <div className="bg-white rounded-xl shadow-sm border">
-                        <div className="p-6 border-b flex justify-between items-center">
-                            <h3 className="text-lg font-bold capitalize">{activeFilter} Records ({filteredData.length})</h3>
-                            {activeFilter === 'approved' && (
-                                <div className="relative group">
-                                    <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
-                                        <Download size={14} className="mr-2" /> Export
-                                    </button>
-                                    <div className="absolute right-0 mt-1 w-40 bg-white shadow-xl border rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                                        <button onClick={() => exportApprovedWorkers('excel')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">Excel Format</button>
-                                        <button onClick={() => exportApprovedWorkers('pdf')}   className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">PDF Format</button>
-                                    </div>
+                            {/* Table */}
+                            <div className="bg-white rounded-xl shadow-sm border">
+                                <div className="p-6 border-b flex justify-between items-center">
+                                    <h3 className="text-lg font-bold capitalize">{activeFilter} Records ({filteredData.length})</h3>
+                                    {activeFilter === 'approved' && (
+                                        <div className="relative group">
+                                            <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                                                <Download size={14} className="mr-2" /> Export
+                                            </button>
+                                            <div className="absolute right-0 mt-1 w-40 bg-white shadow-xl border rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                                <button onClick={() => exportApprovedWorkers('excel')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">Excel Format</button>
+                                                <button onClick={() => exportApprovedWorkers('pdf')}   className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">PDF Format</button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
 
-                        <div className="p-4">
-                            {loading ? (
-                                <div className="text-center py-12">
-                                    <div className="animate-spin h-10 w-10 border-4 border-orange-600 border-t-transparent rounded-full mx-auto"></div>
-                                </div>
-                            ) : filteredData.length > 0 ? (
-                                <>
-                                    {/* Mobile cards */}
-                                    <div className="lg:hidden space-y-3">
-                                        {filteredData.map(user => (
-                                            <MobileUserCard
-                                                key={user._id}
-                                                user={user}
-                                                baseURL={baseURL}
-                                                currentAdminId={currentAdminId}
-                                                onViewDetails={setSelectedUser}
-                                                onVerifyOpen={setUserToVerify}
-                                                onClaimWorker={handleClaimWorker}
-                                                onStatusUpdate={handleStatusUpdate}
-                                                onDelete={handleDelete}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    {/* Desktop table */}
-                                    <div className="hidden lg:block overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead>
-                                                <tr className="border-b">
-                                                    <th className="pb-3 text-left"><SortHeader label="Name"    sortKey="name"      /></th>
-                                                    <th className="pb-3 text-left"><SortHeader label="ID"      sortKey="karigarId" /></th>
-                                                    <th className="pb-3 text-left">Contact</th>
-                                                    <th className="pb-3 text-left">{activeFilter === 'clients' ? 'Email' : 'Score / Skills'}</th>
-                                                    {activeFilter !== 'clients' && <th className="pb-3 text-left">Status</th>}
-                                                    <th className="pb-3 text-right">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
+                                <div className="p-4">
+                                    {loading ? (
+                                        <div className="text-center py-12">
+                                            <div className="animate-spin h-10 w-10 border-4 border-orange-600 border-t-transparent rounded-full mx-auto"></div>
+                                        </div>
+                                    ) : filteredData.length > 0 ? (
+                                        <>
+                                            {/* Mobile cards */}
+                                            <div className="lg:hidden space-y-3">
                                                 {filteredData.map(user => (
-                                                    <tr key={user._id} className="border-b hover:bg-orange-50/50 transition-colors">
-                                                        <td className="py-4">
-                                                            <div className="flex items-center">
-                                                                <img
-                                                                    src={getImageUrl(user.photo)}
-                                                                    className="w-10 h-10 rounded-full object-cover mr-3 border-2 border-orange-100"
-                                                                    onError={(e) => { e.target.src = '/default-avatar.png'; }}
-                                                                />
-                                                                <div>
-                                                                    <p className="font-bold text-gray-800">{user.name}</p>
-                                                                    <p className="text-xs text-gray-500 capitalize">{user.role}</p>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="py-4 font-mono text-xs">{user.karigarId}</td>
-                                                        <td className="py-4 text-sm">{user.mobile}</td>
-                                                        <td className="py-4">
-                                                            {user.role === 'worker' ? (
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-[10px] font-black">SCORE: {user.points || 0}</span>
-                                                                    <span className="text-xs text-gray-400">Exp: {user.experience}y</span>
-                                                                </div>
-                                                            ) : <span className="text-sm">{user.email}</span>}
-                                                        </td>
-                                                        {activeFilter !== 'clients' && (
-                                                            <td className="py-4">
-                                                                {renderStatusBadge(user.verificationStatus)}
-                                                                {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
-                                                                    <p className="text-[10px] text-gray-500 mt-1">
-                                                                        Locked by: {user.reviewLock.lockedBy.name || 'Admin'}
-                                                                    </p>
-                                                                )}
-                                                            </td>
-                                                        )}
-                                                        <td className="py-4">
-                                                            <div className="flex justify-end space-x-2">
-                                                                <button onClick={() => setSelectedUser(user)} className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Eye size={16} /></button>
-                                                                {user.role === 'worker' && user.verificationStatus === 'pending' && (() => {
-                                                                    const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
-                                                                    const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
-                                                                    const claimedByOther = lockOwnerId && !claimedByMe;
-
-                                                                    if (!lockOwnerId) {
-                                                                        return <button onClick={() => handleClaimWorker(user._id)} className="p-2 bg-blue-100 text-blue-700 rounded-lg" title="Claim Worker"><ShieldCheck size={16} /></button>;
-                                                                    }
-
-                                                                    if (claimedByMe) {
-                                                                        return (
-                                                                            <>
-                                                                                <button onClick={() => setUserToVerify(user)} className="p-2 bg-green-100 text-green-600 rounded-lg" title="Verify & Assign Points"><Check size={16} /></button>
-                                                                                <button onClick={() => {
-                                                                                    const reason = window.prompt('Enter rejection reason for worker application:') || '';
-                                                                                    handleStatusUpdate(user._id, 'rejected', 0, reason);
-                                                                                }} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
-                                                                            </>
-                                                                        );
-                                                                    }
-
-                                                                    if (claimedByOther) {
-                                                                        return <span className="px-2 py-1 text-[10px] font-semibold rounded bg-gray-100 text-gray-600">Locked</span>;
-                                                                    }
-
-                                                                    return null;
-                                                                })()}
-                                                                {user.role === 'worker' && user.verificationStatus === 'approved' && (
-                                                                    <button onClick={() => handleStatusUpdate(user._id, 'blocked')} className="p-2 bg-gray-100 text-gray-600 rounded-lg"><ShieldX size={16} /></button>
-                                                                )}
-                                                                {user.role === 'worker' && user.verificationStatus === 'blocked' && (
-                                                                    <button onClick={() => handleStatusUpdate(user._id, 'unblocked')} className="p-2 bg-green-100 text-green-600 rounded-lg"><ShieldCheck size={16} /></button>
-                                                                )}
-                                                                <button onClick={() => handleDelete(user._id, user.name, user.role)} className="p-2 bg-red-50 text-red-600 rounded-lg"><Trash2 size={16} /></button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
+                                                    <MobileUserCard
+                                                        key={user._id}
+                                                        user={user}
+                                                        baseURL={baseURL}
+                                                        currentAdminId={currentAdminId}
+                                                        onViewDetails={setSelectedUser}
+                                                        onVerifyOpen={setUserToVerify}
+                                                        onClaimWorker={handleClaimWorker}
+                                                        onStatusUpdate={handleStatusUpdate}
+                                                        onDelete={handleDelete}
+                                                    />
                                                 ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="text-center py-12 text-gray-400">No records found.</div>
-                            )}
-                        </div>
-                    </div>
+                                            </div>
+
+                                            {/* Desktop table */}
+                                            <div className="hidden lg:block overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead>
+                                                        <tr className="border-b">
+                                                            <th className="pb-3 text-left"><SortHeader label="Name"    sortKey="name"      /></th>
+                                                            <th className="pb-3 text-left"><SortHeader label="ID"      sortKey="karigarId" /></th>
+                                                            <th className="pb-3 text-left">Contact</th>
+                                                            <th className="pb-3 text-left">{activeFilter === 'clients' ? 'Email' : 'Score / Skills'}</th>
+                                                            {activeFilter !== 'clients' && <th className="pb-3 text-left">Status</th>}
+                                                            <th className="pb-3 text-right">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {filteredData.map(user => (
+                                                            <tr key={user._id} className="border-b hover:bg-orange-50/50 transition-colors">
+                                                                <td className="py-4">
+                                                                    <div className="flex items-center">
+                                                                        <img
+                                                                            src={getImageUrl(user.photo)}
+                                                                            className="w-10 h-10 rounded-full object-cover mr-3 border-2 border-orange-100"
+                                                                            onError={(e) => { e.target.src = '/default-avatar.png'; }}
+                                                                        />
+                                                                        <div>
+                                                                            <p className="font-bold text-gray-800">{user.name}</p>
+                                                                            <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-4 font-mono text-xs">{user.karigarId}</td>
+                                                                <td className="py-4 text-sm">{user.mobile}</td>
+                                                                <td className="py-4">
+                                                                    {user.role === 'worker' ? (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-[10px] font-black">SCORE: {user.points || 0}</span>
+                                                                            <span className="text-xs text-gray-400">Exp: {user.experience}y</span>
+                                                                        </div>
+                                                                    ) : <span className="text-sm">{user.email}</span>}
+                                                                </td>
+                                                                {activeFilter !== 'clients' && (
+                                                                    <td className="py-4">
+                                                                        {renderStatusBadge(user.verificationStatus)}
+                                                                        {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
+                                                                            <p className="text-[10px] text-gray-500 mt-1">
+                                                                                Locked by: {user.reviewLock.lockedBy.name || 'Admin'}
+                                                                            </p>
+                                                                        )}
+                                                                    </td>
+                                                                )}
+                                                                <td className="py-4">
+                                                                    <div className="flex justify-end space-x-2">
+                                                                        <button onClick={() => setSelectedUser(user)} className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Eye size={16} /></button>
+                                                                        {user.role === 'worker' && user.verificationStatus === 'pending' && (() => {
+                                                                            const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
+                                                                            const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
+                                                                            const claimedByOther = lockOwnerId && !claimedByMe;
+
+                                                                            if (!lockOwnerId) {
+                                                                                return <button onClick={() => handleClaimWorker(user._id)} className="p-2 bg-blue-100 text-blue-700 rounded-lg" title="Claim Worker"><ShieldCheck size={16} /></button>;
+                                                                            }
+
+                                                                            if (claimedByMe) {
+                                                                                return (
+                                                                                    <>
+                                                                                        <button onClick={() => setUserToVerify(user)} className="p-2 bg-green-100 text-green-600 rounded-lg" title="Verify & Assign Points"><Check size={16} /></button>
+                                                                                        <button onClick={() => {
+                                                                                            const reason = window.prompt('Enter rejection reason for worker application:') || '';
+                                                                                            handleStatusUpdate(user._id, 'rejected', 0, reason);
+                                                                                        }} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
+                                                                                    </>
+                                                                                );
+                                                                            }
+
+                                                                            if (claimedByOther) {
+                                                                                return <span className="px-2 py-1 text-[10px] font-semibold rounded bg-gray-100 text-gray-600">Locked</span>;
+                                                                            }
+
+                                                                            return null;
+                                                                        })()}
+                                                                        {user.role === 'worker' && user.verificationStatus === 'approved' && (
+                                                                            <button onClick={() => handleStatusUpdate(user._id, 'blocked')} className="p-2 bg-gray-100 text-gray-600 rounded-lg"><ShieldX size={16} /></button>
+                                                                        )}
+                                                                        {user.role === 'worker' && user.verificationStatus === 'blocked' && (
+                                                                            <button onClick={() => handleStatusUpdate(user._id, 'unblocked')} className="p-2 bg-green-100 text-green-600 rounded-lg"><ShieldCheck size={16} /></button>
+                                                                        )}
+                                                                        <button onClick={() => handleDelete(user._id, user.name, user.role)} className="p-2 bg-red-50 text-red-600 rounded-lg"><Trash2 size={16} /></button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center py-12 text-gray-400">No records found.</div>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {currentSection === 'fraud' && <FraudMonitor />}
+                    {currentSection === 'complaints' && <AdminComplaints />}
+                    {currentSection === 'worker-complaints' && <AdminWorkerComplaints />}
+                    {currentSection === 'community' && <AdminCommunity />}
+                    {currentSection === 'shops' && <AdminShops />}
                 </main>
             </div>
         </div>
