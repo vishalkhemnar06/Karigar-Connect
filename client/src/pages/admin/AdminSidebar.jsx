@@ -78,6 +78,7 @@ const AdminSidebar = ({
     const handleNav = (item) => {
         if (item.isFilter) {
             onFilterChange(item.filter);
+            onSectionChange('dashboard');
         } else {
             const sectionMap = {
                 '/admin/fraud': 'fraud',
@@ -253,8 +254,12 @@ const AdminSidebar = ({
                             <button
                                 key={item.filter || item.path}
                                 onClick={() => {
-                                    if (item.isFilter) onFilterChange(item.filter);
-                                    else navigate(item.path);
+                                    if (item.isFilter) {
+                                        onFilterChange(item.filter);
+                                        onSectionChange('dashboard');
+                                    } else {
+                                        handleNav(item);
+                                    }
                                 }}
                                 className={`flex flex-col items-center justify-center px-2 py-2 rounded-xl flex-1 relative transition-all duration-200
                                     ${active ? 'text-orange-600' : 'text-gray-400'}`}

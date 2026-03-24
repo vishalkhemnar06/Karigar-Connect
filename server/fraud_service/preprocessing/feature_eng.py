@@ -249,8 +249,17 @@ def _worker_features(uid, user, db):
     complaints_filed_count    = 0
     complaints_received_count = 0
     try:
-        complaints_filed_count    = db.complaints.count_documents({'filedBy':     uid})
-        complaints_received_count = db.complaints.count_documents({'aboutUserId': uid})
+        # Worker-filed tickets from Complaint model
+        worker_filed = db.complaints.count_documents({'filedBy': uid})
+
+        # Complaints received by worker can come from:
+        # 1) ClientComplaint model (client vs worker): againstWorker
+        # 2) Legacy/older Complaint docs using aboutUserId
+        received_client_complaints = db.clientcomplaints.count_documents({'againstWorker': uid})
+        received_legacy = db.complaints.count_documents({'aboutUserId': uid})
+
+        complaints_filed_count = worker_filed
+        complaints_received_count = received_client_complaints + received_legacy
     except Exception as e:
         print('[WARN] complaints query error: {}'.format(e))
 
@@ -434,8 +443,16 @@ def _client_features(uid, user, db):
     complaints_filed_count    = 0
     complaints_received_count = 0
     try:
-        complaints_filed_count    = db.complaints.count_documents({'filedBy':     uid})
-        complaints_received_count = db.complaints.count_documents({'aboutUserId': uid})
+        # Client-filed complaints from ClientComplaint model
+        client_filed = db.clientcomplaints.count_documents({'filedBy': uid})
+
+        # Client can be complained against in worker Complaint model via againstUser,
+        # and older docs may still use aboutUserId.
+        received_worker_complaints = db.complaints.count_documents({'againstUser': uid})
+        received_legacy = db.complaints.count_documents({'aboutUserId': uid})
+
+        complaints_filed_count = client_filed
+        complaints_received_count = received_worker_complaints + received_legacy
     except Exception as e:
         print('[WARN] complaints query error: {}'.format(e))
 

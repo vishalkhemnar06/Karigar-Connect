@@ -8,7 +8,7 @@ import {
     Phone, Camera, CheckCircle, Award,
     Globe, Building2, Star,
     Facebook, Twitter, Instagram, Linkedin, Shield, Save,
-    ChevronDown, ChevronUp, Home, Calendar
+    ChevronDown, ChevronUp, ChevronRight, Home, Calendar
 } from 'lucide-react';
 
 const ClientProfile = () => {

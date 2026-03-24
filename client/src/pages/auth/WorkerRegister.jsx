@@ -7,9 +7,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import FaceVerification, { dataURLtoBlob } from './FaceVerification';
+import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 import {
     Calendar, Smartphone, User, Shield, Mail, MapPin, Award, Users,
-    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon,
+    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon, Eye, EyeOff,
 } from 'lucide-react';
 
 const skillList = [
@@ -24,7 +25,7 @@ const DRAFT_KEY = 'worker_register_draft_v1';
 const WorkerRegister = () => {
     const [formData, setFormData] = useState({
         name:'', dob:'', phoneType:'Smartphone', mobile:'', email:'', password:'', confirmPassword:'',
-        city:'', pincode:'', locality:'', overallExperience:'Beginner', experience:'',
+        city:'', pincode:'', locality:'', fullAddress:'', village:'', latitude:'', longitude:'', overallExperience:'Beginner', experience:'',
         aadharNumber:'', gender:'Male', eShramNumber:'', otherSkill:'',
         emergencyContactName:'', emergencyContactMobile:'', idDocumentType:'Aadhar Card',
     });
@@ -48,8 +49,12 @@ const WorkerRegister = () => {
     const [similarityThreshold,  setSimilarityThreshold]  = useState(0.5);
     const [faceMatchPassed,      setFaceMatchPassed]      = useState(false);
     const [faceMessage,          setFaceMessage]          = useState('');
+    const [showPassword,         setShowPassword]         = useState(false);
+    const [showConfirmPassword,  setShowConfirmPassword]  = useState(false);
+    const [locationError,        setLocationError]        = useState('');
 
     const navigate = useNavigate();
+    const strength = getPasswordStrength(formData.password);
 
     useEffect(() => {
         let interval;
@@ -156,6 +161,64 @@ const WorkerRegister = () => {
 
     const formatTime = s => `0:${s < 10 ? '0' : ''}${s}`;
 
+    const captureLocation = async () => {
+        setLocationError('');
+        if (!navigator.geolocation) {
+            const msg = 'Geolocation is not supported by your browser.';
+            setLocationError(msg);
+            toast.error(msg);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                setFormData((prev) => ({
+                    ...prev,
+                    latitude: latitude.toFixed(6),
+                    longitude: longitude.toFixed(6),
+                }));
+
+                try {
+                    const response = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+                    );
+                    const data = await response.json();
+                    const addr = data?.address || {};
+
+                    const houseNum = addr.house_number || '';
+                    const roadName = addr.road || addr.street || '';
+                    const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
+                    const cityName = addr.city || addr.town || addr.county || '';
+                    const villageName = addr.village || addr.hamlet || addr.suburb || '';
+                    const pincode = addr.postcode || '';
+
+                    setFormData((prev) => ({
+                        ...prev,
+                        fullAddress: fullAddress || prev.fullAddress,
+                        city: cityName || prev.city,
+                        village: villageName || prev.village,
+                        locality: villageName || prev.locality,
+                        pincode: pincode || prev.pincode,
+                    }));
+
+                    toast.success('Live location captured and address auto-filled.');
+                } catch {
+                    toast.success('Live location captured. You can fill address manually.');
+                }
+            },
+            (error) => {
+                let msg = 'Unable to capture live location.';
+                if (error.code === error.PERMISSION_DENIED) msg = 'Location permission denied. Please enable location access.';
+                else if (error.code === error.POSITION_UNAVAILABLE) msg = 'Location information is unavailable.';
+                else if (error.code === error.TIMEOUT) msg = 'Location request timed out. Please try again.';
+                setLocationError(msg);
+                toast.error(msg);
+            },
+            { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        );
+    };
+
     const runFaceSimilarityCheck = async (photoDataUrl) => {
         if (!files.idProof || !photoDataUrl) return;
 
@@ -199,6 +262,7 @@ const WorkerRegister = () => {
         if (!livePhotoData)     return toast.error('Complete face verification first');
         if (!faceMatchPassed)   return toast.error('Face similarity is below threshold. Please retry face verification.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
+        if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
         if (new Date().getFullYear() - new Date(formData.dob).getFullYear() < 18)
             return toast.error('Must be at least 18 years old');
 
@@ -231,7 +295,7 @@ const WorkerRegister = () => {
     const sections = [
         { title:'Personal Details',   icon:User,   completed: formData.name && formData.dob && formData.mobile && mobileVerified },
         { title:'Skills & Experience',icon:Award,  completed: Object.keys(skills).length > 0 },
-        { title:'Address & Documents',icon:MapPin,  completed: formData.city && formData.pincode && files.photo && files.idProof },
+        { title:'Address & Documents',icon:MapPin,  completed: formData.fullAddress && formData.city && formData.village && formData.pincode && formData.latitude && formData.longitude && files.photo && files.idProof },
         { title:'References',         icon:Users,  completed: true },
         { title:'Face Verification',  icon:Camera, completed: !!livePhotoData && faceMatchPassed },
     ];
@@ -260,28 +324,40 @@ const WorkerRegister = () => {
 
                 {/* Progress */}
                 <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-6 border-b border-orange-200">
-                    <div className="flex justify-between items-center">
-                        {sections.map((s, i) => (
-                            <div key={i} className="flex flex-col items-center flex-1">
-                                <button type="button" onClick={() => setActiveSection(i)}
-                                    className={`flex flex-col items-center px-3 py-3 rounded-xl transition-all ${
-                                        activeSection === i
-                                            ? 'bg-white text-orange-600 shadow-lg font-semibold border-2 border-orange-500'
-                                            : s.completed
-                                            ? 'bg-green-100 text-green-700 border-2 border-green-400 hover:bg-green-200'
-                                            : 'bg-white text-orange-800 border-2 border-orange-200 hover:bg-orange-50'
-                                    }`}>
-                                    <s.icon className="h-5 w-5 mb-1"/>
-                                    <span className="text-xs font-medium">{s.title}</span>
-                                    {s.completed && <CheckCircle className="h-3 w-3 mt-1 text-green-600"/>}
-                                </button>
-                                {i < sections.length - 1 && (
-                                    <div className="w-full h-1 bg-orange-200 mt-3 relative">
-                                        <div className={`absolute inset-0 bg-orange-500 transition-all ${s.completed ? 'w-full' : 'w-0'}`}/>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                    <div className="flex items-center justify-start sm:justify-center gap-3 overflow-x-auto pb-2">
+                        {sections.map((s, i) => {
+                            const isActive = activeSection === i;
+                            const isDone = s.completed && !isActive;
+
+                            return (
+                                <React.Fragment key={s.title}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveSection(i)}
+                                        className="flex items-center gap-2 focus:outline-none"
+                                    >
+                                        <div
+                                            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black transition-all ${
+                                                isDone
+                                                    ? 'bg-green-500 text-white'
+                                                    : isActive
+                                                    ? 'bg-orange-500 text-white shadow-lg scale-110'
+                                                    : 'bg-white text-orange-500 border-2 border-orange-200'
+                                            }`}
+                                        >
+                                            {isDone ? <CheckCircle className="h-4 w-4" /> : i + 1}
+                                        </div>
+                                        <span className={`text-xs font-semibold whitespace-nowrap ${isActive ? 'text-orange-700' : isDone ? 'text-green-700' : 'text-gray-500'}`}>
+                                            {s.title}
+                                        </span>
+                                    </button>
+
+                                    {i < sections.length - 1 && (
+                                        <div className={`h-0.5 w-8 sm:w-12 ${activeSection > i ? 'bg-green-400' : 'bg-orange-200'}`} />
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -345,12 +421,24 @@ const WorkerRegister = () => {
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Create Password *</label>
                                         <div className="relative"><Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
-                                        <input type="password" name="password" value={formData.password} placeholder="Strong password" onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                        <input type={showPassword ? 'text' : 'password'} name="password" value={formData.password} placeholder="Strong password" onChange={handleChange} required className="w-full pl-12 pr-12 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/>
+                                        <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div>
+                                        <div className="mt-2">
+                                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
+                                            </div>
+                                            <p className={`text-xs mt-1 ${strength.text}`}>Strength: {strength.label}</p>
+                                            <p className="text-xs text-gray-500">{PASSWORD_POLICY_TEXT}</p>
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm Password *</label>
                                         <div className="relative"><Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
-                                        <input type="password" name="confirmPassword" value={formData.confirmPassword} placeholder="Confirm password" onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                        <input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" value={formData.confirmPassword} placeholder="Confirm password" onChange={handleChange} required className="w-full pl-12 pr-12 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/>
+                                        <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div>
+                                        {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                                            <p className="text-xs text-red-600 mt-1">Passwords do not match.</p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex justify-end pt-6">
@@ -413,10 +501,22 @@ const WorkerRegister = () => {
                                 <div className="text-center"><h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><MapPin className="h-8 w-8 mr-3"/>Address & Documents</h2></div>
                                 <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200">
                                     <h3 className="text-xl font-semibold text-orange-800 mb-4 flex items-center"><MapPin className="h-5 w-5 mr-2"/>Address</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <button
+                                        type="button"
+                                        onClick={captureLocation}
+                                        className="mb-4 px-5 py-3 bg-orange-100 text-orange-700 font-semibold rounded-xl hover:bg-orange-200 border border-orange-300"
+                                    >
+                                        Use Live Location
+                                    </button>
+                                    {locationError && <p className="text-sm text-red-600 mb-3">{locationError}</p>}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="md:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-2">Full Address *</label><input name="fullAddress" value={formData.fullAddress} placeholder="House/Street/Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">City *</label><input name="city" value={formData.city} placeholder="Your city" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Village *</label><input name="village" value={formData.village} placeholder="Village / Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Pincode *</label><input name="pincode" value={formData.pincode} placeholder="Area pincode" onChange={handleChange} required maxLength={6} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Locality *</label><input name="locality" value={formData.locality} placeholder="Area / Locality" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Latitude *</label><input name="latitude" value={formData.latitude} placeholder="e.g. 28.6139" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Longitude *</label><input name="longitude" value={formData.longitude} placeholder="e.g. 77.2090" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -512,7 +612,7 @@ const WorkerRegister = () => {
 
                                 <div className="flex justify-between pt-6">
                                     <button type="button" onClick={() => setActiveSection(1)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
-                                    <button type="button" onClick={() => setActiveSection(3)} disabled={!formData.city || !formData.pincode || !formData.locality || !files.photo || !files.idProof} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl disabled:from-gray-400 disabled:to-gray-500 flex items-center">Next: References <Users className="h-5 w-5 ml-2"/></button>
+                                    <button type="button" onClick={() => setActiveSection(3)} disabled={!formData.fullAddress || !formData.city || !formData.village || !formData.pincode || !formData.locality || !formData.latitude || !formData.longitude || !files.photo || !files.idProof} className="px-8 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-xl disabled:from-gray-400 disabled:to-gray-500 flex items-center">Next: References <Users className="h-5 w-5 ml-2"/></button>
                                 </div>
                             </div>
                         )}

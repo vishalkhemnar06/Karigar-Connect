@@ -176,6 +176,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                             <DetailItem label="Full Name"      value={user.name}                                                   icon={UserCheck} />
+                            <DetailItem label="Age"            value={user.age || 'N/A'} />
                             <DetailItem label="Date of Birth"  value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar}  />
                             <DetailItem label="Phone Type"     value={user.phoneType || 'N/A'}                                     icon={Smartphone} />
                             <DetailItem label="Gender"         value={user.gender} />
@@ -192,9 +193,14 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <MapPinIcon size={18} className="mr-2" /> Address Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                            <DetailItem label="Full Address"   value={address.fullAddress || user.fullAddress || address.homeLocation || user.homeLocation} icon={MapPinIcon} />
                             <DetailItem label="City"           value={address.city     || user.city}     icon={Home} />
+                            <DetailItem label="Village"        value={address.village  || user.village} />
                             <DetailItem label="Pincode"        value={address.pincode  || user.pincode} />
                             <DetailItem label="Locality/Area"  value={address.locality || user.locality} />
+                            <DetailItem label="House Number"   value={address.houseNumber || user.houseNumber} />
+                            <DetailItem label="Latitude"       value={address.latitude ?? user.latitude} />
+                            <DetailItem label="Longitude"      value={address.longitude ?? user.longitude} />
                         </div>
                     </div>
 
@@ -243,19 +249,66 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
 
                     {/* Client-specific */}
                     {user.role === 'client' && (
-                        <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
-                            <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-orange-800 flex items-center">
-                                <Briefcase size={18} className="mr-2" /> Additional Information
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                <DetailItem label="Workplace/Profession" value={user.workplaceInfo || 'N/A'} />
-                                <DetailItem label="Social Profile"
-                                    value={user.socialProfile
-                                        ? <a href={user.socialProfile} target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">View Profile</a>
-                                        : 'N/A'}
-                                />
+                        <>
+                            {/* Client Security & Verification */}
+                            <div className="bg-gradient-to-r from-red-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-red-100">
+                                <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-red-800 flex items-center">
+                                    <AlertCircle size={18} className="mr-2" /> Security & Verification
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                    <DetailItem label="Age Verified (18+)" value={user.ageVerified ? '✓ Yes' : '✗ No'} />
+                                    <DetailItem label="Address Verified" value={user.addressVerified ? '✓ Yes' : '✗ No'} />
+                                    <DetailItem label="Emergency Contact Name" value={emergency.name || 'N/A'} />
+                                    <DetailItem label="Emergency Contact Mobile" value={emergency.mobile || 'N/A'} />
+                                    <DetailItem label="Device Fingerprint" value={user.deviceFingerprint ? user.deviceFingerprint.substring(0, 16) + '...' : 'N/A'} />
+                                    <DetailItem label="Signup IP Address" value={user.signupIpAddress || 'N/A'} />
+                                </div>
                             </div>
-                        </div>
+
+                            {/* Client Profile & Intent */}
+                            <div className="bg-gradient-to-r from-blue-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-blue-100">
+                                <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-blue-800 flex items-center">
+                                    <Briefcase size={18} className="mr-2" /> Profile & Intent
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                    <DetailItem label="Profession/Occupation" value={user.profession || user.workplaceInfo || 'N/A'} />
+                                    <DetailItem label="Signup Reason" value={user.signupReason || 'N/A'} />
+                                    <DetailItem label="Previous Hiring Experience" value={user.previousHiringExperience === true ? 'Yes' : user.previousHiringExperience === false ? 'No' : 'N/A'} />
+                                    <DetailItem label="Preferred Payment Method" value={user.preferredPaymentMethod || 'N/A'} />
+                                    <DetailItem label="Business Registration #" value={user.businessRegistrationNumber || 'N/A'} />
+                                    <DetailItem label="GST/Tax ID" value={user.gstTaxId || 'N/A'} />
+                                    <DetailItem label="Insurance Details" value={user.insuranceDetails || 'N/A'} />
+                                </div>
+                            </div>
+
+                            {/* T&C Acceptance */}
+                            <div className="bg-gradient-to-r from-green-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-green-100">
+                                <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-green-800 flex items-center">
+                                    <FileTextIcon size={18} className="mr-2" /> Terms & Conditions Acceptance
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                    <DetailItem label="Payment T&C" value={user.termsPaymentAccepted ? '✓ Accepted' : '✗ Not Accepted'} />
+                                    <DetailItem label="Dispute Policy" value={user.termsDisputePolicyAccepted ? '✓ Accepted' : '✗ Not Accepted'} />
+                                    <DetailItem label="Data Privacy" value={user.termsDataPrivacyAccepted ? '✓ Accepted' : '✗ Not Accepted'} />
+                                    <DetailItem label="Worker Protection" value={user.termsWorkerProtectionAccepted ? '✓ Accepted' : '✗ Not Accepted'} />
+                                </div>
+                            </div>
+
+                            {/* Legacy Fields */}
+                            <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
+                                <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-orange-800 flex items-center">
+                                    <Briefcase size={18} className="mr-2" /> Additional Information
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                    <DetailItem label="Workplace/Profession (Legacy)" value={user.workplaceInfo || 'N/A'} />
+                                    <DetailItem label="Social Profile"
+                                        value={user.socialProfile
+                                            ? <a href={user.socialProfile} target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">View Profile</a>
+                                            : 'N/A'}
+                                    />
+                                </div>
+                            </div>
+                        </>
                     )}
 
                     {/* Documents */}
@@ -272,6 +325,33 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                 <p className="font-semibold text-orange-600 text-xs uppercase">ID Proof ({idDoc.idType || user.idDocumentType || 'Aadhar Card'})</p>
                                 <FileLink path={idDoc.filePath || user.idProof} label="View ID Proof" icon={FileText} />
                             </div>
+                            
+                            {/* Client-specific documents */}
+                            {user.role === 'client' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <p className="font-semibold text-orange-600 text-xs uppercase">Proof of Residence</p>
+                                        <FileLink path={user.proofOfResidence} label="View Proof" icon={FileText} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <p className="font-semibold text-orange-600 text-xs uppercase">Secondary ID Proof</p>
+                                        <FileLink path={user.secondaryIdProof} label="View Secondary ID" icon={FileText} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <p className="font-semibold text-orange-600 text-xs uppercase">Professional Certification</p>
+                                        <FileLink path={user.professionalCertification} label="View Certification" icon={AwardIcon} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <p className="font-semibold text-orange-600 text-xs uppercase">Live Face Photo</p>
+                                        <FileLink path={user.liveFacePhoto} label="View Live Face" icon={Camera} />
+                                        <p className="text-xs text-gray-600 mt-1">
+                                            Similarity: {typeof user.faceVerificationScore === 'number' ? user.faceVerificationScore.toFixed(3) : 'N/A'} | Status: {user.faceVerificationStatus || 'N/A'}
+                                        </p>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Worker-specific documents */}
                             {user.role === 'worker' && (
                                 <>
                                     <div className="space-y-2">

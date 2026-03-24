@@ -18,7 +18,7 @@ const navItems = [
     { to: '/client/job-manage', label: 'Manage Jobs', icon: Briefcase,       desc: 'Track all postings' },
     { to: '/client/ai-assist',  label: 'AI Tool',     icon: Bot,             desc: 'Smart project planner' },
     { to: '/client/groups',     label: 'Groups',      icon: Users,           desc: 'Find worker teams' },
-   
+    { to: '/client/worker-face-verify', label: 'Face Verify', icon: Camera,  desc: 'Verify worker identity' },
     { to: '/client/complaints', label: 'Complaints',  icon: AlertTriangle,   desc: 'Report issues' },
     { to: '/client/profile',    label: 'Profile',     icon: User,            desc: 'Account settings' },
 ];

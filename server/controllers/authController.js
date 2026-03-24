@@ -13,6 +13,7 @@ const { sendOtpSms } = require('../utils/smsHelper');
 const { sendOtpEmail } = require('../utils/emailHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
+const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 // ── OTP store (in-memory; production: use Redis) ──────────────────────────────
 const otpStore = new Map(); // key: mobile/email → { otp, expiry }
@@ -192,7 +193,7 @@ exports.registerWorker = async (req, res) => {
     try {
         const {
             name, dob, mobile, email, password, confirmPassword,
-            city, pincode, locality, overallExperience, experience,
+            city, pincode, locality, fullAddress, village, latitude, longitude, overallExperience, experience,
             aadharNumber, gender, eShramNumber, idDocumentType,
             emergencyContactName, emergencyContactMobile, phoneType, skills, references,
         } = req.body;
@@ -203,6 +204,8 @@ exports.registerWorker = async (req, res) => {
         if (!password)        return res.status(400).json({ message: 'Password is required.' });
         if (password !== confirmPassword)
             return res.status(400).json({ message: 'Passwords do not match.' });
+        if (!validateStrongPassword(password).isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
         if (dob && new Date().getFullYear() - new Date(dob).getFullYear() < 18)
             return res.status(400).json({ message: 'You must be at least 18 years old.' });
 
@@ -231,12 +234,19 @@ exports.registerWorker = async (req, res) => {
         try { parsedRefs = JSON.parse(references || '[]'); } catch {}
 
         // ── Create user ───────────────────────────────────────────────────────
-        const hashed = await bcrypt.hash(password, 12);
         const user   = await User.create({
             karigarId: generateKarigarId(),
             role: 'worker', name: name.trim(), dob, mobile, phoneType,
-            email: email || null, password: hashed,
-            address:   { city, pincode, locality },
+            email: email || null, password,
+            address:   {
+                city,
+                pincode,
+                locality,
+                fullAddress,
+                village,
+                latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
+                longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
+            },
             idProof:   { idType: idDocumentType || 'Aadhar Card', filePath: idProofFile.path },
             photo:     photoFile.path,
             gender,    aadharNumber, eShramNumber,
@@ -340,7 +350,16 @@ exports.registerClient = async (req, res) => {
     try {
         const {
             name, mobile, email, password, confirmPassword,
-            city, pincode, homeLocation, houseNumber, idType, workplaceInfo, socialProfile,
+            age, dob, gender,
+            city, pincode, locality, homeLocation, houseNumber, fullAddress, village, latitude, longitude, idType, workplaceInfo, socialProfile,
+            // NEW HIGH PRIORITY Security Fields
+            ageVerified, emergencyContactName, emergencyContactMobile,
+            profession, signupReason, previousHiringExperience, preferredPaymentMethod,
+            // NEW MEDIUM PRIORITY Fields
+            businessRegistrationNumber, gstTaxId, professionalCertification, insuranceDetails,
+            securityQuestion, securityAnswer,
+            // T&C acceptance
+            termsPaymentAccepted, termsDisputePolicyAccepted, termsDataPrivacyAccepted, termsWorkerProtectionAccepted,
         } = req.body;
 
         // ── Validation ────────────────────────────────────────────────────────
@@ -350,21 +369,79 @@ exports.registerClient = async (req, res) => {
         if (!password)      return res.status(400).json({ message: 'Password is required.' });
         if (password !== confirmPassword)
             return res.status(400).json({ message: 'Passwords do not match.' });
+        if (!validateStrongPassword(password).isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
+
+        const ageNum = Number(age);
+        if (!Number.isFinite(ageNum) || ageNum <= 0) {
+            return res.status(400).json({ message: 'Age must be a positive number.' });
+        }
+        if (ageNum < 18) {
+            return res.status(400).json({ message: 'Age must be 18 or above.' });
+        }
+
+        if (!dob) {
+            return res.status(400).json({ message: 'Birth date is required.' });
+        }
+        const dobDate = new Date(dob);
+        if (Number.isNaN(dobDate.getTime())) {
+            return res.status(400).json({ message: 'Birth date is invalid.' });
+        }
+        if (dobDate > new Date()) {
+            return res.status(400).json({ message: 'Birth date cannot be in the future.' });
+        }
+
+        const ageFromDob = (() => {
+            const now = new Date();
+            let years = now.getFullYear() - dobDate.getFullYear();
+            const m = now.getMonth() - dobDate.getMonth();
+            if (m < 0 || (m === 0 && now.getDate() < dobDate.getDate())) years--;
+            return years;
+        })();
+        if (ageFromDob < 18) {
+            return res.status(400).json({ message: 'Birth date indicates age below 18.' });
+        }
+
+        if (!['Male', 'Female', 'Other'].includes(gender)) {
+            return res.status(400).json({ message: 'Gender is required.' });
+        }
+
+        const toBool = (v) => v === true || v === 'true';
+
+        // NEW: Security validations
+        if (!toBool(ageVerified) && ageNum < 18)
+            return res.status(400).json({ message: 'Must be 18 or older to register.' });
+        if (!emergencyContactMobile || !emergencyContactName)
+            return res.status(400).json({ message: 'Emergency contact details are required.' });
+        if (!toBool(termsPaymentAccepted) || !toBool(termsDisputePolicyAccepted) || !toBool(termsDataPrivacyAccepted) || !toBool(termsWorkerProtectionAccepted))
+            return res.status(400).json({ message: 'You must accept all terms and conditions.' });
 
         if (await User.findOne({ mobile }))
             return res.status(409).json({ message: 'Mobile number is already registered.' });
         if (await User.findOne({ email }))
             return res.status(409).json({ message: 'Email is already registered.' });
 
-        // ── File URLs ─────────────────────────────────────────────────────────
+        // ── File URLs & Device Fingerprinting ─────────────────────────────────
         const photoFile     = safeGet(req.files, 'photo');
         const idProofFile   = safeGet(req.files, 'idProof');
+        const proofOfResidenceFile = safeGet(req.files, 'proofOfResidence');
+        const secondaryIdFile = safeGet(req.files, 'secondaryIdProof');
+        const certificationFile = safeGet(req.files, 'professionalCertification');
         const livePhotoFile = safeGet(req.files, 'livePhoto');
 
         if (!livePhotoFile)
             return res.status(400).json({ message: 'Live face photo is required for identity verification.' });
         if (!idProofFile)
             return res.status(400).json({ message: 'ID proof is required for identity verification.' });
+
+        // NEW: Capture IP & device fingerprint
+        const clientIp = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+        const userAgent = req.headers['user-agent'] || 'unknown';
+        const crypto = require('crypto');
+        const deviceFingerprint = crypto
+            .createHash('sha256')
+            .update(`${clientIp}${userAgent}`)
+            .digest('hex');
 
         // ── Face match + duplicate check for clients ─────────────────────────
         const faceServiceUp = await faceClient.isAvailable();
@@ -447,15 +524,76 @@ exports.registerClient = async (req, res) => {
             console.log(`[FaceVerification] Client verified — similarity=${similarity.toFixed(3)} ✅ no duplicate found`);
         }
 
+        // NEW: Generate address verification OTP
+        const addressOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const { sendAddressVerificationOtp } = require('../utils/smsHelper');
+        const addressDisplay = `${fullAddress}, ${city}`;
+        
+        try {
+            await sendAddressVerificationOtp(mobile, addressOtp, addressDisplay);
+            console.log(`[AddressOTP] Sent to ${mobile} for address: ${addressDisplay}`);
+        } catch (err) {
+            console.warn(`[AddressOTP] Failed to send: ${err.message}`);
+            // Continue registration even if OTP send fails
+        }
+
         // ── Create client ─────────────────────────────────────────────────────
-        const hashed = await bcrypt.hash(password, 12);
         const user   = await User.create({
             karigarId: generateKarigarId(),
             role: 'client', name: name.trim(), mobile, email,
-            password: hashed,
+            age: ageNum,
+            dob: dobDate,
+            gender,
+            password,
             photo:     photoFile?.path || null,
-            address:   { city, pincode, homeLocation, houseNumber },
+            address:   {
+                city,
+                pincode,
+                locality,
+                homeLocation,
+                houseNumber,
+                fullAddress,
+                village,
+                latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
+                longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
+            },
             idProof:   { idType: idType || 'Aadhar', filePath: idProofFile?.path || null },
+            
+            // NEW high priority security fields
+            ageVerified: ageNum >= 18,
+            emergencyContact: {
+                name: emergencyContactName?.trim() || '',
+                mobile: emergencyContactMobile?.trim() || '',
+            },
+            proofOfResidence: proofOfResidenceFile?.path || null,
+            secondaryIdProof: secondaryIdFile?.path || null,
+            addressVerificationOtp: addressOtp,
+            addressVerificationOtpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 min
+            
+            // NEW medium priority fields
+            profession: profession?.trim() || '',
+            signupReason: signupReason || '',
+            previousHiringExperience: previousHiringExperience === 'true' ? true : previousHiringExperience === 'false' ? false : null,
+            preferredPaymentMethod: preferredPaymentMethod || '',
+            businessRegistrationNumber: businessRegistrationNumber?.trim() || '',
+            gstTaxId: gstTaxId?.trim() || '',
+            professionalCertification: certificationFile?.path || '',
+            insuranceDetails: insuranceDetails?.trim() || '',
+            securityQuestion: securityQuestion?.trim() || '',
+            securityAnswer: securityAnswer?.trim() || '',
+            
+            // Device & IP tracking
+            deviceFingerprint,
+            signupIpAddress: clientIp,
+            signupUserAgent: userAgent,
+            
+            // T&C acceptance
+            termsPaymentAccepted: toBool(termsPaymentAccepted),
+            termsDisputePolicyAccepted: toBool(termsDisputePolicyAccepted),
+            termsDataPrivacyAccepted: toBool(termsDataPrivacyAccepted),
+            termsWorkerProtectionAccepted: toBool(termsWorkerProtectionAccepted),
+            
+            // Legacy fields
             workplaceInfo, socialProfile,
             verificationStatus: 'approved',  // clients auto-approved
             faceEmbedding,
@@ -476,6 +614,7 @@ exports.registerClient = async (req, res) => {
                 photo: user.photo, karigarId: user.karigarId,
             },
             faceVerification: faceVerificationStatus,
+            addressVerificationNeeded: true, // Client needs to verify address with OTP
         });
 
     } catch (err) {
@@ -484,11 +623,61 @@ exports.registerClient = async (req, res) => {
     }
 };
 
+// ── NEW: Verify Address OTP (Called by client after registration) ───────────────
+exports.verifyAddressOtp = async (req, res) => {
+    try {
+        const { clientId, otp } = req.body;
+        
+        if (!clientId || !otp) {
+            return res.status(400).json({ message: 'Client ID and OTP are required.' });
+        }
+
+        const client = await User.findById(clientId).select('+addressVerificationOtp');
+        if (!client || client.role !== 'client') {
+            return res.status(404).json({ message: 'Client not found.' });
+        }
+
+        if (!client.addressVerificationOtp) {
+            return res.status(400).json({ message: 'No pending address verification.' });
+        }
+
+        if (Date.now() > client.addressVerificationOtpExpiry) {
+            return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+        }
+
+        if (client.addressVerificationOtp !== otp.trim()) {
+            return res.status(400).json({ message: 'Invalid OTP.' });
+        }
+
+        // OTP verified, mark address as verified
+        client.addressVerified = true;
+        client.addressVerificationOtp = undefined; // Clear OTP
+        client.addressVerificationOtpExpiry = undefined;
+        await client.save();
+
+        console.log(`[AddressVerification] Client ${client.karigarId} address verified ✅`);
+
+        return res.json({
+            message: 'Address verified successfully!',
+            addressVerified: true,
+        });
+    } catch (err) {
+        console.error('verifyAddressOtp:', err);
+        return res.status(500).json({ message: 'Verification failed.' });
+    }
+};
+
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 exports.loginWithPassword = async (req, res) => {
     try {
         const { role, mobile, password } = req.body;
-        if (!mobile || !password) return res.status(400).json({ message: 'Mobile and password required.' });
+        if (!role || !mobile || !password) {
+            return res.status(400).json({ message: 'Role, mobile and password are required.' });
+        }
+
+        if (!['worker', 'client', 'admin'].includes(role)) {
+            return res.status(400).json({ message: 'Invalid role selected.' });
+        }
 
         if (role === 'admin') {
             const submittedMobile = String(mobile || '').trim();
@@ -527,9 +716,13 @@ exports.loginWithPassword = async (req, res) => {
             });
         }
 
-        const user = await User.findOne({ mobile }).select('+password');
+        const user = await User.findOne({ mobile, role }).select('+password');
         if (!user) {
-            await logAuditEvent({ action: 'failed_login', req, metadata: { mobile, reason: 'user_not_found' } });
+            const existingUser = await User.findOne({ mobile }).select('role');
+            await logAuditEvent({ action: 'failed_login', req, metadata: { mobile, role, reason: existingUser ? 'role_mismatch' : 'user_not_found' } });
+            if (existingUser) {
+                return res.status(401).json({ message: `This account is registered as ${existingUser.role}. Please select ${existingUser.role} login.` });
+            }
             return res.status(401).json({ message: 'Invalid mobile number or password.' });
         }
         if (user.verificationStatus === 'blocked') {
@@ -560,25 +753,46 @@ exports.loginWithPassword = async (req, res) => {
 
 exports.loginWithOtp = async (req, res) => {
     try {
-        const { mobile, otp } = req.body;
-        if (!mobile || !otp) return res.status(400).json({ message: 'Mobile and OTP required.' });
+        const { role, mobile, otp } = req.body;
+        if (!role || !mobile || !otp) {
+            return res.status(400).json({ message: 'Role, mobile and OTP are required.' });
+        }
+
+        if (!['worker', 'client'].includes(role)) {
+            return res.status(400).json({ message: 'OTP login is available only for worker and client.' });
+        }
 
         const record = otpStore.get(mobile);
         if (!record || Date.now() > record.expiry || record.otp !== otp.trim()) {
-            const existingUser = await User.findOne({ mobile }).select('_id role');
+            const existingUser = await User.findOne({ mobile, role }).select('_id role');
             await logAuditEvent({
                 userId: existingUser?._id,
                 role: existingUser?.role,
                 action: 'failed_login',
                 req,
-                metadata: { method: 'otp', reason: 'invalid_or_expired_otp' },
+                metadata: { method: 'otp', requestedRole: role, reason: 'invalid_or_expired_otp' },
             });
             return res.status(400).json({ message: 'Invalid or expired OTP.' });
         }
         otpStore.delete(mobile);
 
-        const user = await User.findOne({ mobile });
-        if (!user) return res.status(404).json({ message: 'No account found for this mobile number.' });
+        const user = await User.findOne({ mobile, role });
+        if (!user) {
+            const existingUser = await User.findOne({ mobile }).select('role');
+            if (existingUser) {
+                return res.status(401).json({ message: `This account is registered as ${existingUser.role}. Please select ${existingUser.role} login.` });
+            }
+            return res.status(404).json({ message: 'No account found for this mobile number.' });
+        }
+
+        if (user.verificationStatus === 'blocked') {
+            await logAuditEvent({ userId: user._id, role: user.role, action: 'failed_login', req, metadata: { method: 'otp', reason: 'blocked' } });
+            return res.status(403).json({ message: 'Your account has been blocked. Contact support.' });
+        }
+        if (user.role === 'worker' && user.verificationStatus !== 'approved') {
+            await logAuditEvent({ userId: user._id, role: user.role, action: 'failed_login', req, metadata: { method: 'otp', reason: 'worker_not_approved', status: user.verificationStatus } });
+            return res.status(403).json({ message: 'Your worker profile is pending admin approval.', status: user.verificationStatus });
+        }
 
         await logAuditEvent({ userId: user._id, role: user.role, action: 'login', req, metadata: { method: 'otp' } });
 
@@ -594,9 +808,9 @@ exports.loginWithOtp = async (req, res) => {
 // ── PASSWORD RESET ────────────────────────────────────────────────────────────
 exports.forgotPassword = async (req, res) => {
     try {
-        const { mobile } = req.body;
-        if (!mobile) return res.status(400).json({ message: 'Mobile required.' });
-        const user = await User.findOne({ mobile });
+        const { mobile, email } = req.body;
+        if (!mobile && !email) return res.status(400).json({ message: 'Mobile or email is required.' });
+        const user = await User.findOne(mobile ? { mobile } : { email });
         if (!user) return res.status(404).json({ message: 'No account found.' });
 
         const token  = crypto.randomBytes(32).toString('hex');
@@ -605,7 +819,7 @@ exports.forgotPassword = async (req, res) => {
         await user.save({ validateBeforeSave: false });
 
         // In production: send reset link via SMS/Email
-        console.log(`[PasswordReset] Token for ${mobile}: ${token}`);
+        console.log(`[PasswordReset] Token for ${mobile || email}: ${token}`);
         return res.json({ message: 'Password reset instructions sent.', resetToken: token });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -618,7 +832,10 @@ exports.resetPassword = async (req, res) => {
             resetPasswordExpire: { $gt: Date.now() },
         });
         if (!user) return res.status(400).json({ message: 'Reset token is invalid or has expired.' });
-        user.password            = await bcrypt.hash(req.body.password, 12);
+        const nextPassword = req.body.password || '';
+        if (!validateStrongPassword(nextPassword).isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
+        user.password            = nextPassword;
         user.resetPasswordToken  = undefined;
         user.resetPasswordExpire = undefined;
         await user.save();

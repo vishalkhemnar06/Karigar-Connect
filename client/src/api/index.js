@@ -156,6 +156,11 @@ export const verifyPasswordChangeOtp  = (d) => API.post('/api/worker/settings/pa
 export const changePasswordWithOtp    = (d) => API.post('/api/worker/settings/password/change',       d);
 export const deleteAccountPermanently = (d) => API.delete('/api/worker/account/delete-permanent',     { data: d });
 
+// ── CLIENT SETTINGS — Password change ────────────────────────────────────────
+export const sendClientPasswordChangeOtp   = ()  => API.post('/api/client/settings/password/send-otp');
+export const verifyClientPasswordChangeOtp = (d) => API.post('/api/client/settings/password/verify-otp', d);
+export const changeClientPasswordWithOtp   = (d) => API.post('/api/client/settings/password/change', d);
+
 // ── WORKER COMPLAINTS & SUPPORT ───────────────────────────────────────────────
 export const fileComplaint            = (d)     => API.post('/api/worker/complaints/file',            d);
 export const getMyComplaints          = ()       => API.get('/api/worker/complaints');

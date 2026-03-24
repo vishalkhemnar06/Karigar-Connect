@@ -2,20 +2,25 @@ import React, { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
+import { Eye, EyeOff } from 'lucide-react';
+import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 
 const ResetPassword = () => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const { token } = useParams();
     const navigate = useNavigate();
+    const strength = getPasswordStrength(password);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (password !== confirmPassword) {
             return toast.error("Passwords do not match.");
         }
-        if (password.length < 6) {
-            return toast.error("Password must be at least 6 characters long.");
+        if (!isStrongPassword(password)) {
+            return toast.error(PASSWORD_POLICY_TEXT);
         }
         
         const toastId = toast.loading('Resetting password...');
@@ -40,26 +45,51 @@ const ResetPassword = () => {
                 <form onSubmit={handleSubmit} className="p-8 space-y-6">
                     <div className="space-y-2">
                         <label className="block text-sm font-semibold text-gray-700">New Password</label>
-                        <input 
-                            type="password" 
-                            value={password} 
-                            onChange={(e) => setPassword(e.target.value)} 
-                            required 
-                            className="w-full px-4 py-3 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter your new password"
-                        />
+                        <div className="relative">
+                            <input 
+                                type={showPassword ? 'text' : 'password'} 
+                                value={password} 
+                                onChange={(e) => setPassword(e.target.value)} 
+                                required 
+                                className="w-full px-4 py-3 pr-12 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
+                                placeholder="Enter your new password"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((v) => !v)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
+                        <div className="mt-2">
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
+                            </div>
+                            <p className={`text-xs mt-1 ${strength.text}`}>Strength: {strength.label}</p>
+                            <p className="text-xs text-gray-500">{PASSWORD_POLICY_TEXT}</p>
+                        </div>
                     </div>
                     
                     <div className="space-y-2">
                         <label className="block text-sm font-semibold text-gray-700">Confirm New Password</label>
-                        <input 
-                            type="password" 
-                            value={confirmPassword} 
-                            onChange={(e) => setConfirmPassword(e.target.value)} 
-                            required 
-                            className="w-full px-4 py-3 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Confirm your new password"
-                        />
+                        <div className="relative">
+                            <input 
+                                type={showConfirmPassword ? 'text' : 'password'} 
+                                value={confirmPassword} 
+                                onChange={(e) => setConfirmPassword(e.target.value)} 
+                                required 
+                                className="w-full px-4 py-3 pr-12 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200"
+                                placeholder="Confirm your new password"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirmPassword((v) => !v)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </div>
                     
                     <button 

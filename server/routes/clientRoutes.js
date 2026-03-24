@@ -15,6 +15,9 @@ const {
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
     deleteClientAccount,
     verifyAssignedWorkerFace,
+    sendClientPasswordChangeOtp,
+    verifyClientPasswordChangeOtp,
+    changeClientPasswordWithOtp,
 } = require('../controllers/clientController');
 const { getNotifications, markRead, markAllRead, deleteNotification, clearAllNotifications } = require('../controllers/notificationController');
 const { jobPhotoUploader, profilePhotoUploader } = require('../utils/cloudinary');
@@ -69,6 +72,9 @@ router.delete('/ai/history/:id',    protect, client, deleteAIHistoryItem);      
 
 
 // Account
+router.post('/settings/password/send-otp',   protect, client, sendClientPasswordChangeOtp);
+router.post('/settings/password/verify-otp', protect, client, verifyClientPasswordChangeOtp);
+router.post('/settings/password/change',     protect, client, changeClientPasswordWithOtp);
 router.delete('/account/delete', protect, client, deleteClientAccount);
 
 module.exports = router;
