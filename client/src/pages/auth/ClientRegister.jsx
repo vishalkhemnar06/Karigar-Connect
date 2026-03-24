@@ -8,6 +8,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import FaceVerification, { dataURLtoBlob } from './FaceVerification';
+import { Eye, EyeOff } from 'lucide-react';
+import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 
 const ClientRegister = () => {
     const [formData, setFormData] = useState({
@@ -34,8 +36,11 @@ const ClientRegister = () => {
     const [faceMatchPassed, setFaceMatchPassed] = useState(false);
     const [faceMessage, setFaceMessage] = useState('');
     const [privacyConsent, setPrivacyConsent] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const navigate = useNavigate();
+    const strength = getPasswordStrength(formData.password);
 
     const handleChange     = e => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleFileChange = e => setFiles({ ...files, [e.target.name]: e.target.files[0] });
@@ -71,6 +76,7 @@ const ClientRegister = () => {
         e.preventDefault();
         if (!mobileVerified || !emailVerified) return toast.error('Verify both mobile and email first.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
+        if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
         if (!formData.city || !formData.homeLocation) return toast.error('Address details required');
         if (!files.idProof) return toast.error('Upload ID proof before face verification.');
         // Open face verification
@@ -236,8 +242,21 @@ const ClientRegister = () => {
                     <fieldset className="border-2 border-orange-200 p-5 rounded-xl bg-orange-50">
                         <legend className="px-3 font-bold text-orange-800 text-lg bg-white border-2 border-orange-200 rounded-lg">Set Password</legend>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="password" name="password" placeholder="Create Password" onChange={handleChange} required className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"/>
-                            <input type="password" name="confirmPassword" placeholder="Confirm Password" onChange={handleChange} required className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"/>
+                            <div className="relative">
+                                <input type={showPassword ? 'text' : 'password'} name="password" placeholder="Create Password" onChange={handleChange} required className="w-full px-4 py-3 pr-12 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"/>
+                                <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+                            </div>
+                            <div className="relative">
+                                <input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" placeholder="Confirm Password" onChange={handleChange} required className="w-full px-4 py-3 pr-12 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"/>
+                                <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+                            </div>
+                        </div>
+                        <div className="mt-3">
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
+                            </div>
+                            <p className={`text-xs mt-1 ${strength.text}`}>Strength: {strength.label}</p>
+                            <p className="text-xs text-gray-500">{PASSWORD_POLICY_TEXT}</p>
                         </div>
                     </fieldset>
 

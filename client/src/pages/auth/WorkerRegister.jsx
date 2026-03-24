@@ -7,9 +7,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import FaceVerification, { dataURLtoBlob } from './FaceVerification';
+import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 import {
     Calendar, Smartphone, User, Shield, Mail, MapPin, Award, Users,
-    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon,
+    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon, Eye, EyeOff,
 } from 'lucide-react';
 
 const skillList = [
@@ -48,8 +49,11 @@ const WorkerRegister = () => {
     const [similarityThreshold,  setSimilarityThreshold]  = useState(0.5);
     const [faceMatchPassed,      setFaceMatchPassed]      = useState(false);
     const [faceMessage,          setFaceMessage]          = useState('');
+    const [showPassword,         setShowPassword]         = useState(false);
+    const [showConfirmPassword,  setShowConfirmPassword]  = useState(false);
 
     const navigate = useNavigate();
+    const strength = getPasswordStrength(formData.password);
 
     useEffect(() => {
         let interval;
@@ -199,6 +203,7 @@ const WorkerRegister = () => {
         if (!livePhotoData)     return toast.error('Complete face verification first');
         if (!faceMatchPassed)   return toast.error('Face similarity is below threshold. Please retry face verification.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
+        if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
         if (new Date().getFullYear() - new Date(formData.dob).getFullYear() < 18)
             return toast.error('Must be at least 18 years old');
 
@@ -345,12 +350,24 @@ const WorkerRegister = () => {
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Create Password *</label>
                                         <div className="relative"><Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
-                                        <input type="password" name="password" value={formData.password} placeholder="Strong password" onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                        <input type={showPassword ? 'text' : 'password'} name="password" value={formData.password} placeholder="Strong password" onChange={handleChange} required className="w-full pl-12 pr-12 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/>
+                                        <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div>
+                                        <div className="mt-2">
+                                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
+                                            </div>
+                                            <p className={`text-xs mt-1 ${strength.text}`}>Strength: {strength.label}</p>
+                                            <p className="text-xs text-gray-500">{PASSWORD_POLICY_TEXT}</p>
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Confirm Password *</label>
                                         <div className="relative"><Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
-                                        <input type="password" name="confirmPassword" value={formData.confirmPassword} placeholder="Confirm password" onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
+                                        <input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" value={formData.confirmPassword} placeholder="Confirm password" onChange={handleChange} required className="w-full pl-12 pr-12 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/>
+                                        <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div>
+                                        {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                                            <p className="text-xs text-red-600 mt-1">Passwords do not match.</p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex justify-end pt-6">

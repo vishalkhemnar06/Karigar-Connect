@@ -5,15 +5,19 @@ import toast from 'react-hot-toast';
 import { Mail, ArrowLeft, Shield, CheckCircle } from 'lucide-react';
 
 const ForgotPassword = () => {
-    const [email, setEmail] = useState('');
+    const [identifier, setIdentifier] = useState('');
     const [isSent, setIsSent] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        const value = identifier.trim();
+        if (!value) return toast.error('Enter your registered mobile number or email.');
+
+        const payload = /^\d{10}$/.test(value) ? { mobile: value } : { email: value };
         const toastId = toast.loading('Sending reset link...');
         try {
-            await api.forgotPassword({ email });
-            toast.success('Password reset link sent to your email!', { id: toastId });
+            await api.forgotPassword(payload);
+            toast.success('Password reset instructions sent.', { id: toastId });
             setIsSent(true);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to send link', { id: toastId });
@@ -72,8 +76,8 @@ const ForgotPassword = () => {
                             </div>
                             <h3 className="text-2xl font-bold text-gray-800 mb-3">Check Your Email</h3>
                             <p className="text-gray-600 mb-6">
-                                We've sent a password reset link to <span className="font-semibold text-orange-600">{email}</span>. 
-                                Please check your inbox (and spam folder) to reset your password.
+                                We've sent password reset instructions for <span className="font-semibold text-orange-600">{identifier}</span>.
+                                Please check your messages and follow the reset link.
                             </p>
                             <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 mb-6">
                                 <p className="text-sm text-orange-800">
@@ -95,26 +99,26 @@ const ForgotPassword = () => {
                                 </div>
                                 <h2 className="text-3xl font-bold text-gray-800 mb-2">Forgot Password?</h2>
                                 <p className="text-gray-600">
-                                    No worries! Enter your email and we'll send you a secure reset link.
+                                    No worries! Enter your registered mobile number or email and we'll send secure reset instructions.
                                 </p>
                             </div>
                             
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
-                                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                                        Email Address
+                                    <label htmlFor="identifier" className="block text-sm font-medium text-gray-700 mb-2">
+                                        Mobile Number or Email
                                     </label>
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <Mail size={18} className="text-orange-500" />
                                         </div>
                                         <input 
-                                            type="email" 
-                                            name="email" 
-                                            value={email} 
-                                            onChange={(e) => setEmail(e.target.value)} 
+                                            type="text" 
+                                            name="identifier" 
+                                            value={identifier} 
+                                            onChange={(e) => setIdentifier(e.target.value)} 
                                             required 
-                                            placeholder="your.email@example.com"
+                                            placeholder="10-digit mobile or your.email@example.com"
                                             className="w-full pl-10 pr-4 py-3 bg-orange-50 border border-orange-200 rounded-lg text-gray-800 placeholder-orange-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
                                         />
                                     </div>

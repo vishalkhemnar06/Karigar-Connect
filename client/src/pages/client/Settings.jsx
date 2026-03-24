@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Shield, Key, Phone, Trash2, AlertTriangle, X } from 'lucide-react';
 import * as api from '../../api';
+import { PASSWORD_POLICY_TEXT } from '../../constants/passwordPolicy';
 
 const Settings = () => {
     const navigate = useNavigate();
@@ -48,8 +49,14 @@ const Settings = () => {
                         <div>
                             <h2 className="font-semibold text-gray-800">Change Password</h2>
                             <p className="text-sm text-gray-500 mt-1">
-                                Use the "Forgot Password" option on the login page to reset your password securely.
+                                Use secure reset from dashboard. {PASSWORD_POLICY_TEXT}
                             </p>
+                            <button
+                                onClick={() => navigate('/forgot-password')}
+                                className="mt-3 inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors"
+                            >
+                                Reset Password
+                            </button>
                         </div>
                     </div>
 

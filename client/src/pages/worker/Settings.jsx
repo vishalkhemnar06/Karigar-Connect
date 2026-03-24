@@ -8,6 +8,7 @@ import {
     ChevronRight, LogOut, Loader2, CheckCircle2,
     AlertTriangle, User, Key, Trash2
 } from 'lucide-react';
+import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. CHANGE PASSWORD SECTION (ENHANCED)
@@ -65,7 +66,7 @@ function ChangePasswordSection() {
     };
 
     const handleChangePassword = async () => {
-        if (newPassword.length < 6) return toast.error('Password must be at least 6 characters long.');
+        if (!isStrongPassword(newPassword)) return toast.error(PASSWORD_POLICY_TEXT);
         if (newPassword !== confirmPwd) return toast.error('Passwords do not match.');
 
         setLoading(true);
@@ -93,20 +94,6 @@ function ChangePasswordSection() {
         setExpanded(false);
     };
 
-    const getPasswordStrength = (p) => {
-        if (!p) return null;
-        let score = 0;
-        if (p.length >= 8) score++;
-        if (p.match(/[a-z]/)) score++;
-        if (p.match(/[A-Z]/)) score++;
-        if (p.match(/[0-9]/)) score++;
-        if (p.match(/[^a-zA-Z0-9]/)) score++;
-        
-        if (score <= 2) return { label: 'Weak', color: 'bg-red-500', text: 'text-red-600', width: '33%' };
-        if (score <= 4) return { label: 'Medium', color: 'bg-yellow-500', text: 'text-yellow-600', width: '66%' };
-        return { label: 'Strong', color: 'bg-green-500', text: 'text-green-600', width: '100%' };
-    };
-    
     const strength = getPasswordStrength(newPassword);
 
     return (
@@ -224,7 +211,7 @@ function ChangePasswordSection() {
                                                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                                             </button>
                                         </div>
-                                        {strength && (
+                                        {newPassword && (
                                             <div className="mt-2">
                                                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                                     <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
@@ -232,6 +219,7 @@ function ChangePasswordSection() {
                                                 <p className={`text-xs mt-1 ${strength.text}`}>
                                                     Password strength: {strength.label}
                                                 </p>
+                                                <p className="text-xs text-gray-500">{PASSWORD_POLICY_TEXT}</p>
                                             </div>
                                         )}
                                     </div>
@@ -258,7 +246,7 @@ function ChangePasswordSection() {
                                     </div>
                                     <button
                                         onClick={handleChangePassword}
-                                        disabled={loading || newPassword !== confirmPwd || newPassword.length < 6}
+                                        disabled={loading || newPassword !== confirmPwd || !isStrongPassword(newPassword)}
                                         className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl font-bold transition-all disabled:opacity-50"
                                     >
                                         {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Update Password'}

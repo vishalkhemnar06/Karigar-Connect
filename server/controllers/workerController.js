@@ -7,6 +7,7 @@ const { createNotification } = require('../utils/notificationHelper');
 const { canWorkerCancelJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { sendPasswordChangeOtpSms, sendCustomSms } = require('../utils/smsHelper');
+const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 const CANCEL_PENALTY = 30;
 
@@ -90,8 +91,8 @@ exports.changePasswordWithOtp = async (req, res) => {
     try {
         const { verifiedToken, newPassword } = req.body;
         if (!verifiedToken?.trim()) return res.status(400).json({ message: 'Verification session missing.' });
-        if (!newPassword?.trim() || newPassword.length < 6) 
-            return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+        if (!validateStrongPassword(newPassword || '').isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
 
         const worker = await User.findById(req.user.id)
             .select('+password +passwordChangeVerifiedToken +passwordChangeVerifiedTokenExpiry');

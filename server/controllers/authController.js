@@ -13,6 +13,7 @@ const { sendOtpSms } = require('../utils/smsHelper');
 const { sendOtpEmail } = require('../utils/emailHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
+const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 // ── OTP store (in-memory; production: use Redis) ──────────────────────────────
 const otpStore = new Map(); // key: mobile/email → { otp, expiry }
@@ -203,6 +204,8 @@ exports.registerWorker = async (req, res) => {
         if (!password)        return res.status(400).json({ message: 'Password is required.' });
         if (password !== confirmPassword)
             return res.status(400).json({ message: 'Passwords do not match.' });
+        if (!validateStrongPassword(password).isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
         if (dob && new Date().getFullYear() - new Date(dob).getFullYear() < 18)
             return res.status(400).json({ message: 'You must be at least 18 years old.' });
 
@@ -231,11 +234,10 @@ exports.registerWorker = async (req, res) => {
         try { parsedRefs = JSON.parse(references || '[]'); } catch {}
 
         // ── Create user ───────────────────────────────────────────────────────
-        const hashed = await bcrypt.hash(password, 12);
         const user   = await User.create({
             karigarId: generateKarigarId(),
             role: 'worker', name: name.trim(), dob, mobile, phoneType,
-            email: email || null, password: hashed,
+            email: email || null, password,
             address:   { city, pincode, locality },
             idProof:   { idType: idDocumentType || 'Aadhar Card', filePath: idProofFile.path },
             photo:     photoFile.path,
@@ -350,6 +352,8 @@ exports.registerClient = async (req, res) => {
         if (!password)      return res.status(400).json({ message: 'Password is required.' });
         if (password !== confirmPassword)
             return res.status(400).json({ message: 'Passwords do not match.' });
+        if (!validateStrongPassword(password).isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
 
         if (await User.findOne({ mobile }))
             return res.status(409).json({ message: 'Mobile number is already registered.' });
@@ -448,11 +452,10 @@ exports.registerClient = async (req, res) => {
         }
 
         // ── Create client ─────────────────────────────────────────────────────
-        const hashed = await bcrypt.hash(password, 12);
         const user   = await User.create({
             karigarId: generateKarigarId(),
             role: 'client', name: name.trim(), mobile, email,
-            password: hashed,
+            password,
             photo:     photoFile?.path || null,
             address:   { city, pincode, homeLocation, houseNumber },
             idProof:   { idType: idType || 'Aadhar', filePath: idProofFile?.path || null },
@@ -488,7 +491,13 @@ exports.registerClient = async (req, res) => {
 exports.loginWithPassword = async (req, res) => {
     try {
         const { role, mobile, password } = req.body;
-        if (!mobile || !password) return res.status(400).json({ message: 'Mobile and password required.' });
+        if (!role || !mobile || !password) {
+            return res.status(400).json({ message: 'Role, mobile and password are required.' });
+        }
+
+        if (!['worker', 'client', 'admin'].includes(role)) {
+            return res.status(400).json({ message: 'Invalid role selected.' });
+        }
 
         if (role === 'admin') {
             const submittedMobile = String(mobile || '').trim();
@@ -527,9 +536,13 @@ exports.loginWithPassword = async (req, res) => {
             });
         }
 
-        const user = await User.findOne({ mobile }).select('+password');
+        const user = await User.findOne({ mobile, role }).select('+password');
         if (!user) {
-            await logAuditEvent({ action: 'failed_login', req, metadata: { mobile, reason: 'user_not_found' } });
+            const existingUser = await User.findOne({ mobile }).select('role');
+            await logAuditEvent({ action: 'failed_login', req, metadata: { mobile, role, reason: existingUser ? 'role_mismatch' : 'user_not_found' } });
+            if (existingUser) {
+                return res.status(401).json({ message: `This account is registered as ${existingUser.role}. Please select ${existingUser.role} login.` });
+            }
             return res.status(401).json({ message: 'Invalid mobile number or password.' });
         }
         if (user.verificationStatus === 'blocked') {
@@ -560,25 +573,46 @@ exports.loginWithPassword = async (req, res) => {
 
 exports.loginWithOtp = async (req, res) => {
     try {
-        const { mobile, otp } = req.body;
-        if (!mobile || !otp) return res.status(400).json({ message: 'Mobile and OTP required.' });
+        const { role, mobile, otp } = req.body;
+        if (!role || !mobile || !otp) {
+            return res.status(400).json({ message: 'Role, mobile and OTP are required.' });
+        }
+
+        if (!['worker', 'client'].includes(role)) {
+            return res.status(400).json({ message: 'OTP login is available only for worker and client.' });
+        }
 
         const record = otpStore.get(mobile);
         if (!record || Date.now() > record.expiry || record.otp !== otp.trim()) {
-            const existingUser = await User.findOne({ mobile }).select('_id role');
+            const existingUser = await User.findOne({ mobile, role }).select('_id role');
             await logAuditEvent({
                 userId: existingUser?._id,
                 role: existingUser?.role,
                 action: 'failed_login',
                 req,
-                metadata: { method: 'otp', reason: 'invalid_or_expired_otp' },
+                metadata: { method: 'otp', requestedRole: role, reason: 'invalid_or_expired_otp' },
             });
             return res.status(400).json({ message: 'Invalid or expired OTP.' });
         }
         otpStore.delete(mobile);
 
-        const user = await User.findOne({ mobile });
-        if (!user) return res.status(404).json({ message: 'No account found for this mobile number.' });
+        const user = await User.findOne({ mobile, role });
+        if (!user) {
+            const existingUser = await User.findOne({ mobile }).select('role');
+            if (existingUser) {
+                return res.status(401).json({ message: `This account is registered as ${existingUser.role}. Please select ${existingUser.role} login.` });
+            }
+            return res.status(404).json({ message: 'No account found for this mobile number.' });
+        }
+
+        if (user.verificationStatus === 'blocked') {
+            await logAuditEvent({ userId: user._id, role: user.role, action: 'failed_login', req, metadata: { method: 'otp', reason: 'blocked' } });
+            return res.status(403).json({ message: 'Your account has been blocked. Contact support.' });
+        }
+        if (user.role === 'worker' && user.verificationStatus !== 'approved') {
+            await logAuditEvent({ userId: user._id, role: user.role, action: 'failed_login', req, metadata: { method: 'otp', reason: 'worker_not_approved', status: user.verificationStatus } });
+            return res.status(403).json({ message: 'Your worker profile is pending admin approval.', status: user.verificationStatus });
+        }
 
         await logAuditEvent({ userId: user._id, role: user.role, action: 'login', req, metadata: { method: 'otp' } });
 
@@ -594,9 +628,9 @@ exports.loginWithOtp = async (req, res) => {
 // ── PASSWORD RESET ────────────────────────────────────────────────────────────
 exports.forgotPassword = async (req, res) => {
     try {
-        const { mobile } = req.body;
-        if (!mobile) return res.status(400).json({ message: 'Mobile required.' });
-        const user = await User.findOne({ mobile });
+        const { mobile, email } = req.body;
+        if (!mobile && !email) return res.status(400).json({ message: 'Mobile or email is required.' });
+        const user = await User.findOne(mobile ? { mobile } : { email });
         if (!user) return res.status(404).json({ message: 'No account found.' });
 
         const token  = crypto.randomBytes(32).toString('hex');
@@ -605,7 +639,7 @@ exports.forgotPassword = async (req, res) => {
         await user.save({ validateBeforeSave: false });
 
         // In production: send reset link via SMS/Email
-        console.log(`[PasswordReset] Token for ${mobile}: ${token}`);
+        console.log(`[PasswordReset] Token for ${mobile || email}: ${token}`);
         return res.json({ message: 'Password reset instructions sent.', resetToken: token });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -618,7 +652,10 @@ exports.resetPassword = async (req, res) => {
             resetPasswordExpire: { $gt: Date.now() },
         });
         if (!user) return res.status(400).json({ message: 'Reset token is invalid or has expired.' });
-        user.password            = await bcrypt.hash(req.body.password, 12);
+        const nextPassword = req.body.password || '';
+        if (!validateStrongPassword(nextPassword).isValid)
+            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
+        user.password            = nextPassword;
         user.resetPasswordToken  = undefined;
         user.resetPasswordExpire = undefined;
         await user.save();
