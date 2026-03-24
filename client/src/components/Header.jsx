@@ -1,31 +1,155 @@
-// src/components/Header.jsx
-// UPDATED: Mobile optimized with consistent sizing + i18n translation support
-
-import React, { useState, useEffect } from 'react';
-import { getImageUrl } from '../constants/config';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronDown, Menu, X, Home, LayoutDashboard, User, LogOut, Settings, CreditCard, Bell, Zap, Sparkles } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+    ChevronDown, Menu, X, Home, LayoutDashboard, LogOut, User, 
+    Settings, CreditCard, Bell, Sparkles, Globe, Check, Shield, 
+    Award, Star, TrendingUp, Zap, Crown 
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../api';
 import logo from '../assets/logo.jpg';
 import NotificationBell from '../components/NotificationBell';
-import LanguageSwitcher from '../components/LanguageSwitcher';
-import { motion, AnimatePresence } from 'framer-motion';
 
+// ─── Language Switcher (Enhanced) ────────────────────────────────────────────
+const LANGUAGES = [
+    { code: 'en', label: 'English', native: 'English', flag: '🇬🇧', icon: '🌎' },
+    { code: 'hi', label: 'Hindi',   native: 'हिन्दी',  flag: '🇮🇳', icon: '🇮🇳' },
+    { code: 'mr', label: 'Marathi', native: 'मराठी',   flag: '🇮🇳', icon: '🇮🇳' },
+];
+
+const LanguageSwitcher = () => {
+    const [open, setOpen] = useState(false);
+    const [selected, setSelected] = useState(LANGUAGES[0]);
+    const dropdownRef = useRef(null);
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    useEffect(() => {
+        const match = document.cookie.match(/googtrans=\/en\/(\w+)/);
+        if (match) {
+            const found = LANGUAGES.find((l) => l.code === match[1]);
+            if (found) setSelected(found);
+        }
+    }, []);
+
+    const changeLanguage = (lang) => {
+        setSelected(lang);
+        setOpen(false);
+
+        if (lang.code === 'en') {
+            document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+            window.location.reload();
+            return;
+        }
+
+        const cookieValue = `/en/${lang.code}`;
+        document.cookie = `googtrans=${cookieValue}; path=/`;
+        document.cookie = `googtrans=${cookieValue}; path=/; domain=${window.location.hostname}`;
+
+        const select = document.querySelector('.goog-te-combo');
+        if (select) {
+            select.value = lang.code;
+            select.dispatchEvent(new Event('change'));
+        } else {
+            window.location.reload();
+        }
+    };
+
+    return (
+        <div className="relative" ref={dropdownRef}>
+            <motion.button
+                whileHover={{ scale: 1.05, y: -1 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setOpen(!open)}
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-gray-50 to-white border border-gray-200 hover:border-orange-300 hover:shadow-md transition-all duration-300 group"
+                title="Change Language"
+            >
+                <motion.div
+                    animate={{ rotate: open ? 360 : 0 }}
+                    transition={{ duration: 0.3 }}
+                >
+                    <Globe size={14} className="text-orange-500 group-hover:scale-110 transition-transform" />
+                </motion.div>
+                <span className="text-xs font-semibold text-gray-700 hidden sm:inline">
+                    {selected.native}
+                </span>
+                <span className="text-sm sm:hidden">{selected.flag}</span>
+                <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                    <ChevronDown size={12} className="text-gray-400" />
+                </motion.div>
+            </motion.button>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden"
+                    >
+                        <div className="px-4 py-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
+                            <p className="text-xs font-bold text-orange-600 uppercase tracking-wider">
+                                Select Language
+                            </p>
+                        </div>
+                        {LANGUAGES.map((lang, idx) => (
+                            <motion.button
+                                key={lang.code}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: idx * 0.05 }}
+                                onClick={() => changeLanguage(lang)}
+                                className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 transition-all duration-200 group"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xl group-hover:scale-110 transition-transform">{lang.flag}</span>
+                                    <div className="text-left">
+                                        <p className="font-semibold text-gray-800 text-sm">{lang.native}</p>
+                                        <p className="text-xs text-gray-400">{lang.label}</p>
+                                    </div>
+                                </div>
+                                {selected.code === lang.code && (
+                                    <motion.div
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        className="w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center"
+                                    >
+                                        <Check size={12} className="text-white" />
+                                    </motion.div>
+                                )}
+                            </motion.button>
+                        ))}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+
+// ─── Enhanced Header ─────────────────────────────────────────────────────────
 const Header = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { t } = useTranslation();
-
     const token = localStorage.getItem('token');
-    const role  = localStorage.getItem('role');
-    const user  = JSON.parse(localStorage.getItem('user') || '{}');
+    const role = localStorage.getItem('role');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-    const [isAvailable,    setIsAvailable]    = useState(true);
-    const [dropdownOpen,   setDropdownOpen]   = useState(false);
+    const [isAvailable, setIsAvailable] = useState(true);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [scrolled,       setScrolled]       = useState(false);
+    const [scrolled, setScrolled] = useState(false);
+    const [notifications, setNotifications] = useState(3);
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -47,11 +171,6 @@ const Header = () => {
         }
     }, [role]);
 
-    // Close mobile menu on route change
-    useEffect(() => {
-        setMobileMenuOpen(false);
-    }, [location]);
-
     let dashboardLink = '/';
     if (role === 'worker') dashboardLink = '/worker/dashboard';
     else if (role === 'client') dashboardLink = '/client/dashboard';
@@ -59,8 +178,10 @@ const Header = () => {
     const handleLogout = () => {
         localStorage.clear();
         navigate('/login');
-        toast.success(t('navbar.logout'));
-        setMobileMenuOpen(false);
+        toast.success('You have been logged out.', {
+            icon: '👋',
+            style: { background: '#ffedd5', color: '#9a3412' }
+        });
     };
 
     const toggleAvailability = async () => {
@@ -69,7 +190,10 @@ const Header = () => {
         try {
             const { data } = await api.toggleAvailability();
             setIsAvailable(data.availability);
-            toast.success(`${t('navbar.availability')} ${data.availability ? t('common.on') : t('common.off')}`);
+            toast.success(data.availability ? '🎉 You are now available for work!' : '💤 You are now offline', {
+                icon: data.availability ? '✅' : '🌙',
+                style: { background: '#ffedd5', color: '#9a3412' }
+            });
         } catch {
             setIsAvailable(previousState);
             toast.error('Failed to update availability. Please try again.');
@@ -86,393 +210,471 @@ const Header = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [dropdownOpen]);
 
-    // Close mobile menu when pressing escape
-    useEffect(() => {
-        const handleEscape = (e) => {
-            if (e.key === 'Escape' && mobileMenuOpen) {
-                setMobileMenuOpen(false);
-            }
-        };
-        document.addEventListener('keydown', handleEscape);
-        return () => document.removeEventListener('keydown', handleEscape);
-    }, [mobileMenuOpen]);
+    const isActive = (path) => location.pathname === path;
 
-    const navLinkClass = 'relative font-bold text-gray-700 px-5 py-2.5 rounded-full bg-gradient-to-r from-orange-100 to-amber-50 border border-orange-200 shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 hover:from-orange-200 hover:to-amber-100 group overflow-hidden';
+    const navLinkClass = (path) => `
+        relative px-3 lg:px-4 py-2 text-sm font-semibold transition-all duration-300 
+        ${isActive(path) 
+            ? 'text-orange-600' 
+            : 'text-gray-700 hover:text-orange-600'
+        } group whitespace-nowrap
+    `;
 
     return (
-        <>
-            <motion.header
-                initial={{ y: -100 }}
-                animate={{ y: 0 }}
-                className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-                    scrolled ? 'bg-white/98 backdrop-blur-md shadow-xl' : 'bg-white shadow-md'
-                }`}
-            >
-                <nav className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
-                    {/* ── Logo (Mobile Optimized) ── */}
-                    <Link to="/" className="flex items-center space-x-2 sm:space-x-3 group flex-shrink-0">
-                        <motion.div whileTap={{ scale: 0.95 }} className="relative">
+        <motion.header
+            initial={{ y: -100 }}
+            animate={{ y: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className={`sticky top-0 z-50 transition-all duration-500 ${
+                scrolled
+                    ? 'bg-white/95 backdrop-blur-xl shadow-2xl border-b border-orange-100/50'
+                    : 'bg-white shadow-lg'
+            }`}
+        >
+            {/* Animated Gradient Bar */}
+            <motion.div 
+                className="h-0.5 bg-gradient-to-r from-orange-400 via-amber-500 to-red-500"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+            />
+            
+            <div className="max-w-7xl mx-auto px-3 sm:px-6">
+                <div className="flex items-center justify-between h-16 sm:h-20 gap-2">
+
+                    {/* Enhanced Logo Section - Mobile Optimized */}
+                    <Link to="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 group flex-shrink-0">
+                        <motion.div
+                            whileHover={{ scale: 1.1, rotate: 5 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="relative"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full blur-md opacity-50 group-hover:opacity-100 transition-opacity" />
                             <img
                                 src={logo}
-                                alt="KarigarConnect Logo"
-                                className="h-9 w-9 sm:h-10 sm:w-10 md:h-12 md:w-12 rounded-full border-2 border-orange-200 object-cover shadow-md"
+                                alt="KarigarConnect"
+                                className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-14 rounded-full object-cover border-2 border-orange-300 shadow-lg"
                             />
-                            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-500 to-red-500 opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
-                        </motion.div>
-                        <div className="hidden sm:block relative">
-                            <span className="text-lg sm:text-xl md:text-2xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                                KarigarConnect
-                            </span>
                             <motion.div
-                                initial={{ scaleX: 0 }}
-                                whileHover={{ scaleX: 1 }}
-                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-red-500 origin-left"
+                                animate={{ scale: [1, 1.2, 1] }}
+                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                className="absolute -top-1 -right-1 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full border-2 border-white shadow-md"
                             />
+                        </motion.div>
+                        
+                        <div className="flex flex-col">
+                            <motion.span 
+                                whileHover={{ scale: 1.02 }}
+                                className="text-base sm:text-xl md:text-2xl lg:text-3xl font-black bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 bg-clip-text text-transparent tracking-tight"
+                            >
+                                <span className="hidden xs:inline">KarigarConnect</span>
+                                
+                            </motion.span>
+                            <div className="hidden sm:flex items-center gap-1 mt-0.5">
+                                <Sparkles size={10} className="text-orange-400" />
+                                <span className="text-[9px] sm:text-[10px] font-medium text-gray-400 whitespace-nowrap">
+                                    India's Trusted Platform
+                                </span>
+                            </div>
                         </div>
                     </Link>
 
-                    {/* ── Mobile: Icons + Hamburger (Fixed Size) ── */}
-                    <div className="flex items-center gap-1 sm:gap-2 md:hidden">
-                        {/* Language Switcher - compact on mobile */}
-                        <div className="transform scale-90 sm:scale-100">
-                            <LanguageSwitcher compact />
-                        </div>
-
-                        {token && (role === 'worker' || role === 'client') && (
-                            <div className="transform scale-90 sm:scale-100">
-                                <NotificationBell role={role} />
+                    {/* Desktop Navigation - Hidden on Mobile */}
+                    <div className="hidden md:flex items-center gap-1 lg:gap-2 xl:gap-3 flex-wrap">
+                        {/* Home with Active Indicator */}
+                        <Link to="/" className={navLinkClass('/')}>
+                            <motion.span
+                                initial={false}
+                                animate={{ scaleX: isActive('/') ? 1 : 0 }}
+                                className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
+                            />
+                            <div className="flex items-center gap-1">
+                                <Home size={16} className={isActive('/') ? 'text-orange-500' : ''} />
+                                <span>Home</span>
                             </div>
-                        )}
-                        
-                        <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            className="p-1.5 sm:p-2 rounded-xl bg-orange-50 hover:bg-orange-100 transition-all touch-manipulation"
-                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-                        >
-                            {mobileMenuOpen
-                                ? <X size={20} className="sm:size-5 text-orange-500" />
-                                : <Menu size={20} className="sm:size-5 text-orange-500" />
-                            }
-                        </motion.button>
-                    </div>
-
-                    {/* ── Desktop Navigation ── */}
-                    <div className="hidden md:flex items-center space-x-3 lg:space-x-4">
-                        {/* Home Link */}
-                        <Link to="/" className={navLinkClass}>
-                            <span className="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left rounded-full" />
-                            <span className="relative flex items-center justify-center gap-2">
-                                <Home size={16} className="text-orange-500" />
-                                <span>{t('navbar.home')}</span>
-                            </span>
                         </Link>
 
                         {token ? (
                             <>
                                 {/* Dashboard */}
-                                <Link to={dashboardLink} className={navLinkClass}>
-                                    <span className="absolute inset-0 bg-gradient-to-r from-orange-400/10 to-orange-500/10 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left rounded-full" />
-                                    <span className="relative flex items-center justify-center gap-2">
-                                        <LayoutDashboard size={16} className="text-orange-500" />
-                                        <span>{t('navbar.dashboard')}</span>
-                                    </span>
+                                <Link to={dashboardLink} className={navLinkClass(dashboardLink)}>
+                                    <motion.span
+                                        initial={false}
+                                        animate={{ scaleX: isActive(dashboardLink) ? 1 : 0 }}
+                                        className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
+                                    />
+                                    <div className="flex items-center gap-1">
+                                        <LayoutDashboard size={16} className={isActive(dashboardLink) ? 'text-orange-500' : ''} />
+                                        <span>Dashboard</span>
+                                    </div>
                                 </Link>
 
-                                {/* Worker Availability Toggle */}
+                                {/* Enhanced Worker Availability Toggle */}
                                 {role === 'worker' && (
-                                    <div className="flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200">
-                                        <span className="text-xs font-semibold text-gray-600 flex items-center gap-1">
-                                            <Zap size={12} className="text-orange-500" />
-                                            {t('navbar.availability')}:
-                                        </span>
-                                        <motion.button
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={toggleAvailability}
-                                            className={`relative inline-flex h-6 w-10 items-center rounded-full transition-all duration-300 focus:outline-none shadow-sm ${
-                                                isAvailable
-                                                    ? 'bg-gradient-to-r from-green-500 to-emerald-500'
-                                                    : 'bg-gradient-to-r from-gray-400 to-gray-500'
-                                            }`}
-                                        >
-                                            <motion.span
-                                                animate={{ x: isAvailable ? 18 : 2 }}
-                                                className="inline-block h-4 w-4 transform rounded-full bg-white shadow-md"
-                                            />
-                                        </motion.button>
-                                        <span className={`text-[10px] font-bold ${isAvailable ? 'text-green-600' : 'text-gray-500'}`}>
-                                            {isAvailable ? t('common.on') : t('common.off')}
-                                        </span>
-                                    </div>
-                                )}
-
-                                {/* Notification Bell */}
-                                {(role === 'worker' || role === 'client') && (
-                                    <NotificationBell role={role} />
-                                )}
-
-                                {/* Language Switcher (Desktop) */}
-                                <LanguageSwitcher />
-
-                                {/* Profile Dropdown */}
-                                {(role === 'worker' || role === 'client') && (
-                                    <div className="relative profile-menu">
-                                        <motion.button
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={() => setDropdownOpen(!dropdownOpen)}
-                                            className="flex items-center space-x-2 group"
-                                        >
-                                            <div className="relative">
-  <img
-  src={getImageUrl(
-    user?.photo,
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=fb923c&color=fff&bold=true`
-  )}
-  alt="Profile"
-  className="h-10 w-10 rounded-full object-cover border-2 border-orange-200"
-/>
-
-  {role === 'worker' && isAvailable && (
-    <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
-  )}
-</div>
-                                            <ChevronDown
-                                                size={14}
-                                                className={`text-gray-500 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`}
-                                            />
-                                        </motion.button>
-
-                                        <AnimatePresence>
-                                            {dropdownOpen && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                                                    transition={{ duration: 0.2 }}
-                                                    className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl py-2 z-50 ring-1 ring-black ring-opacity-5 border border-gray-100"
-                                                >
-                                                    <div className="px-4 py-3 border-b border-gray-100">
-                                                        <p className="font-black text-gray-800 truncate text-sm">{user?.name}</p>
-                                                        <p className="text-xs text-gray-500 font-mono mt-0.5">{user?.karigarId}</p>
-                                                        {role === 'worker' && (
-                                                            <div className="flex items-center gap-1 mt-2">
-                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                                                    {isAvailable ? `🟢 ${t('common.available')}` : `⚫ ${t('common.busy')}`}
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {role === 'worker' && (
-                                                        <>
-                                                            <Link
-                                                                to="/worker/profile"
-                                                                onClick={() => setDropdownOpen(false)}
-                                                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 transition-all"
-                                                            >
-                                                                <User size={14} className="text-orange-500" />
-                                                                {t('navbar.view_profile')}
-                                                            </Link>
-                                                            <Link
-                                                                to="/worker/id-card"
-                                                                onClick={() => setDropdownOpen(false)}
-                                                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 transition-all"
-                                                            >
-                                                                <CreditCard size={14} className="text-orange-500" />
-                                                                {t('navbar.view_id_card')}
-                                                            </Link>
-                                                            <Link
-                                                                to="/worker/settings"
-                                                                onClick={() => setDropdownOpen(false)}
-                                                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 transition-all"
-                                                            >
-                                                                <Settings size={14} className="text-orange-500" />
-                                                                {t('navbar.settings')}
-                                                            </Link>
-                                                        </>
-                                                    )}
-
-                                                    {role === 'client' && (
-                                                        <Link
-                                                            to="/client/settings"
-                                                            onClick={() => setDropdownOpen(false)}
-                                                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 transition-all"
-                                                        >
-                                                            <Settings size={14} className="text-orange-500" />
-                                                            {t('navbar.settings')}
-                                                        </Link>
-                                                    )}
-
-                                                    <div className="border-t border-gray-100 mt-1 pt-1">
-                                                        <button
-                                                            onClick={handleLogout}
-                                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-all"
-                                                        >
-                                                            <LogOut size={14} />
-                                                            {t('navbar.logout')}
-                                                        </button>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <>
-                                <Link to="/login" className={navLinkClass}>
-                                    <span className="absolute inset-0 bg-gradient-to-r from-orange-400/10 to-orange-500/10 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left rounded-full" />
-                                    <span className="relative flex items-center justify-center gap-2">
-                                        <span>{t('navbar.login')}</span>
-                                    </span>
-                                </Link>
-                                <Link
-                                    to="/register"
-                                    className={`${navLinkClass} bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 border-none`}
-                                >
-                                    <span className="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left rounded-full" />
-                                    <span className="relative flex items-center justify-center gap-2">
-                                        <Sparkles size={16} />
-                                        {t('navbar.get_started')}
-                                    </span>
-                                </Link>
-
-                                {/* Language Switcher for non-logged-in users */}
-                                <LanguageSwitcher />
-                            </>
-                        )}
-                    </div>
-                </nav>
-            </motion.header>
-
-            {/* ── Mobile Menu Dropdown (Bottom Sheet Style) ── */}
-            <AnimatePresence>
-                {mobileMenuOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                        className="fixed top-[60px] left-0 right-0 bg-white shadow-2xl border-t border-gray-100 md:hidden z-40 max-h-[calc(100vh-60px)] overflow-y-auto"
-                    >
-                        <div className="container mx-auto px-4 py-4 space-y-2">
-                            {/* Language Switcher in mobile menu */}
-                            <div className="px-2 pb-3 border-b border-gray-100 mb-2">
-                                <p className="text-[10px] text-gray-400 font-semibold mb-2 px-2">🌐 Language / भाषा</p>
-                                <LanguageSwitcher fullWidth />
-                            </div>
-
-                            <Link
-                                to="/"
-                                onClick={() => setMobileMenuOpen(false)}
-                                className="flex items-center gap-3 font-semibold text-gray-700 px-4 py-3 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 transition-all active:scale-98"
-                            >
-                                <Home size={18} className="text-orange-500" />
-                                {t('navbar.home')}
-                            </Link>
-
-                            {token ? (
-                                <>
-                                    <Link
-                                        to={dashboardLink}
-                                        onClick={() => setMobileMenuOpen(false)}
-                                        className="flex items-center gap-3 font-medium text-gray-600 px-4 py-3 rounded-xl hover:bg-orange-50 active:bg-orange-100 transition-all"
+                                    <motion.div
+                                        whileHover={{ scale: 1.02 }}
+                                        className="relative px-2 lg:px-3 py-1.5 bg-gradient-to-r from-gray-50 to-gray-100 rounded-full border border-gray-200 shadow-sm"
                                     >
-                                        <LayoutDashboard size={18} className="text-orange-500" />
-                                        {t('navbar.dashboard')}
-                                    </Link>
-
-                                    {role === 'worker' && (
-                                        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl mx-2">
-                                            <div className="flex items-center gap-2">
-                                                <Zap size={16} className="text-orange-500" />
-                                                <span className="text-sm font-semibold text-gray-700">{t('navbar.availability')}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <motion.button
-                                                    whileTap={{ scale: 0.95 }}
-                                                    onClick={toggleAvailability}
-                                                    className={`relative inline-flex h-7 w-11 items-center rounded-full transition-all ${
-                                                        isAvailable
-                                                            ? 'bg-gradient-to-r from-green-500 to-emerald-500'
-                                                            : 'bg-gray-400'
-                                                    }`}
-                                                >
-                                                    <motion.span
-                                                        animate={{ x: isAvailable ? 20 : 2 }}
-                                                        className="inline-block h-5 w-5 transform rounded-full bg-white shadow-md"
-                                                    />
-                                                </motion.button>
-                                                <span className={`text-xs font-bold ${isAvailable ? 'text-green-600' : 'text-gray-500'}`}>
-                                                    {isAvailable ? t('common.on') : t('common.off')}
+                                        <div className="flex items-center gap-1.5 lg:gap-2">
+                                            <div className="flex items-center gap-1">
+                                                <motion.div
+                                                    animate={{ scale: isAvailable ? [1, 1.2, 1] : 1 }}
+                                                    transition={{ duration: 1, repeat: isAvailable ? Infinity : 0, repeatDelay: 2 }}
+                                                    className={`w-1.5 h-1.5 lg:w-2 lg:h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-gray-400'}`}
+                                                />
+                                                <span className="text-[10px] lg:text-xs font-semibold text-gray-700 whitespace-nowrap">
+                                                    {isAvailable ? 'Available' : 'Offline'}
                                                 </span>
                                             </div>
+                                            <button
+                                                onClick={toggleAvailability}
+                                                className={`relative inline-flex h-5 w-9 lg:h-6 lg:w-11 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${
+                                                    isAvailable ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gray-300'
+                                                }`}
+                                            >
+                                                <motion.span
+                                                    animate={{ x: isAvailable ? 16 : 2 }}
+                                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                    className="inline-block h-3.5 w-3.5 lg:h-5 lg:w-5 rounded-full bg-white shadow-md"
+                                                />
+                                            </button>
+                                            <motion.span
+                                                animate={{ opacity: isAvailable ? 1 : 0.6 }}
+                                                className={`text-[10px] lg:text-xs font-bold ${isAvailable ? 'text-green-600' : 'text-gray-500'}`}
+                                            >
+                                                {isAvailable ? 'ON' : 'OFF'}
+                                            </motion.span>
                                         </div>
-                                    )}
+                                        
+                                        {/* Pulse Effect */}
+                                        {isAvailable && (
+                                            <motion.div
+                                                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                                                transition={{ duration: 2, repeat: Infinity }}
+                                                className="absolute inset-0 rounded-full bg-green-400"
+                                                style={{ zIndex: -1 }}
+                                            />
+                                        )}
+                                    </motion.div>
+                                )}
 
-                                    <div className="border-t border-gray-100 pt-3 mt-2">
-                                        <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl mx-2 mb-2">
+                                {/* Enhanced Notification Bell */}
+                                {(role === 'worker' || role === 'client') && (
+                                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                        <NotificationBell role={role} />
+                                    </motion.div>
+                                )}
+
+                                {/* Language Switcher */}
+                                <LanguageSwitcher />
+
+                                {/* Enhanced Profile Dropdown */}
+                                <div className="relative profile-menu">
+                                    <motion.button
+                                        whileHover={{ scale: 1.02, y: -1 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => setDropdownOpen(!dropdownOpen)}
+                                        className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-2.5 py-1.5 rounded-full bg-gradient-to-r from-gray-50 to-white border border-gray-200 hover:border-orange-300 hover:shadow-md transition-all duration-300 group"
+                                    >
+                                        <div className="relative">
                                             <img
                                                 src={
                                                     user?.photo
                                                         ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
-                                                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=fb923c&color=fff&bold=true`
+                                                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true&size=32`
                                                 }
                                                 alt="Profile"
-                                                className="h-10 w-10 rounded-full object-cover border-2 border-orange-200"
+                                                className="w-7 h-7 lg:w-8 lg:h-8 rounded-full object-cover border-2 border-orange-300 shadow-sm"
                                             />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-gray-800 text-sm truncate">{user?.name}</p>
-                                                <p className="text-xs text-gray-500 font-mono truncate">{user?.karigarId}</p>
+                                            {isAvailable && role === 'worker' && (
+                                                <motion.div
+                                                    animate={{ scale: [1, 1.2, 1] }}
+                                                    transition={{ duration: 2, repeat: Infinity }}
+                                                    className="absolute -bottom-0.5 -right-0.5 w-2 h-2 lg:w-2.5 lg:h-2.5 bg-green-500 rounded-full border border-white"
+                                                />
+                                            )}
+                                        </div>
+                                        <span className="text-xs lg:text-sm font-bold text-gray-700 hidden lg:block">
+                                            {user?.name?.split(' ')[0] || 'User'}
+                                        </span>
+                                        <motion.div
+                                            animate={{ rotate: dropdownOpen ? 180 : 0 }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <ChevronDown size={12} className="text-gray-500" />
+                                        </motion.div>
+                                    </motion.button>
+
+                                    <AnimatePresence>
+                                        {dropdownOpen && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                                transition={{ duration: 0.2 }}
+                                                className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 overflow-hidden"
+                                            >
+                                                {/* Profile Header */}
+                                                <div className="relative px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
+                                                    <div className="flex items-center gap-3">
+                                                        <img
+                                                            src={
+                                                                user?.photo
+                                                                    ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
+                                                                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true&size=48`
+                                                            }
+                                                            alt="Profile"
+                                                            className="w-12 h-12 rounded-full object-cover border-3 border-orange-300 shadow-md"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <p className="text-base font-bold text-gray-900">{user?.name}</p>
+                                                            <p className="text-xs text-orange-600 font-medium mt-0.5">
+                                                                {role === 'worker' ? `ID: ${user?.karigarId}` : 'Premium Client'}
+                                                            </p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <div className="flex items-center gap-0.5">
+                                                                    <Star size={10} className="text-yellow-500 fill-yellow-500" />
+                                                                    <span className="text-[10px] text-gray-500">4.9 ★</span>
+                                                                </div>
+                                                                <div className="w-1 h-1 rounded-full bg-gray-300" />
+                                                                <div className="flex items-center gap-0.5">
+                                                                    <Award size={10} className="text-orange-500" />
+                                                                    <span className="text-[10px] text-gray-500">Verified</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {role === 'client' && (
+                                                            <Crown size={20} className="text-yellow-500" />
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Menu Items */}
+                                                {role === 'worker' && (
+                                                    <>
+                                                        <MenuItem 
+                                                            icon={User} 
+                                                            title="View Profile" 
+                                                            subtitle="Manage your details"
+                                                            to="/worker/profile"
+                                                            onClick={() => setDropdownOpen(false)}
+                                                            iconColor="text-orange-500"
+                                                            bgColor="bg-orange-50"
+                                                        />
+                                                        <MenuItem 
+                                                            icon={CreditCard} 
+                                                            title="ID Card" 
+                                                            subtitle="Download digital ID"
+                                                            to="/worker/id-card"
+                                                            onClick={() => setDropdownOpen(false)}
+                                                            iconColor="text-blue-500"
+                                                            bgColor="bg-blue-50"
+                                                        />
+                                                        
+                                                        <MenuItem 
+                                                            icon={Settings} 
+                                                            title="Settings" 
+                                                            subtitle="Account preferences"
+                                                            to="/worker/settings"
+                                                            onClick={() => setDropdownOpen(false)}
+                                                            iconColor="text-purple-500"
+                                                            bgColor="bg-purple-50"
+                                                        />
+                                                    </>
+                                                )}
+
+                                                {role === 'client' && (
+                                                    <>
+                                                        <MenuItem 
+                                                            icon={Settings} 
+                                                            title="Settings" 
+                                                            subtitle="Account preferences"
+                                                            to="/client/settings"
+                                                            onClick={() => setDropdownOpen(false)}
+                                                            iconColor="text-purple-500"
+                                                            bgColor="bg-purple-50"
+                                                        />
+                                                        <MenuItem 
+                                                            icon={Zap} 
+                                                            title="My Bookings" 
+                                                            subtitle="View all bookings"
+                                                            to="/client/bookings"
+                                                            onClick={() => setDropdownOpen(false)}
+                                                            iconColor="text-amber-500"
+                                                            bgColor="bg-amber-50"
+                                                        />
+                                                    </>
+                                                )}
+
+                                                {/* Logout Button */}
+                                                <div className="border-t border-gray-100 mt-2 pt-2">
+                                                    <MenuItem 
+                                                        icon={LogOut} 
+                                                        title="Logout" 
+                                                        subtitle="Sign out of account"
+                                                        onClick={handleLogout}
+                                                        iconColor="text-red-500"
+                                                        bgColor="bg-red-50"
+                                                        isLogout
+                                                    />
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <LanguageSwitcher />
+                                
+                                <Link
+                                    to="/login"
+                                    className="px-4 lg:px-5 py-2 text-sm font-semibold text-gray-700 hover:text-orange-600 transition-colors whitespace-nowrap"
+                                >
+                                    Login
+                                </Link>
+                                
+                                <motion.div
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    <Link
+                                        to="/register"
+                                        className="px-4 lg:px-6 py-2 lg:py-2.5 text-sm font-bold text-white bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl whitespace-nowrap"
+                                    >
+                                        Get Started
+                                    </Link>
+                                </motion.div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Mobile Controls - Only visible on mobile/tablet */}
+                    <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
+                        {token && (role === 'worker' || role === 'client') && (
+                            <NotificationBell role={role} />
+                        )}
+                        <LanguageSwitcher />
+                        <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                            className="p-2 rounded-xl hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 transition-all duration-300"
+                        >
+                            {mobileMenuOpen ? <X size={20} className="text-orange-500" /> : <Menu size={20} />}
+                        </motion.button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Mobile Menu - Optimized for touch */}
+            <AnimatePresence>
+                {mobileMenuOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="md:hidden bg-white border-t border-gray-100 shadow-xl overflow-hidden max-h-[80vh] overflow-y-auto"
+                    >
+                        <div className="max-w-7xl mx-auto px-4 py-3 space-y-2">
+                            <MobileMenuItem 
+                                icon={Home} 
+                                title="Home" 
+                                to="/" 
+                                onClick={() => setMobileMenuOpen(false)} 
+                            />
+
+                            {token ? (
+                                <>
+                                    <MobileMenuItem 
+                                        icon={LayoutDashboard} 
+                                        title="Dashboard" 
+                                        to={dashboardLink} 
+                                        onClick={() => setMobileMenuOpen(false)} 
+                                    />
+
+                                    {role === 'worker' && (
+                                        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2.5 h-2.5 rounded-full ${isAvailable ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                                                <span className="text-sm font-semibold text-gray-700">Availability</span>
+                                                <span className={`text-xs px-2 py-0.5 rounded-full ${isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                                                    {isAvailable ? 'Available' : 'Offline'}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={toggleAvailability}
+                                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ${
+                                                    isAvailable ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gray-300'
+                                                }`}
+                                            >
+                                                <motion.span
+                                                    animate={{ x: isAvailable ? 26 : 2 }}
+                                                    className="inline-block h-5 w-5 rounded-full bg-white shadow-md"
+                                                />
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="border-t border-gray-100 pt-3 mt-2">
+                                        <div className="px-4 py-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl mb-2">
+                                            <div className="flex items-center gap-3">
+                                                <img
+                                                    src={
+                                                        user?.photo
+                                                            ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
+                                                            : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true`
+                                                    }
+                                                    alt="Profile"
+                                                    className="w-10 h-10 rounded-full object-cover border-2 border-orange-300"
+                                                />
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900">{user?.name}</p>
+                                                    <p className="text-xs text-orange-600 mt-0.5">
+                                                        {role === 'worker' ? user?.karigarId : 'Client Account'}
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
 
                                         {role === 'worker' && (
                                             <>
-                                                <Link
-                                                    to="/worker/profile"
-                                                    onClick={() => setMobileMenuOpen(false)}
-                                                    className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-orange-50 active:bg-orange-100 rounded-xl transition-all"
-                                                >
-                                                    <User size={16} className="text-orange-500" />
-                                                    {t('navbar.view_profile')}
-                                                </Link>
-                                                <Link
-                                                    to="/worker/id-card"
-                                                    onClick={() => setMobileMenuOpen(false)}
-                                                    className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-orange-50 active:bg-orange-100 rounded-xl transition-all"
-                                                >
-                                                    <CreditCard size={16} className="text-orange-500" />
-                                                    {t('navbar.view_id_card')}
-                                                </Link>
-                                                <Link
-                                                    to="/worker/settings"
-                                                    onClick={() => setMobileMenuOpen(false)}
-                                                    className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-orange-50 active:bg-orange-100 rounded-xl transition-all"
-                                                >
-                                                    <Settings size={16} className="text-orange-500" />
-                                                    {t('navbar.settings')}
-                                                </Link>
+                                                <MobileMenuItem 
+                                                    icon={User} 
+                                                    title="View Profile" 
+                                                    to="/worker/profile" 
+                                                    onClick={() => setMobileMenuOpen(false)} 
+                                                />
+                                                <MobileMenuItem 
+                                                    icon={CreditCard} 
+                                                    title="ID Card" 
+                                                    to="/worker/id-card" 
+                                                    onClick={() => setMobileMenuOpen(false)} 
+                                                />
+                                                <MobileMenuItem 
+                                                    icon={Settings} 
+                                                    title="Settings" 
+                                                    to="/worker/settings" 
+                                                    onClick={() => setMobileMenuOpen(false)} 
+                                                />
                                             </>
                                         )}
 
                                         {role === 'client' && (
-                                            <Link
-                                                to="/client/settings"
-                                                onClick={() => setMobileMenuOpen(false)}
-                                                className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-orange-50 active:bg-orange-100 rounded-xl transition-all"
-                                            >
-                                                <Settings size={16} className="text-orange-500" />
-                                                {t('navbar.settings')}
-                                            </Link>
+                                            <MobileMenuItem 
+                                                icon={Settings} 
+                                                title="Settings" 
+                                                to="/client/settings" 
+                                                onClick={() => setMobileMenuOpen(false)} 
+                                            />
                                         )}
 
                                         <button
                                             onClick={handleLogout}
-                                            className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 active:bg-red-100 rounded-xl transition-all mt-2"
+                                            className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all mt-2"
                                         >
-                                            <LogOut size={16} />
-                                            {t('navbar.logout')}
+                                            <LogOut size={18} className="text-red-500" />
+                                            <span className="font-medium">Logout</span>
                                         </button>
                                     </div>
                                 </>
@@ -481,16 +683,16 @@ const Header = () => {
                                     <Link
                                         to="/login"
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="block font-semibold text-center text-gray-700 px-4 py-3 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 active:scale-98 transition-all"
+                                        className="block px-4 py-3 text-center text-gray-700 font-semibold hover:bg-orange-50 rounded-xl transition-all"
                                     >
-                                        {t('navbar.login')}
+                                        Login
                                     </Link>
                                     <Link
                                         to="/register"
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="block font-semibold text-center text-white px-4 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 hover:shadow-lg active:scale-98 transition-all"
+                                        className="block px-4 py-3 text-center text-white bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 rounded-xl transition-all font-bold"
                                     >
-                                        {t('navbar.get_started')}
+                                        Get Started Free
                                     </Link>
                                 </>
                             )}
@@ -498,19 +700,48 @@ const Header = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-
-            {/* Spacer to prevent content from hiding under fixed header */}
-            <div className="h-[60px] md:h-[70px]" />
-
-            <style jsx>{`
-                @media (max-width: 768px) {
-                    .active\\:scale-98:active {
-                        transform: scale(0.98);
-                    }
-                }
-            `}</style>
-        </>
+        </motion.header>
     );
 };
+
+// Helper Components
+const MenuItem = ({ icon: Icon, title, subtitle, to, onClick, iconColor, bgColor, isLogout }) => {
+    const content = (
+        <div className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 transition-all duration-200 group cursor-pointer">
+            <div className={`w-8 h-8 rounded-lg ${bgColor} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                <Icon size={16} className={iconColor} />
+            </div>
+            <div className="flex-1">
+                <p className={`font-medium ${isLogout ? 'text-red-600' : 'text-gray-700'}`}>{title}</p>
+                {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+            </div>
+            {!isLogout && (
+                <motion.div
+                    initial={{ x: -10, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    className="text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                    →
+                </motion.div>
+            )}
+        </div>
+    );
+
+    if (to) {
+        return <Link to={to} onClick={onClick}>{content}</Link>;
+    }
+    return <div onClick={onClick}>{content}</div>;
+};
+
+const MobileMenuItem = ({ icon: Icon, title, to, onClick }) => (
+    <Link
+        to={to}
+        onClick={onClick}
+        className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 rounded-xl transition-all group min-h-[48px]"
+    >
+        <Icon size={18} className="text-orange-500 group-hover:scale-110 transition-transform" />
+        <span className="font-medium text-base">{title}</span>
+    </Link>
+);
 
 export default Header;

@@ -1,5 +1,5 @@
 // src/components/ClientLayout.jsx
-// MOBILE-FRIENDLY VERSION - Scrollable Bottom Navigation
+// MOBILE-FRIENDLY VERSION - Fixed Overlap Issues
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
@@ -142,7 +142,7 @@ export default function ClientLayout() {
     );
 
     return (
-        <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30 pb-20 md:pb-0">
+        <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30">
             {/* Desktop Sidebar */}
             <aside className="hidden md:flex flex-col w-64 bg-white border-r border-orange-100 shadow-sm fixed top-0 left-0 h-full z-20">
                 <SidebarContent onNavClick={undefined} />
@@ -162,6 +162,20 @@ export default function ClientLayout() {
                 </div>
                 <SidebarContent onNavClick={() => setMenuOpen(false)} />
             </aside>
+
+            {/* Page Content with Proper Spacing for Mobile */}
+            <main className="flex-1 md:ml-64 min-h-screen">
+                {/* Mobile Top Bar Spacer - Prevents content from hiding behind fixed header */}
+                <div className="md:hidden h-14" />
+                
+                {/* Main Content */}
+                <div className="pb-20 md:pb-0">
+                    <Outlet />
+                </div>
+                
+                {/* Mobile Bottom Navigation Spacer - Prevents content from hiding behind bottom nav */}
+                <div className="md:hidden h-16" />
+            </main>
 
             {/* Mobile Top Bar */}
             <div className="md:hidden fixed top-0 left-0 right-0 z-30 bg-white border-b border-orange-100 px-4 py-3 flex items-center justify-between shadow-sm">
@@ -223,11 +237,6 @@ export default function ClientLayout() {
                     </div>
                 </div>
             </div>
-
-            {/* Page Content */}
-            <main className="flex-1 md:ml-64 min-h-screen pt-14 md:pt-0">
-                <Outlet />
-            </main>
 
             {/* Hide scrollbar styles */}
             <style jsx>{`

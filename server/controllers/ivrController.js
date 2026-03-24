@@ -168,9 +168,9 @@ const TTS_LANG_MAP = {
 };
 
 const TTS_VOICE_MAP = {
-    hi: process.env.TWILIO_TTS_VOICE_HI || 'google.hi-IN-Standard-A',
-    mr: process.env.TWILIO_TTS_VOICE_MR || 'google.mr-IN-Standard-A',
-    en: process.env.TWILIO_TTS_VOICE_EN || 'google.en-IN-Standard-A',
+    hi: process.env.TWILIO_TTS_VOICE_HI || 'hi-IN-Standard-A',
+    mr: process.env.TWILIO_TTS_VOICE_MR || 'mr-IN-Standard-A',
+    en: process.env.TWILIO_TTS_VOICE_EN || 'en-IN-Standard-C',
 };
 
 const getTtsLanguage = (session) => TTS_LANG_MAP[getLang(session)] || 'en-IN';
@@ -1031,7 +1031,7 @@ exports.twilioVoiceWebhook = async (req, res) => {
         console.log('[IVR] Gather configured');
         
         gather.say(
-            { language: 'en-IN', voice: 'google.en-IN-Standard-A' },
+            { language: 'en-IN', voice: 'en-IN-Standard-C' },
             'Welcome to KarigarConnect. Bhasha chuniyega. Hindi ke liye 1, Marathi ke liye 2, English ke liye 3 dabaiye.'
         );
         console.log('[IVR] Say configured, returning response');
