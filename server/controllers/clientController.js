@@ -13,6 +13,7 @@ const Job       = require('../models/jobModel');
 const User      = require('../models/userModel');
 const Rating    = require('../models/ratingModel');
 const AIHistory = require('../models/aiHistoryModel');
+const Location  = require('../models/locationModel');
 const { createNotification }           = require('../utils/notificationHelper');
 const { checkWorkerScheduleConflict, validateWorkTime, canStartJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
@@ -21,6 +22,8 @@ const faceClient = require('../utils/faceServiceClient');
 
 const parseJSON   = (v, fb) => { if (!v) return fb; try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return fb; } };
 const validateNeg = (v, l)  => { const n = Number(v); if (!isNaN(n) && n < 0) return `${l} cannot be negative.`; return null; };
+const ALERT_RADIUS_KM = 5;
+const MAX_URGENT_ALERT_RECIPIENTS = 75;
 
 // ── FIX: normalise AI complexity values ──────────────────────────────────────
 const COMPLEXITY_MAP = {
@@ -53,6 +56,155 @@ function sanitiseBudgetBreakdown(bd) {
     }
 }
 // ─────────────────────────────────────────────────────────────────────────────
+
+const normSkillName = (s) => String(s || '').toLowerCase().trim();
+const normCityName = (s) => String(s || '').toLowerCase().trim();
+const toFiniteNumber = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+};
+
+const haversineKm = (lat1, lng1, lat2, lng2) => {
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getLatestWorkerLocationMap = async (workerIds = []) => {
+    if (!workerIds.length) return new Map();
+    const objectIds = workerIds.map((id) => id);
+    const latest = await Location.aggregate([
+        { $match: { workerId: { $in: objectIds }, 'workerLocation.lat': { $ne: null }, 'workerLocation.lng': { $ne: null } } },
+        { $sort: { 'workerLocation.updatedAt': -1, updatedAt: -1 } },
+        {
+            $group: {
+                _id: '$workerId',
+                lat: { $first: '$workerLocation.lat' },
+                lng: { $first: '$workerLocation.lng' },
+                updatedAt: { $first: '$workerLocation.updatedAt' },
+            },
+        },
+    ]);
+
+    const map = new Map();
+    latest.forEach((row) => {
+        map.set(String(row._id), { lat: row.lat, lng: row.lng, updatedAt: row.updatedAt });
+    });
+    return map;
+};
+
+const getJobSkillSet = (job) => {
+    const fromSkills = (job.skills || []).map(normSkillName).filter(Boolean);
+    const fromSlots = (job.workerSlots || []).map((s) => normSkillName(s.skill)).filter(Boolean);
+    return [...new Set([...fromSkills, ...fromSlots])];
+};
+
+const buildSmartWorkerSuggestions = async (job, { limit = 3, withinRadiusOnly = false } = {}) => {
+    const skillSet = getJobSkillSet(job);
+    const jobLat = toFiniteNumber(job.location?.lat);
+    const jobLng = toFiniteNumber(job.location?.lng);
+    const hasJobCoords = jobLat !== null && jobLng !== null;
+    const jobCityNorm = normCityName(job.location?.city);
+
+    const query = {
+        role: 'worker',
+        verificationStatus: 'approved',
+        availability: true,
+    };
+    if (skillSet.length) query.skills = { $elemMatch: { name: { $in: skillSet } } };
+
+    const candidates = await User.find(query)
+        .select('name photo karigarId mobile points overallExperience skills address availability')
+        .limit(200)
+        .lean();
+
+    if (!candidates.length) return [];
+
+    const candidateIds = candidates.map((c) => c._id);
+    const [ratings, locMap] = await Promise.all([
+        Rating.aggregate([
+            { $match: { worker: { $in: candidateIds } } },
+            { $group: { _id: '$worker', avgStars: { $avg: '$stars' }, ratingCount: { $sum: 1 } } },
+        ]),
+        getLatestWorkerLocationMap(candidateIds),
+    ]);
+
+    const ratingMap = new Map(ratings.map((r) => [String(r._id), { avgStars: Number(r.avgStars || 0), ratingCount: Number(r.ratingCount || 0) }]));
+
+    const scored = candidates.map((w) => {
+        const wId = String(w._id);
+        const r = ratingMap.get(wId) || { avgStars: 0, ratingCount: 0 };
+        const loc = locMap.get(wId);
+        const wLat = toFiniteNumber(loc?.lat);
+        const wLng = toFiniteNumber(loc?.lng);
+        const hasWorkerCoords = wLat !== null && wLng !== null;
+        const distanceKm = hasJobCoords && hasWorkerCoords ? haversineKm(jobLat, jobLng, wLat, wLng) : null;
+        const cityMatch = jobCityNorm && normCityName(w.address?.city) === jobCityNorm;
+        const withinRadius = hasJobCoords && distanceKm !== null ? distanceKm <= ALERT_RADIUS_KM : !!cityMatch;
+
+        const workerSkillSet = (w.skills || []).map((s) => normSkillName(s?.name || s)).filter(Boolean);
+        const matchedSkills = skillSet.length ? skillSet.filter((s) => workerSkillSet.includes(s)) : workerSkillSet;
+
+        const score = (withinRadius ? 100 : 0) + (r.avgStars * 20) + (Math.min(1000, Number(w.points || 0)) / 20) + matchedSkills.length * 4;
+
+        return {
+            ...w,
+            avgStars: r.avgStars,
+            ratingCount: r.ratingCount,
+            matchedSkills,
+            distanceKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+            withinRadius,
+            score,
+        };
+    });
+
+    const filtered = withinRadiusOnly ? scored.filter((w) => w.withinRadius) : scored;
+    return filtered
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map((w) => ({
+            _id: w._id,
+            name: w.name,
+            photo: w.photo,
+            karigarId: w.karigarId,
+            mobile: w.mobile,
+            points: w.points || 0,
+            overallExperience: w.overallExperience || '',
+            avgStars: Number((w.avgStars || 0).toFixed(2)),
+            ratingCount: w.ratingCount || 0,
+            matchedSkills: w.matchedSkills,
+            distanceKm: w.distanceKm,
+            withinRadius: w.withinRadius,
+        }));
+};
+
+const notifyUrgentNearbyWorkers = async (job) => {
+    const nearby = await buildSmartWorkerSuggestions(job, {
+        limit: MAX_URGENT_ALERT_RECIPIENTS,
+        withinRadiusOnly: true,
+    });
+
+    for (const worker of nearby) {
+        await createNotification({
+            userId: worker._id,
+            type: 'urgent_job',
+            title: 'Urgent Job Near You',
+            message: `A nearby urgent job is open: "${job.title}" in ${job.location?.city || 'your area'}.`,
+            jobId: job._id,
+            data: {
+                urgent: true,
+                distanceKm: worker.distanceKm,
+                matchedSkills: worker.matchedSkills,
+            },
+        });
+    }
+
+    return nearby;
+};
 
 const buildWorkerSlots = (bd, skills = [], wr = 1) => {
     const slots = [];
@@ -457,14 +609,30 @@ exports.postJob = async (req, res) => {
             workerSlots:         buildWorkerSlots(pBD, pSkills, pWR),
         });
 
+        const smartSuggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
+        let urgentAlertRecipients = [];
+        if (job.urgent) {
+            urgentAlertRecipients = await notifyUrgentNearbyWorkers(job);
+        }
+
         await logAuditEvent({
             userId:   req.user.id,
             role:     'client',
             action:   'job_posted',
             req,
-            metadata: { jobId: job._id, workersRequired: pWR },
+            metadata: {
+                jobId: job._id,
+                workersRequired: pWR,
+                urgent: !!job.urgent,
+                smartSuggestions: smartSuggestions.length,
+                urgentAlertRecipients: urgentAlertRecipients.length,
+            },
         });
-        return res.status(201).json(job);
+        return res.status(201).json({
+            ...job.toObject(),
+            smartSuggestions,
+            urgentAlertRecipients: urgentAlertRecipients.length,
+        });
     } catch (err) {
         console.error('postJob:', err);
         return res.status(500).json({ message: 'Failed to post job.' });
@@ -975,6 +1143,96 @@ exports.getJobApplicants = async (req, res) => {
         if (!job) return res.status(404).json({ message: 'Not found.' });
         return res.json(job.applicants || []);
     } catch { return res.status(500).json({ message: 'Failed.' }); }
+};
+
+exports.getSmartWorkerSuggestions = async (req, res) => {
+    try {
+        const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id });
+        if (!job) return res.status(404).json({ message: 'Not found.' });
+
+        const suggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
+        return res.json({
+            jobId: job._id,
+            suggestions,
+            radiusKm: ALERT_RADIUS_KM,
+        });
+    } catch (err) {
+        console.error('getSmartWorkerSuggestions:', err);
+        return res.status(500).json({ message: 'Failed to load suggestions.' });
+    }
+};
+
+exports.inviteWorkersToJob = async (req, res) => {
+    try {
+        const { workerIds } = req.body;
+        if (!Array.isArray(workerIds) || workerIds.length === 0) {
+            return res.status(400).json({ message: 'workerIds array is required.' });
+        }
+
+        const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id });
+        if (!job) return res.status(404).json({ message: 'Not found.' });
+        if (!['open', 'scheduled'].includes(job.status) || !job.applicationsOpen) {
+            return res.status(400).json({ message: 'Job is not accepting outreach right now.' });
+        }
+
+        const dedupedIds = [...new Set(workerIds.map((id) => String(id)).filter(Boolean))].slice(0, 10);
+        const workers = await User.find({
+            _id: { $in: dedupedIds },
+            role: 'worker',
+            verificationStatus: 'approved',
+            availability: true,
+        }).select('_id name mobile');
+
+        if (!workers.length) return res.status(404).json({ message: 'No eligible workers found.' });
+
+        const invitedSet = new Set((job.invitedWorkers || []).map((iw) => String(iw.workerId)));
+        const invitedNow = [];
+        for (const worker of workers) {
+            const workerId = String(worker._id);
+            if (!invitedSet.has(workerId)) {
+                job.invitedWorkers.push({ workerId: worker._id, invitedAt: new Date() });
+                invitedSet.add(workerId);
+            }
+            invitedNow.push(worker);
+
+            await createNotification({
+                userId: worker._id,
+                type: job.urgent ? 'urgent_job' : 'job_update',
+                title: job.urgent ? 'Urgent Invite from Client' : 'Direct Job Invite',
+                message: `You are invited to apply for "${job.title}" in ${job.location?.city || 'your area'}.`,
+                jobId: job._id,
+                data: {
+                    invited: true,
+                    urgent: !!job.urgent,
+                },
+            });
+
+            if (worker.mobile) {
+                await sendCustomSms(
+                    worker.mobile,
+                    `KarigarConnect: You have a direct ${job.urgent ? 'URGENT ' : ''}invite for job "${job.title}". Open Job Requests to apply.`
+                );
+            }
+        }
+
+        await job.save();
+        await logAuditEvent({
+            userId: req.user.id,
+            role: 'client',
+            action: 'job_invite_workers',
+            req,
+            metadata: { jobId: job._id, invitedWorkers: invitedNow.map((w) => w._id) },
+        });
+
+        return res.json({
+            message: 'Workers invited successfully.',
+            invitedCount: invitedNow.length,
+            invitedWorkers: invitedNow.map((w) => ({ _id: w._id, name: w.name, mobile: w.mobile || '' })),
+        });
+    } catch (err) {
+        console.error('inviteWorkersToJob:', err);
+        return res.status(500).json({ message: 'Failed to invite workers.' });
+    }
 };
 
 exports.getWorkerPublicProfile = async (req, res) => {

@@ -184,7 +184,7 @@ exports.getAvailableJobs = async (req, res) => {
         })
             .populate('postedBy', 'name photo verificationStatus location mobile')
             .populate('parentJobId', 'title scheduledDate scheduledTime location')
-            .sort({ createdAt: -1 });
+            .sort({ urgent: -1, createdAt: -1 });
 
         const wid = req.user.id.toString();
 
@@ -201,12 +201,15 @@ exports.getAvailableJobs = async (req, res) => {
             const myHistory = job.applicants.filter(a => a.workerId?.toString() === wid);
             const blockedByCancellation = myHistory.some(a => a.workerCancelled);
             const relBudget = job.budgetBreakdown?.breakdown || [];
+            const invitedRecord = (job.invitedWorkers || []).find(iw => iw.workerId?.toString() === wid);
 
             return {
                 ...job.toObject(),
                 hasApplied: myApps.length > 0 || blockedByCancellation,
                 myAppliedSkills: myApps.map(a => a.skill),
                 blockedByCancellation,
+                invitedForMe: !!invitedRecord,
+                invitedAt: invitedRecord?.invitedAt || null,
                 applicantCount: job.applicants.length,
                 openSlotSummary,
                 relevantSkills: [...new Set(relOpen.map(s => s.skill))],

@@ -1,62 +1,41 @@
 # KarigarConnect
 
-KarigarConnect is a full-stack marketplace platform connecting clients and skilled workers, with AI assistance, fraud detection, face verification, notifications, and role-based dashboards.
+KarigarConnect is a full-stack marketplace platform that connects clients with skilled workers. It includes AI-assisted job help, fraud monitoring, face verification, notifications, and IVR-based worker interaction.
 
-## What This Project Contains
+## Modules
 
-This repository has 4 major parts:
+- `client/`: React + Vite frontend
+- `server/`: Node.js + Express + MongoDB backend
+- `server/fraud_service/`: Python Flask fraud service
+- `face_service/`: Python face verification service (optional but recommended)
 
-- `client/` - React + Vite frontend
-- `server/` - Node.js + Express + MongoDB main backend API
-- `server/fraud_service/` - Python Flask fraud detection microservice
-- `face_service/` - Python face verification service (optional but recommended)
+## Features
 
-## Core Features
+### Authentication and Access
+- OTP and password-based login
+- Role-based access: admin, worker, client
+- JWT session security
 
-### Authentication and Security
-- OTP login and password login
-- Role-based authentication (Admin, Worker, Client)
-- JWT session management
-- Face verification support during auth flow
+### Worker Flow
+- Profile, skills, portfolio, availability
+- Job discovery and applications
+- IVR-based job interaction (language menu, apply/cancel flow)
+- Leaderboard and performance points
 
-### Worker Features
-- Worker profile with skills, experience, and portfolio
-- Job discovery and job applications
-- Booking management
-- Availability toggle
-- Leaderboard and performance tracking
-- Complaint filing and feedback views
+### Client Flow
+- Job posting and management
+- Worker hiring and tracking
+- Rating and completion workflow
 
-### Client Features
-- Post and manage jobs
-- View and hire workers
-- Applicant response workflow
-- Subtask and group job support
-- Rate workers and complete job flow
-- AI-assisted job guidance
+### Admin Flow
+- User and worker approval management
+- Fraud dashboard and action queue
+- Community and complaint moderation
 
-### Admin Features
-- Worker approval and user management
-- Admin dashboard with platform stats
-- Fraud monitor with risk queue
-- Fraud actions (block/delete) with audit trail
-
-### AI and Intelligence
-- AI estimate generation
-- AI question generation and advisor reports
-- Fraud scoring pipeline with model explanations (SHAP)
-
-### Fraud Detection and Monitoring
-- Worker and client risk scoring
-- Real-time fraud alert queue
-- Full scan trigger from admin monitor
-- Action history and model metrics
-- Automatic warning notifications for medium/high risk threshold crossings
-
-### Notifications
-- In-app notifications
-- SMS notifications (Twilio)
-- Fraud and account-status notifications
+### AI, Fraud, and Notifications
+- AI estimate and guidance endpoints
+- Fraud scoring and alerts
+- In-app + SMS notifications
 
 ## Tech Stack
 
@@ -65,110 +44,85 @@ This repository has 4 major parts:
 - Vite 7
 - Redux Toolkit
 - React Router
-- Tailwind CSS
-- Axios
 
 ### Backend
 - Node.js + Express 5
 - MongoDB + Mongoose
-- JWT
-- Cloudinary
-- Twilio
-- Nodemailer
+- Twilio, Cloudinary, Nodemailer
+- Groq SDK (IVR speech intent extraction)
 
 ### Python Services
 - Flask
-- Flask-SocketIO
-- PyMongo
-- XGBoost
-- SHAP
+- XGBoost + SHAP
 - APScheduler
 
-## Required Versions
+## Prerequisites
 
-Use these minimum versions for stable setup:
-
-- Node.js: 18.x or higher (recommended 20.x LTS)
-- npm: 9.x or higher
-- Python: 3.11.x (recommended for fraud and face services)
-- MongoDB: 6.x or higher (local instance)
-- Git: latest stable
+- Node.js 18+ (recommended 20 LTS)
+- npm 9+
+- Python 3.11+
+- MongoDB 6+
 
 ## Project Structure
 
-- `client/src/` - pages, components, Redux store, API wrapper
-- `server/controllers/` - business logic
-- `server/routes/` - API routes
-- `server/models/` - Mongoose models
-- `server/utils/` - helpers and integrations
-- `server/fraud_service/routes/` - fraud prediction and actions API
-- `server/fraud_service/preprocessing/` - feature engineering
-- `server/fraud_service/models/` - trained fraud model artifacts (local)
-- `face_service/main.py` - face verification API entrypoint
-
-## Ports Used
-
-- Frontend (Vite): `5173`
-- Main Backend (Node/Express): `5000`
-- Fraud Service (Flask): `5001`
-- Face Service (Python): `8001`
-
-## Installation and Setup
-
-## 1) Clone
-
-```bash
-git clone <your-repo-url>
-cd KarigarConnect
+```text
+Karigar-Connect/
+	client/
+	server/
+		controllers/
+		models/
+		routes/
+		services/
+		fraud_service/
+	face_service/
 ```
 
-## 2) Install Frontend Dependencies
+## Local Ports
+
+- Frontend: `5173`
+- Main backend: `5000`
+- Fraud service: `5001`
+- Face service: `8001`
+
+## Setup
+
+### 1) Install frontend
 
 ```bash
 cd client
 npm install
-cd ..
 ```
 
-## 3) Install Backend Dependencies
+### 2) Install backend
 
 ```bash
-cd server
+cd ../server
 npm install
-cd ..
 ```
 
-## 4) Install Fraud Service Dependencies
-
-Windows PowerShell:
+### 3) Install fraud service
 
 ```powershell
-cd server\fraud_service
+cd fraud_service
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r Requirements.txt
-cd ..\..
+cd ..
 ```
 
-## 5) Install Face Service Dependencies (Optional)
-
-Windows PowerShell:
+### 4) Install face service (optional)
 
 ```powershell
-cd face_service
+cd ..\face_service
 python -m venv .venv311
 .\.venv311\Scripts\Activate.ps1
 pip install -r requirements.txt
-cd ..
+cd ..\server
 ```
 
 ## Environment Configuration
 
-Create and configure these env files before running.
-
-## A) Backend env (`server/.env`)
-
-Use local MongoDB and local services:
+Create `server/.env` with at least the following keys:
 
 ```env
 MONGO_URI=mongodb://127.0.0.1:27017/karigarConnect
@@ -177,28 +131,37 @@ JWT_SECRET=your_jwt_secret
 
 FRONTEND_URL=http://localhost:5173
 FACE_SERVICE_URL=http://localhost:8001
-FRAUD_SERVICE_URL=http://localhost:5001
+FRAUD_SERVICE_URL=http://127.0.0.1:5001
 NODE_BASE_URL=http://localhost:5000
 INTERNAL_SECRET=your_internal_secret
 
-TWILIO_ACCOUNT_SID=your_sid
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_PHONE_NUMBER=your_twilio_number
+TWILIO_ACCOUNT_SID=your_twilio_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_PHONE_NUMBER=your_twilio_phone
+
+TWILIO_IVR_VOICE_PATH=/api/ivr/twilio/voice
+TWILIO_IVR_STATE_PATH=/api/ivr/twilio/state
+REGISTRATION_URL=http://localhost:5173/register
+
+TWILIO_TTS_VOICE_HI=hi-IN-Standard-A
+TWILIO_TTS_VOICE_MR=mr-IN-Standard-A
+TWILIO_TTS_VOICE_EN=en-IN-Chirp3-HD-Kore
+IVR_JOB_MATCH_RADIUS_KM=20
+
+GROQ_API_KEY=your_groq_api_key
 
 EMAIL_USER=your_email
-EMAIL_PASS=your_app_password
+EMAIL_PASS=your_email_app_password
 
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
+CLOUDINARY_CLOUD_NAME=your_cloudinary_name
+CLOUDINARY_API_KEY=your_cloudinary_key
+CLOUDINARY_API_SECRET=your_cloudinary_secret
 
 ADMIN_MOBILE=admin_mobile
 ADMIN_PASSWORD=admin_password
-
-GROQ_API_KEY=your_groq_api_key
 ```
 
-## B) Frontend env (`client/.env`)
+Create `client/.env`:
 
 ```env
 VITE_API_URL=http://localhost:5000
@@ -207,26 +170,25 @@ VITE_FLASK_URL=http://localhost:5001
 VITE_FRAUD_SOCKET_URL=http://localhost:5001
 ```
 
-## C) Fraud Service env
+## Run Order
 
-The fraud service reads env from `server/.env`, so no separate env file is required.
+Start services in this sequence.
 
-## Run the Project
-
-Start services in this order.
-
-## 1) Start Main Backend
+### 1) Backend
 
 ```bash
 cd server
 node server.js
 ```
 
-(If you use nodemon locally, `nodemon server.js` is also fine.)
+or
 
-## 2) Start Fraud Service
+```bash
+cd server
+nodemon server.js
+```
 
-Windows PowerShell:
+### 2) Fraud service
 
 ```powershell
 cd server\fraud_service
@@ -234,16 +196,14 @@ cd server\fraud_service
 python app.py
 ```
 
-## 3) Start Frontend
+### 3) Frontend
 
 ```bash
 cd client
 npm run dev
 ```
 
-## 4) Start Face Service (Optional but recommended)
-
-Windows PowerShell:
+### 4) Face service (optional)
 
 ```powershell
 cd face_service
@@ -251,50 +211,74 @@ cd face_service
 python main.py
 ```
 
-## Health Checks
+## Health and Smoke Checks
 
 - Backend root: `http://localhost:5000/`
 - Backend health: `http://localhost:5000/api/health`
-- Fraud health via backend: `http://localhost:5000/api/fraud/health`
+- Fraud health (through backend): `http://localhost:5000/api/fraud/health`
 - Fraud direct health: `http://localhost:5001/health`
+- IVR voice webhook (POST): `http://localhost:5000/api/ivr/twilio/voice`
+- IVR state webhook (POST): `http://localhost:5000/api/ivr/twilio/state`
 
-## Build Frontend for Production
+Quick IVR local test (PowerShell):
+
+```powershell
+Invoke-WebRequest -Uri "http://localhost:5000/api/ivr/twilio/voice" `
+	-Method POST `
+	-Body "From=%2B919876543210&CallSid=TEST123" `
+	-ContentType "application/x-www-form-urlencoded" `
+	-UseBasicParsing
+```
+
+Expected response: HTTP `200` with TwiML XML.
+
+## Twilio Webhook Configuration
+
+If using ngrok for local development:
+
+```powershell
+ngrok http 5000
+```
+
+Then set Twilio Voice webhook to:
+
+- `https://<your-ngrok-domain>/api/ivr/twilio/voice`
+
+The backend automatically drives call flow through `/api/ivr/twilio/state`.
+
+## Troubleshooting
+
+### 502/Bad Gateway for IVR webhooks
+- Confirm backend is running and reachable.
+- Confirm Twilio webhook path is exactly `/api/ivr/twilio/voice`.
+- Confirm `NODE_BASE_URL` points to your active tunnel/domain.
+- Check backend logs for IVR handler exceptions.
+
+### MongoDB errors on IVR unregistered lead updates
+- Ensure `server/models/ivrUnregisteredLeadModel.js` exists and is in sync.
+- Restart backend after pulling IVR changes.
+
+### CORS issues
+- Keep frontend at `http://localhost:5173` in local setup.
+- Verify `FRONTEND_URL` in `server/.env`.
+
+### SMS not sent
+- Verify Twilio credentials and sender number.
+- Ensure phone numbers are stored in valid format.
+
+## Build Frontend
 
 ```bash
 cd client
 npm run build
 ```
 
-## Common Troubleshooting
+## Security Notes
 
-### MongoDB connection failed
-- Ensure MongoDB local server is running.
-- Verify `MONGO_URI` is exactly `mongodb://127.0.0.1:27017/karigarConnect` if using local data.
-
-### Fraud monitor queue empty
-- Confirm fraud service is running on port 5001.
-- Trigger a full scan from Admin Fraud Monitor.
-
-### No SMS notifications
-- Verify Twilio credentials in `server/.env`.
-- Ensure user mobile numbers are present and valid.
-
-### CORS issues
-- Ensure frontend runs on `http://localhost:5173`.
-- Ensure `FRONTEND_URL` in backend env is set correctly.
-
-## Notes for GitHub Push
-
-This repo uses `.gitignore` to exclude local env files, node_modules, virtual environments, generated model/data files, and runtime uploads.
-
-Before pushing, verify:
-
-```bash
-git status
-```
-
-Only commit source code and required configuration templates (not secrets).
+- Do not commit real credentials to Git.
+- Keep `.env` local/private.
+- Rotate keys immediately if accidentally exposed.
 
 ## License
 
-Use your preferred license for your final-year submission/repository.
+Use the license required by your academic/project submission policy.

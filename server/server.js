@@ -20,6 +20,7 @@ const aiRoutes                   = require('./routes/aiRoutes');
 const groupRoutes                = require('./routes/groupRoutes');
 const jobRoutes                  = require('./routes/jobRoutes');
 const adminFraudRoutes           = require('./routes/adminFraudRoutes');
+const ivrRoutes                  = require('./routes/ivrRoutes');
 const clientComplaintRoutes      = require('./routes/clientComplaintRoutes');
 const adminComplaintRoutes       = require('./routes/adminComplaintRoutes');       // ← NEW: client-vs-worker complaints (ClientComplaint model)
 const adminWorkerComplaintRoutes = require('./routes/adminWorkerComplaintRoutes'); // ← existing: worker support tickets (Complaint model)
@@ -27,6 +28,7 @@ const workerComplaintRoutes      = require('./routes/workerComplaintRoutes');
 const communityRoutes            = require('./routes/communityRoutes');
 const adminCommunityRoutes       = require('./routes/adminCommunityRoutes');
 const locationRoutes             = require('./routes/locationRoutes');
+const { ensureAdminAccounts }    = require('./utils/adminAccounts');
 
 // ── Shop & Coupon routes ──────────────────────────────────────────────────────
 const shopRoutes       = require('./routes/shopRoutes');
@@ -75,7 +77,15 @@ legacyStaticDirs.forEach(({ url, dir }) => {
 
 // ── Database ──────────────────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅  MongoDB connected'))
+    .then(async () => {
+        console.log('✅  MongoDB connected');
+        try {
+            const admins = await ensureAdminAccounts();
+            console.log(`✅  Admin accounts ready: ${admins.map(a => a.mobile).join(', ')}`);
+        } catch (err) {
+            console.error('❌  Failed to initialize admin accounts:', err.message);
+        }
+    })
     .catch(err => { console.error('❌  MongoDB connection failed:', err.message); process.exit(1); });
 
 // ── Routes — specific paths BEFORE their parent prefix ────────────────────────
@@ -101,6 +111,7 @@ app.use('/api/community',                communityRoutes);
 app.use('/api/ai',                       aiRoutes);
 app.use('/api/groups',                   groupRoutes);
 app.use('/api/jobs',                     jobRoutes);
+app.use('/api/ivr',                      ivrRoutes);
 app.use('/api/location',                 locationRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ const TYPE_ICONS = {
     cancelled:   '❌',
     rating:      '⭐',
     payment:     '💰',
+    urgent_job:  '⚡',
     start_reminder: '🔔',
     reminder:       '🔔',
     message:     '💬',

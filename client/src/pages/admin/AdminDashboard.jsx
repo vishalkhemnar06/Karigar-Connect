@@ -152,7 +152,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                     <div className="flex items-center gap-3 sm:gap-4">
                         <img
                             src={getImageUrl(user.photo)}
-onError={(e) => { e.target.src = '/default-avatar.png'; }}
                             alt={user.name}
                             className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-4 border-white/20 shadow-lg"
                             onError={(e) => { e.target.src = '/default-avatar.png'; }}
@@ -353,7 +352,7 @@ const DashboardHeader = ({ onLogout, onMenuToggle, isSidebarOpen }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // Mobile User Card
 // ─────────────────────────────────────────────────────────────────────────────
-const MobileUserCard = ({ user, baseURL, onViewDetails, onVerifyOpen, onStatusUpdate, onDelete }) => {
+const MobileUserCard = ({ user, currentAdminId, onViewDetails, onVerifyOpen, onClaimWorker, onStatusUpdate, onDelete }) => {
     const renderStatusBadge = (status) => {
         const colors = {
             pending:  'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -376,7 +375,6 @@ const MobileUserCard = ({ user, baseURL, onViewDetails, onVerifyOpen, onStatusUp
                 <div className="flex items-center space-x-3">
                     <img
                         src={getImageUrl(user.photo)}
-onError={(e) => { e.target.src = '/default-avatar.png'; }}
                         alt={user.name}
                         className="w-10 h-10 rounded-full object-cover border-2 border-orange-100"
                         onError={(e) => { e.target.src = '/default-avatar.png'; }}
@@ -406,12 +404,32 @@ onError={(e) => { e.target.src = '/default-avatar.png'; }}
                 {user.role !== 'client' && <div>{renderStatusBadge(user.verificationStatus)}</div>}
                 <div className="flex space-x-1 ml-auto">
                     <button onClick={() => onViewDetails(user)} className="p-1.5 bg-orange-100 text-orange-600 rounded hover:bg-orange-200"><Eye size={14} /></button>
-                    {user.role === 'worker' && user.verificationStatus === 'pending' && (
-                        <>
-                            <button onClick={() => onVerifyOpen(user)} className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200"><Check size={14} /></button>
-                            <button onClick={() => onStatusUpdate(user._id, 'rejected')} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200"><X size={14} /></button>
-                        </>
-                    )}
+                    {(() => {
+                        const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
+                        const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
+                        const claimedByOther = lockOwnerId && !claimedByMe;
+
+                        if (user.role === 'worker' && user.verificationStatus === 'pending') {
+                            if (!lockOwnerId) {
+                                return <button onClick={() => onClaimWorker(user._id)} className="p-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200" title="Claim"><ShieldCheck size={14} /></button>;
+                            }
+                            if (claimedByMe) {
+                                return (
+                                    <>
+                                        <button onClick={() => onVerifyOpen(user)} className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200"><Check size={14} /></button>
+                                        <button onClick={() => {
+                                            const reason = window.prompt('Enter rejection reason for worker application:') || '';
+                                            onStatusUpdate(user._id, 'rejected', 0, reason);
+                                        }} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200"><X size={14} /></button>
+                                    </>
+                                );
+                            }
+                            if (claimedByOther) {
+                                return <span className="px-2 py-1 text-[10px] rounded bg-gray-100 text-gray-600">Locked</span>;
+                            }
+                        }
+                        return null;
+                    })()}
                     {user.role === 'worker' && user.verificationStatus === 'approved' && (
                         <button onClick={() => onStatusUpdate(user._id, 'blocked')} className="p-1.5 bg-gray-200 text-gray-600 rounded hover:bg-gray-300"><ShieldX size={14} /></button>
                     )}
@@ -445,12 +463,14 @@ const AdminDashboard = () => {
     // const baseURL = 'http://Y192.168.0.103:5000/';
     const baseURL = `${window.location.protocol}//${window.location.hostname}:5000/`;
 
-    const getImageUrl = (path) => {
-  if (!path) return '/default-avatar.png';
-  if (path.startsWith('http')) return path;
-
-  return `${baseURL}${path.replace(/^\/+/, '')}`;
-};
+    const currentAdminId = useMemo(() => {
+        try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            return user?.id ? String(user.id) : null;
+        } catch {
+            return null;
+        }
+    }, []);
 
     useEffect(() => {
         if (isLoggedIn) {
@@ -461,16 +481,25 @@ const AdminDashboard = () => {
         }
     }, [isLoggedIn]);
 
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchData = async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const [workersRes, clientsRes] = await Promise.all([api.getAllWorkers(), api.getAllClients()]);
             setWorkers(workersRes.data);
             setClients(clientsRes.data);
-        } catch { toast.error('Failed to fetch data'); }
-        finally { setLoading(false); }
+        } catch {
+            if (!silent) toast.error('Failed to fetch data');
+        } finally {
+            if (!silent) setLoading(false);
+        }
     };
     useEffect(() => { fetchData(); }, []);
+
+    useEffect(() => {
+        if (activeFilter !== 'pending') return;
+        const intervalId = setInterval(() => fetchData(true), 15000);
+        return () => clearInterval(intervalId);
+    }, [activeFilter]);
 
     const handleLogout = () => {
         setIsLoggedIn(false);
@@ -521,8 +550,21 @@ const AdminDashboard = () => {
             await api.updateWorkerStatus({ workerId, status, points: Number(points), rejectionReason: feedback });
             toast.success('Action successful', { id });
             setUserToVerify(null);
-            fetchData();
-        } catch { toast.error('Failed to update', { id }); }
+            fetchData(true);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to update', { id });
+        }
+    };
+
+    const handleClaimWorker = async (workerId) => {
+        const id = toast.loading('Claiming worker...');
+        try {
+            await api.claimWorkerForReview(workerId);
+            toast.success('Worker claimed', { id });
+            fetchData(true);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Unable to claim worker', { id });
+        }
     };
 
     const handleDelete = async (userId, name, role) => {
@@ -675,8 +717,10 @@ const AdminDashboard = () => {
                                                 key={user._id}
                                                 user={user}
                                                 baseURL={baseURL}
+                                                currentAdminId={currentAdminId}
                                                 onViewDetails={setSelectedUser}
                                                 onVerifyOpen={setUserToVerify}
+                                                onClaimWorker={handleClaimWorker}
                                                 onStatusUpdate={handleStatusUpdate}
                                                 onDelete={handleDelete}
                                             />
@@ -703,7 +747,6 @@ const AdminDashboard = () => {
                                                             <div className="flex items-center">
                                                                 <img
                                                                     src={getImageUrl(user.photo)}
-onError={(e) => { e.target.src = '/default-avatar.png'; }}
                                                                     className="w-10 h-10 rounded-full object-cover mr-3 border-2 border-orange-100"
                                                                     onError={(e) => { e.target.src = '/default-avatar.png'; }}
                                                                 />
@@ -723,19 +766,46 @@ onError={(e) => { e.target.src = '/default-avatar.png'; }}
                                                                 </div>
                                                             ) : <span className="text-sm">{user.email}</span>}
                                                         </td>
-                                                        {activeFilter !== 'clients' && <td className="py-4">{renderStatusBadge(user.verificationStatus)}</td>}
+                                                        {activeFilter !== 'clients' && (
+                                                            <td className="py-4">
+                                                                {renderStatusBadge(user.verificationStatus)}
+                                                                {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
+                                                                    <p className="text-[10px] text-gray-500 mt-1">
+                                                                        Locked by: {user.reviewLock.lockedBy.name || 'Admin'}
+                                                                    </p>
+                                                                )}
+                                                            </td>
+                                                        )}
                                                         <td className="py-4">
                                                             <div className="flex justify-end space-x-2">
                                                                 <button onClick={() => setSelectedUser(user)} className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Eye size={16} /></button>
-                                                                {user.role === 'worker' && user.verificationStatus === 'pending' && (
-                                                                    <>
-                                                                        <button onClick={() => setUserToVerify(user)} className="p-2 bg-green-100 text-green-600 rounded-lg" title="Verify & Assign Points"><Check size={16} /></button>
-                                                                        <button onClick={() => {
-                                                                            const reason = window.prompt('Enter rejection reason:') || '';
-                                                                            handleStatusUpdate(user._id, 'rejected', 0, reason);
-                                                                        }} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
-                                                                    </>
-                                                                )}
+                                                                {user.role === 'worker' && user.verificationStatus === 'pending' && (() => {
+                                                                    const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
+                                                                    const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
+                                                                    const claimedByOther = lockOwnerId && !claimedByMe;
+
+                                                                    if (!lockOwnerId) {
+                                                                        return <button onClick={() => handleClaimWorker(user._id)} className="p-2 bg-blue-100 text-blue-700 rounded-lg" title="Claim Worker"><ShieldCheck size={16} /></button>;
+                                                                    }
+
+                                                                    if (claimedByMe) {
+                                                                        return (
+                                                                            <>
+                                                                                <button onClick={() => setUserToVerify(user)} className="p-2 bg-green-100 text-green-600 rounded-lg" title="Verify & Assign Points"><Check size={16} /></button>
+                                                                                <button onClick={() => {
+                                                                                    const reason = window.prompt('Enter rejection reason for worker application:') || '';
+                                                                                    handleStatusUpdate(user._id, 'rejected', 0, reason);
+                                                                                }} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
+                                                                            </>
+                                                                        );
+                                                                    }
+
+                                                                    if (claimedByOther) {
+                                                                        return <span className="px-2 py-1 text-[10px] font-semibold rounded bg-gray-100 text-gray-600">Locked</span>;
+                                                                    }
+
+                                                                    return null;
+                                                                })()}
                                                                 {user.role === 'worker' && user.verificationStatus === 'approved' && (
                                                                     <button onClick={() => handleStatusUpdate(user._id, 'blocked')} className="p-2 bg-gray-100 text-gray-600 rounded-lg"><ShieldX size={16} /></button>
                                                                 )}

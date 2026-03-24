@@ -10,10 +10,16 @@ const applicantSchema = new mongoose.Schema({
     workerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     skill:     { type: String, default: '' },
     status:    { type: String, enum: ['pending','accepted','rejected'], default: 'pending' },
+    applicationSource: { type: String, enum: ['web', 'ivr'], default: 'web' },
     workerCancelled: { type: Boolean, default: false },
     feedback:  { type: String, default: '' },
     appliedAt: { type: Date, default: Date.now },
 });
+
+const invitedWorkerSchema = new mongoose.Schema({
+    workerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    invitedAt: { type: Date, default: Date.now },
+}, { _id: false });
 
 const workerSlotSchema = new mongoose.Schema({
     skill:           { type: String, required: true },
@@ -102,6 +108,7 @@ const jobSchema = new mongoose.Schema({
     cancelledAt:        Date,
     cancelledWorkerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     applicants:         [applicantSchema],
+    invitedWorkers:     { type: [invitedWorkerSchema], default: [] },
     assignedTo:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     ratingsSubmitted:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     groupId:            { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },

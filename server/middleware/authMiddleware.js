@@ -10,6 +10,7 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
+const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
 
 // ── PROTECT: Verify JWT, attach user to request ──────────────────────────────
 exports.protect = async (req, res, next) => {
@@ -20,20 +21,8 @@ exports.protect = async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            // FIX: Admin tokens carry {mobile, role:'admin'} — no id field.
-            // Bypass DB lookup for admin and inject a synthetic user object.
-            if (decoded.role === 'admin') {
-                req.user = {
-                    id: 'admin',
-                    _id: 'admin',
-                    role: 'admin',
-                    mobile: decoded.mobile,
-                    name: 'Admin',
-                };
-                return next();
-            }
-
-            // Worker / Client: fetch full Mongoose document from DB
+            // Admin / Worker / Client: fetch full Mongoose document from DB.
+            // Admin tokens now also carry a real user id.
             const user = await User.findById(decoded.id).select('-password');
             if (!user) {
                 return res.status(401).json({ message: 'Not authorized — user no longer exists' });
@@ -53,7 +42,8 @@ exports.protect = async (req, res, next) => {
 
 // ── ROLE GUARD: Admin ─────────────────────────────────────────────────────────
 exports.admin = (req, res, next) => {
-    if (req.user && req.user.role === 'admin') return next();
+    const allowedMobiles = getConfiguredAdminAccounts().map(acc => acc.mobile);
+    if (req.user && req.user.role === 'admin' && allowedMobiles.includes(String(req.user.mobile || ''))) return next();
     return res.status(403).json({ message: 'Access denied — admins only' });
 };
 
