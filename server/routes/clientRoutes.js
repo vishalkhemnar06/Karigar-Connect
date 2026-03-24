@@ -24,7 +24,12 @@ const { jobPhotoUploader, profilePhotoUploader } = require('../utils/cloudinary'
 const faceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/profile',        protect, client, getClientProfile);
-router.put('/profile/update', protect, client, profilePhotoUploader.single('photo'), updateClientProfile);
+router.put('/profile/update', protect, client, profilePhotoUploader.fields([
+    { name: 'photo', maxCount: 1 },
+    { name: 'proofOfResidence', maxCount: 1 },
+    { name: 'secondaryIdProof', maxCount: 1 },
+    { name: 'professionalCertification', maxCount: 1 },
+]), updateClientProfile);
 router.post('/face/verify-assigned-worker', protect, client, faceUpload.single('livePhoto'), verifyAssignedWorkerFace);
 
 router.get('/jobs',       protect, client, getClientJobs);

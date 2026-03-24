@@ -17,7 +17,7 @@ import { Store, Eye, EyeOff, ArrowRight } from 'lucide-react';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TextInput = ({ label, type, placeholder, value, onChange,
-    required, maxLength, prefix, rightSlot }) => (
+    required, maxLength, prefix, rightSlot, autoComplete = 'off', name, inputMode }) => (
     <div className="space-y-1.5">
         {label && (
             <label className="block text-[11px] font-black text-gray-400 uppercase tracking-widest">
@@ -32,12 +32,14 @@ const TextInput = ({ label, type, placeholder, value, onChange,
             )}
             <input
                 type={type || 'text'}
+                name={name}
                 placeholder={placeholder}
                 value={value}
                 onChange={onChange}
                 required={required}
                 maxLength={maxLength}
-                autoComplete="off"
+                autoComplete={autoComplete}
+                inputMode={inputMode}
                 className={[
                     'w-full border-2 rounded-xl py-3.5 pr-12 bg-gray-50 text-gray-900',
                     'placeholder-gray-300 text-sm font-medium',
@@ -136,9 +138,10 @@ const StandardForm = ({ role, gradient, onSuccess }) => {
     }, [role, mobile, password, otp, method, onSuccess]);
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <TextInput label="Mobile Number" type="tel" placeholder="10-digit mobile"
-                value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91" />
+            value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91"
+            name={`mobile_${role}`} autoComplete="off" inputMode="numeric" />
 
             {role !== 'admin' && <MethodToggle method={method} onChange={handleMethodChange} />}
 
@@ -148,6 +151,8 @@ const StandardForm = ({ role, gradient, onSuccess }) => {
                         label="Password" type={showPwd ? 'text' : 'password'}
                         placeholder="Enter your password"
                         value={password} onChange={onPasswordChange} required
+                        name={`login_${role}_password`}
+                        autoComplete="new-password"
                         rightSlot={
                             <button type="button" onClick={togglePwd}
                                 className="text-gray-400 hover:text-gray-700 p-1">
@@ -168,7 +173,8 @@ const StandardForm = ({ role, gradient, onSuccess }) => {
                 <div className="flex gap-2 items-end">
                     <div className="flex-1">
                         <TextInput label="OTP" type="text" placeholder="6-digit OTP"
-                            value={otp} onChange={onOtpChange} required maxLength={6} />
+                            value={otp} onChange={onOtpChange} required maxLength={6}
+                            name={`otp_${role}`} autoComplete="one-time-code" inputMode="numeric" />
                     </div>
                     <button type="button" onClick={sendOtp} disabled={loading}
                         className="shrink-0 px-4 py-3.5 bg-orange-100 hover:bg-orange-200 text-orange-700
@@ -213,13 +219,16 @@ const ShopForm = ({ onSuccess }) => {
     }, [mobile, password, onSuccess]);
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <TextInput label="Registered Mobile" type="tel" placeholder="Shop mobile number"
-                value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91" />
+                value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91"
+                name="shop_mobile" autoComplete="off" inputMode="numeric" />
             <TextInput
                 label="Password" type={showPwd ? 'text' : 'password'}
                 placeholder="Enter your password"
                 value={password} onChange={onPasswordChange} required
+                name="shop_login_password"
+                autoComplete="new-password"
                 rightSlot={
                     <button type="button" onClick={togglePwd}
                         className="text-gray-400 hover:text-gray-700 p-1">

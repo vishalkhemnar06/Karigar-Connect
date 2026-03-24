@@ -74,7 +74,7 @@ const userSchema = new mongoose.Schema({
 
     // Client fields — Basic Security & Verification
     ageVerified: { type: Boolean, default: false },
-    emergencyContact: { name: String, mobile: String }, // Already has for worker, extending for client
+    // Uses common `emergencyContact` field declared above
     proofOfResidence: { type: String }, // File path to uploaded utility bill/lease/bank statement
     secondaryIdType: { type: String }, // e.g., "PAN", "Voter", "Driving License"
     secondaryIdProof: { type: String }, // File path

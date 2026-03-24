@@ -612,8 +612,11 @@ exports.updateClientProfile = async (req, res) => {
         if (req.body.termsWorkerProtectionAccepted !== undefined) c.termsWorkerProtectionAccepted = req.body.termsWorkerProtectionAccepted === 'true' || req.body.termsWorkerProtectionAccepted === true;
 
         // File uploads
-        if (req.file) c.photo = req.file.path;
+        if (req.file) c.photo = req.file.path; // backward compatibility
         if (req.files) {
+            if (req.files.photo && req.files.photo[0]) {
+                c.photo = req.files.photo[0].path;
+            }
             if (req.files.proofOfResidence && req.files.proofOfResidence[0]) {
                 c.proofOfResidence = req.files.proofOfResidence[0].path;
             }
