@@ -1,7 +1,7 @@
 // client/src/pages/worker/JobBookings.jsx
-// UPDATED: Full i18n translation support added + Mobile optimized
+// FIXED: i18n translation issues, mobile optimization, and component bugs
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getWorkerBookings, workerCancelJob, getImageUrl } from '../../api/index';
@@ -11,7 +11,7 @@ import {
     Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
     Star, Shield, AlertCircle, CheckCircle, XCircle, Truck,
     Phone, Mail, ExternalLink, ChevronDown, ChevronUp,
-    Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle
+    Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle, X
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -35,16 +35,16 @@ const getCancelInfo = (job) => {
     }
 };
 
-// ── Status Config ─────────────────────────────────────────────────────────────
+// ── Status Config with i18n ─────────────────────────────────────────────────────────────
 const useStatusConfig = () => {
     const { t } = useTranslation();
     return {
-        open:                { label: t('common.open'),      color: 'bg-green-500', bg: 'bg-green-50',  text: 'text-green-700',  icon: Zap },
-        scheduled:           { label: t('common.scheduled'), color: 'bg-blue-500',  bg: 'bg-blue-50',   text: 'text-blue-700',   icon: Calendar },
-        running:             { label: t('common.running'),   color: 'bg-yellow-500',bg: 'bg-yellow-50', text: 'text-yellow-700', icon: Truck },
-        completed:           { label: t('common.completed'), color: 'bg-emerald-500',bg:'bg-emerald-50',text: 'text-emerald-700',icon: CheckCircle },
-        cancelled_by_client: { label: t('common.cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
-        cancelled:           { label: t('common.cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
+        open:                { label: t('common.open', 'Open'),      color: 'bg-green-500', bg: 'bg-green-50',  text: 'text-green-700',  icon: Zap },
+        scheduled:           { label: t('common.scheduled', 'Scheduled'), color: 'bg-blue-500',  bg: 'bg-blue-50',   text: 'text-blue-700',   icon: Calendar },
+        running:             { label: t('common.running', 'Running'),   color: 'bg-yellow-500',bg: 'bg-yellow-50', text: 'text-yellow-700', icon: Truck },
+        completed:           { label: t('common.completed', 'Completed'), color: 'bg-emerald-500',bg:'bg-emerald-50',text: 'text-emerald-700',icon: CheckCircle },
+        cancelled_by_client: { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
+        cancelled:           { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
     };
 };
 
@@ -68,16 +68,21 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
     const [err, setErr] = useState('');
 
     const handle = async () => {
-        if (!reason.trim()) { setErr(t('job_bookings.reason_label') + ' required.'); return; }
+        if (!reason.trim()) { 
+            setErr(t('job_bookings.reason_required', 'Please provide a reason for cancellation.')); 
+            return; 
+        }
         try {
             setLoading(true);
             await workerCancelJob(job._id, reason);
-            toast.success(t('job_bookings.cancelled_success'));
+            toast.success(t('job_bookings.cancelled_success', 'Job cancelled successfully.'));
             onCancelled(job._id);
             onClose();
         } catch (e) {
-            setErr(e?.response?.data?.message || 'Failed to cancel.');
-        } finally { setLoading(false); }
+            setErr(e?.response?.data?.message || t('job_bookings.cancel_failed', 'Failed to cancel job.'));
+        } finally { 
+            setLoading(false); 
+        }
     };
 
     // Handle escape key
@@ -110,17 +115,17 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
                         <AlertCircle size={20} className="text-red-500" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-black text-gray-900">{t('job_bookings.cancel_assignment')}</h3>
+                        <h3 className="text-lg font-black text-gray-900">{t('job_bookings.cancel_assignment', 'Cancel Assignment')}</h3>
                         <p className="text-xs text-gray-500 truncate">{job?.title || 'Job'}</p>
                     </div>
                     <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
-                        <XCircle size={18} className="text-gray-400" />
+                        <X size={18} className="text-gray-400" />
                     </button>
                 </div>
 
                 {mySlot && (
                     <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4">
-                        <p className="text-xs text-orange-600 font-semibold">{t('job_bookings.your_role')}</p>
+                        <p className="text-xs text-orange-600 font-semibold">{t('job_bookings.your_role', 'Your Role')}</p>
                         <p className="text-sm font-bold text-orange-700 capitalize">{mySlot.skill}</p>
                     </div>
                 )}
@@ -129,8 +134,8 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
                     <div className="flex items-start gap-2">
                         <AlertCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
                         <div>
-                            <p className="text-xs font-bold text-red-700 mb-0.5">⚠️ Warning</p>
-                            <p className="text-xs text-red-600">{t('job_bookings.cancel_warning')}</p>
+                            <p className="text-xs font-bold text-red-700 mb-0.5">⚠️ {t('job_bookings.warning', 'Warning')}</p>
+                            <p className="text-xs text-red-600">{t('job_bookings.cancel_warning', 'Cancelling may affect your reliability score.')}</p>
                         </div>
                     </div>
                 </div>
@@ -143,13 +148,13 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
                 )}
 
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                    {t('job_bookings.reason_label')} <span className="text-red-500">*</span>
+                    {t('job_bookings.reason_label', 'Cancellation Reason')} <span className="text-red-500">*</span>
                 </label>
                 <textarea
                     rows={3}
                     value={reason}
                     onChange={e => setReason(e.target.value)}
-                    placeholder="Please explain why you need to cancel..."
+                    placeholder={t('job_bookings.reason_placeholder', 'Please explain why you need to cancel...')}
                     className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50 resize-none mb-4"
                 />
                 <div className="flex gap-3 sticky bottom-0 bg-white pt-2 pb-1">
@@ -157,14 +162,14 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
                         onClick={onClose} 
                         className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-xl font-semibold hover:bg-gray-50 transition-all active:bg-gray-100"
                     >
-                        {t('job_bookings.keep_job')}
+                        {t('job_bookings.keep_job', 'Keep Job')}
                     </button>
                     <button
                         onClick={handle}
                         disabled={loading || !reason.trim()}
                         className="flex-1 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold disabled:opacity-60 transition-all shadow-md active:scale-95"
                     >
-                        {loading ? <Loader2 size={18} className="animate-spin mx-auto" /> : t('job_bookings.confirm_cancel')}
+                        {loading ? <Loader2 size={18} className="animate-spin mx-auto" /> : t('job_bookings.confirm_cancel', 'Confirm Cancel')}
                     </button>
                 </div>
             </motion.div>
@@ -174,8 +179,16 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
 
 // ── Error Boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
-    constructor(props) { super(props); this.state = { hasError: false }; }
-    static getDerivedStateFromError() { return { hasError: true }; }
+    constructor(props) { 
+        super(props); 
+        this.state = { hasError: false, error: null }; 
+    }
+    static getDerivedStateFromError(error) { 
+        return { hasError: true, error }; 
+    }
+    componentDidCatch(error, errorInfo) {
+        console.error('JobBookings error:', error, errorInfo);
+    }
     render() {
         if (this.state.hasError) {
             return (
@@ -183,7 +196,13 @@ class ErrorBoundary extends React.Component {
                     <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
                         <AlertCircle size={40} className="text-red-500 mx-auto mb-3" />
                         <h2 className="text-base font-bold text-red-700 mb-2">Something went wrong</h2>
-                        <button onClick={() => window.location.reload()} className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm">Refresh Page</button>
+                        <p className="text-sm text-red-600 mb-4">{this.state.error?.message || 'Unable to load bookings'}</p>
+                        <button 
+                            onClick={() => window.location.reload()} 
+                            className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors"
+                        >
+                            Refresh Page
+                        </button>
                     </div>
                 </div>
             );
@@ -326,7 +345,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                     <div className="flex items-start gap-2">
                                         <Clock size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
                                         <div className="flex-1">
-                                            <p className="text-xs font-bold text-amber-700 mb-1">{t('job_bookings.pending_apps')}</p>
+                                            <p className="text-xs font-bold text-amber-700 mb-1">{t('job_bookings.pending_apps', 'Pending Applications')}</p>
                                             <div className="flex flex-wrap gap-1.5 mb-1.5">
                                                 {myApps.filter(a => a?.status === 'pending').map((a, i) => (
                                                     <span key={i} className="text-xs bg-white border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full font-semibold capitalize">
@@ -334,7 +353,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                                     </span>
                                                 ))}
                                             </div>
-                                            <p className="text-xs text-amber-600">{t('job_bookings.waiting_client')}</p>
+                                            <p className="text-xs text-amber-600">{t('job_bookings.waiting_client', 'Waiting for client to confirm')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -381,8 +400,8 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                     <div className="flex items-start gap-2">
                                         <Truck size={16} className="text-yellow-600 flex-shrink-0 mt-0.5" />
                                         <div className="flex-1">
-                                            <p className="text-xs font-bold text-yellow-700 mb-0.5">{t('job_bookings.sections.in_progress')}</p>
-                                            <p className="text-xs text-yellow-600">{t('job_manage.in_progress_job')}</p>
+                                            <p className="text-xs font-bold text-yellow-700 mb-0.5">{t('job_bookings.sections.in_progress', 'In Progress')}</p>
+                                            <p className="text-xs text-yellow-600">{t('job_manage.in_progress_job', 'Job is currently in progress')}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -395,7 +414,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                     onClick={() => navigate(`/worker/live-tracking/${job._id}`)}
                                     className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold text-sm transition-all shadow-lg active:opacity-80 touch-manipulation"
                                 >
-                                    <Navigation size={16} /> {t('job_bookings.share_location')}
+                                    <Navigation size={16} /> {t('job_bookings.share_location', 'Share Live Location')}
                                 </motion.button>
                             )}
 
@@ -407,11 +426,11 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                         onClick={() => onCancel({ job, mySlot: myPrimary })}
                                         className="w-full py-3.5 border-2 border-red-200 bg-white text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-all active:bg-red-50 touch-manipulation"
                                     >
-                                        {t('job_bookings.cancel_assignment')}
+                                        {t('job_bookings.cancel_assignment', 'Cancel Assignment')}
                                     </motion.button>
                                 ) : cancelInfo.reason === 'too_close' ? (
                                     <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-center">
-                                        <p className="text-xs font-bold text-red-600 mb-0.5">{t('job_manage.cannot_cancel')}</p>
+                                        <p className="text-xs font-bold text-red-600 mb-0.5">{t('job_manage.cannot_cancel', 'Cannot Cancel')}</p>
                                         <p className="text-xs text-red-500">
                                             {t('job_manage.cancel_window_closed', { mins: cancelInfo.minsLeft })}
                                         </p>
@@ -422,7 +441,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                             {job?.status === 'running' && (
                                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
                                     <p className="text-xs text-gray-500 font-medium flex items-center justify-center gap-1.5">
-                                        <Lock size={11} /> {t('job_bookings.cancel_locked')}
+                                        <Lock size={11} /> {t('job_bookings.cancel_locked', 'Cannot cancel job in progress')}
                                     </p>
                                 </div>
                             )}
@@ -450,23 +469,25 @@ export default function JobBookings() {
     const workerId = String(workerData._id || workerData.id || '');
     const workerSkills = (workerData.skills || []).map(s => (typeof s === 'string' ? s : s?.name || '')).map(s => s.toLowerCase().trim()).filter(Boolean);
 
-    const loadBookings = async () => {
+    const loadBookings = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
             const { data } = await getWorkerBookings();
             setJobs(Array.isArray(data) ? data : []);
         } catch (err) {
-            setError(err?.response?.data?.message || 'Failed to load bookings.');
-            toast.error(t('job_bookings.failed_load'));
+            setError(err?.response?.data?.message || t('job_bookings.failed_load', 'Failed to load bookings.'));
+            toast.error(t('job_bookings.failed_load', 'Failed to load bookings.'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [t]);
 
-    useEffect(() => { loadBookings(); }, []);
+    useEffect(() => { 
+        loadBookings(); 
+    }, [loadBookings]);
 
-    const getBookingSection = (job) => {
+    const getBookingSection = useCallback((job) => {
         if (!job) return 'others';
         const wid = workerId;
         try {
@@ -493,34 +514,40 @@ export default function JobBookings() {
             if (job.status === 'open') return 'open';
             if (job.status === 'scheduled' && myApps.length === 0 && !isAssignedToMe) return 'open';
             return 'others';
-        } catch { return 'others'; }
-    };
-
-    const groupedJobs = jobs.reduce((acc, job) => {
-        try {
-            const section = getBookingSection(job);
-            if (!acc[section]) acc[section] = [];
-            acc[section].push(job);
-        } catch {
-            if (!acc.others) acc.others = [];
-            acc.others.push(job);
+        } catch { 
+            return 'others'; 
         }
-        return acc;
-    }, { open: [], in_progress: [], completed: [], cancelled: [], others: [] });
+    }, [workerId]);
 
-    // Section metadata
+    const groupedJobs = useMemo(() => {
+        return jobs.reduce((acc, job) => {
+            try {
+                const section = getBookingSection(job);
+                if (!acc[section]) acc[section] = [];
+                acc[section].push(job);
+            } catch {
+                if (!acc.others) acc.others = [];
+                acc.others.push(job);
+            }
+            return acc;
+        }, { open: [], in_progress: [], completed: [], cancelled: [], others: [] });
+    }, [jobs, getBookingSection]);
+
+    // Section metadata with translations
     const sectionMeta = [
-        { key: 'in_progress', title: t('job_bookings.sections.in_progress'), icon: Truck,        color: 'orange', empty: t('job_bookings.empty.in_progress') },
-        { key: 'open',        title: t('job_bookings.sections.open'),        icon: Zap,          color: 'green',  empty: t('job_bookings.empty.open') },
-        { key: 'completed',   title: t('job_bookings.sections.completed'),   icon: CheckCircle,  color: 'emerald',empty: t('job_bookings.empty.completed') },
-        { key: 'cancelled',   title: t('job_bookings.sections.cancelled'),   icon: XCircle,      color: 'red',    empty: t('job_bookings.empty.cancelled') },
-        { key: 'others',      title: t('job_bookings.sections.others'),      icon: AlertCircle,  color: 'gray',   empty: t('job_bookings.empty.others') },
+        { key: 'in_progress', title: t('job_bookings.sections.in_progress', 'In Progress'), icon: Truck,        color: 'orange', empty: t('job_bookings.empty.in_progress', 'No jobs in progress') },
+        { key: 'open',        title: t('job_bookings.sections.open', 'Open'),        icon: Zap,          color: 'green',  empty: t('job_bookings.empty.open', 'No open jobs') },
+        { key: 'completed',   title: t('job_bookings.sections.completed', 'Completed'),   icon: CheckCircle,  color: 'emerald',empty: t('job_bookings.empty.completed', 'No completed jobs') },
+        { key: 'cancelled',   title: t('job_bookings.sections.cancelled', 'Cancelled'),   icon: XCircle,      color: 'red',    empty: t('job_bookings.empty.cancelled', 'No cancelled jobs') },
+        { key: 'others',      title: t('job_bookings.sections.others', 'Others'),      icon: AlertCircle,  color: 'gray',   empty: t('job_bookings.empty.others', 'No other jobs') },
     ];
 
-    const handleCancelled = async () => { await loadBookings(); };
+    const handleCancelled = useCallback(async () => { 
+        await loadBookings(); 
+    }, [loadBookings]);
 
     // Mobile touch scroll for section tabs
-    const scrollContainerRef = React.useRef(null);
+    const scrollContainerRef = useRef(null);
 
     if (loading) {
         return (
@@ -530,7 +557,25 @@ export default function JobBookings() {
                     transition={{ duration: 2, repeat: Infinity, ease: "linear" }} 
                     className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full"
                 />
-                <p className="mt-4 text-gray-500 font-semibold text-sm">{t('job_bookings.loading')}</p>
+                <p className="mt-4 text-gray-500 font-semibold text-sm">{t('job_bookings.loading', 'Loading your bookings...')}</p>
+            </div>
+        );
+    }
+
+    if (error && jobs.length === 0) {
+        return (
+            <div className="max-w-3xl mx-auto p-4">
+                <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
+                    <AlertCircle size={40} className="text-red-500 mx-auto mb-3" />
+                    <h2 className="text-base font-bold text-red-700 mb-2">Error Loading Bookings</h2>
+                    <p className="text-sm text-red-600 mb-4">{error}</p>
+                    <button 
+                        onClick={loadBookings} 
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors"
+                    >
+                        Try Again
+                    </button>
+                </div>
             </div>
         );
     }
@@ -551,17 +596,17 @@ export default function JobBookings() {
                                 <Briefcase size={20} className="text-white" />
                             </div>
                             <div className="flex-1">
-                                <h1 className="text-xl font-black">{t('job_bookings.title')}</h1>
-                                <p className="text-white/90 text-xs mt-0.5">{t('job_bookings.subtitle')}</p>
+                                <h1 className="text-xl font-black">{t('job_bookings.title', 'My Bookings')}</h1>
+                                <p className="text-white/90 text-xs mt-0.5">{t('job_bookings.subtitle', 'Track and manage your job assignments')}</p>
                             </div>
                         </div>
                         {jobs.length > 0 && (
                             <div className="flex gap-2 mt-2">
                                 <span className="flex items-center gap-1 bg-white/20 rounded-full px-2.5 py-1 text-xs">
-                                    <Briefcase size={10} /> {jobs.length} {t('job_bookings.total_jobs')}
+                                    <Briefcase size={10} /> {jobs.length} {t('job_bookings.total_jobs', 'Total Jobs')}
                                 </span>
                                 <span className="flex items-center gap-1 bg-white/20 rounded-full px-2.5 py-1 text-xs">
-                                    <Truck size={10} /> {groupedJobs.in_progress?.length || 0} {t('job_bookings.in_progress')}
+                                    <Truck size={10} /> {groupedJobs.in_progress?.length || 0} {t('job_bookings.in_progress', 'In Progress')}
                                 </span>
                             </div>
                         )}
@@ -574,13 +619,13 @@ export default function JobBookings() {
                             className="text-center py-12 bg-white rounded-2xl shadow-xl border border-gray-100"
                         >
                             <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity }} className="text-5xl mb-3">📋</motion.div>
-                            <p className="font-bold text-gray-800 text-lg mb-1">{t('job_bookings.no_bookings')}</p>
-                            <p className="text-gray-400 text-xs px-4">{t('job_bookings.apply_for_jobs')}</p>
+                            <p className="font-bold text-gray-800 text-lg mb-1">{t('job_bookings.no_bookings', 'No Bookings Yet')}</p>
+                            <p className="text-gray-400 text-xs px-4">{t('job_bookings.apply_for_jobs', 'Apply for jobs to get started')}</p>
                             <button
                                 onClick={() => navigate('/worker/jobs')}
                                 className="mt-4 inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all touch-manipulation"
                             >
-                                <Zap size={14} /> {t('job_bookings.browse_jobs')}
+                                <Zap size={14} /> {t('job_bookings.browse_jobs', 'Browse Jobs')}
                             </button>
                         </motion.div>
                     ) : (

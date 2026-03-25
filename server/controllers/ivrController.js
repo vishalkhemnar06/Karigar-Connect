@@ -38,10 +38,13 @@ const LANG_MENU = { '1': 'hi', '2': 'mr', '3': 'en' };
 
 const M = {
     hi: {
-        unregistered: 'Aap KarigarConnect par registered nahi hain.',
-        unregisteredMenu: 'Registration ki jankari ke liye 1 dabayein. Registration link SMS paane ke liye 2 dabayein. Options dobara sunane ke liye 7 dabayein.',
-        unregisteredInfo: 'Register karne ke liye KarigarConnect app ya web portal par jaakar apni details bhar kar account banaiye.',
-        thankYouRegister: 'Dhanyawad. Kripya register karne ke baad phir se call karein.',
+        unregistered: 'Aap KarigarConnect par abhi registered nahi hain. KarigarConnect par register karke aap ghar baithe kaam pakar sakte hain.',
+        unregisteredMenu: 'Registration ke liye zaroori documents ke baare mein jaanne ke liye 1 dabayein. Registration link aur support contact paane ke liye 2 dabayein. Menu dobara sunane ke liye 3 dabayein. Call band karne ke liye 0 dabayein.',
+        unregisteredDocuments: 'Registration ke liye aapko ye documents chahiye: Aadhar number, ID proof, bank account details, ek skill ke liye certificate agar hai, aur ek portfolio photo. Ye sab details KarigarConnect app ya website par bhar sakte hain.',
+        unregisteredRegistrationInfo: 'Registration link aur steps aapke number par SMS bheje jaayenge. Isme registration process, support contact aur mahatvapurn jankari hogi. Support ke liye aap whatsapp kar sakte hain.',
+        supportContact: 'Support contact number: 9876543210. Whatsapp par bhi puchh sakte hain. Email: support@karigarconnect.in',
+        unregisteredRepeat: 'Theek hai. Menu dobara sunayenge. ',
+        thankYouRegister: 'Dhanyawad. Registration karne ke baad phir se call karein. Aapka registration approve hone ke baad aap immediately jobs pakar sakte hain.',
         languageMenu: 'Bhasha chuniyega. Hindi ke liye 1, Marathi ke liye 2, English ke liye 3 dabaiye. Options dobara sunane ke liye 7 dabaiye.',
         welcomeLocalized: 'KarigarConnect mein aapka swagat hai.',
         mainMenu: 'Main menu. Availability update ke liye 1. Nearby jobs ke liye 2. Leaderboard ke liye 3. Profile summary ke liye 4. Help ke liye 5. Bhasha badalne ke liye 8. Call band karne ke liye 0 dabaiye. Options dobara sunane ke liye 7 dabaiye.',
@@ -73,10 +76,13 @@ const M = {
         goodbye: 'Dhanyawad. KarigarConnect ko call karne ke liye shukriya.',
     },
     mr: {
-        unregistered: 'Tumhi KarigarConnect var registered nahi aahat.',
-        unregisteredMenu: 'Registration mahitisaathi 1 daba. Registration link SMS saathi 2 daba. Options punha aiknyasathi 7 daba.',
-        unregisteredInfo: 'KarigarConnect app kiwa web portal var details bharun account tayar kara.',
-        thankYouRegister: 'Dhanyavad. Registration nantar punha call kara.',
+        unregistered: 'Ahi tumhi KarigarConnect var registered nahi aahat. KarigarConnect var register karun tum ghar basun kaam karun paisa kamun shakata.',
+        unregisteredMenu: 'Registration saathi zaroori documents mahetle tar 1 daba. Registration link aur support contact saathi 2 daba. Menu punha aiknyasathi 3 daba. Call band saathi 0 daba.',
+        unregisteredDocuments: 'Registration saathi tumhala zaroori documents: Aadhar number, ID proof, bank account details, ek skill saathi certificate asti tar, aur ek portfolio photo. He sab details KarigarConnect app kiwa website var bharun shakata.',
+        unregisteredRegistrationInfo: 'Registration link aur steps tumchya number par SMS ubhara karun dil jail. Isme registration process, support contact aur mahatvapurn jankari asil. Support saathi whatsapp kar shakata.',
+        supportContact: 'Support contact number: 9876543210. Whatsapp var bhi puchun shakata. Email: support@karigarconnect.in',
+        unregisteredRepeat: 'Theek aahe. Menu punha aiknyasathi dillyacha. ',
+        thankYouRegister: 'Dhanyavad. Registration nantar punha call kara. Tumcha registration approve jhalmya nantar tum immediately jobs pakar shakata.',
         languageMenu: 'Bhasha niwada. Hindi sathi 1, Marathi sathi 2, English sathi 3 daba. Options punha aiknyasathi 7 daba.',
         welcomeLocalized: 'KarigarConnect madhe tumcha swagat aahe.',
         mainMenu: 'Main menu. Availability update sathi 1. Nearby jobs sathi 2. Leaderboard sathi 3. Profile summary sathi 4. Help sathi 5. Bhasha badalnyasathi 8 daba. Call band sathi 0 daba. Options punha aiknyasathi 7 daba.',
@@ -108,10 +114,13 @@ const M = {
         goodbye: 'Dhanyavad. KarigarConnect la call kelyabaddal abhar.',
     },
     en: {
-        unregistered: 'You are not registered on KarigarConnect.',
-        unregisteredMenu: 'Press 1 for registration information. Press 2 to receive registration link by SMS. Press 7 to hear options again.',
-        unregisteredInfo: 'Please register using KarigarConnect app or web portal and complete your profile details.',
-        thankYouRegister: 'Thank you. Please call again after registration.',
+        unregistered: 'You are not registered on KarigarConnect yet. Register now and start earning from home-based jobs.',
+        unregisteredMenu: 'Press 1 to know required documents for registration. Press 2 to get registration link and support contact by SMS. Press 3 to hear this menu again. Press 0 to end this call.',
+        unregisteredDocuments: 'For registration you need: Aadhar number, ID proof, bank account details, skill certificate if you have, and a portfolio photo. You can fill all these details on KarigarConnect app or website.',
+        unregisteredRegistrationInfo: 'Registration link and complete instructions will be sent by SMS to your phone. This includes registration steps, support contact number, and important information. You can also contact support on WhatsApp.',
+        supportContact: 'Support contact number: 9876543210. You can also reach us on WhatsApp. Email: support@karigarconnect.in',
+        unregisteredRepeat: 'Okay. Let me repeat the menu. ',
+        thankYouRegister: 'Thank you. Please call again after registration. Once your profile is approved, you can start working immediately.',
         languageMenu: 'Select language. Press 1 for Hindi, 2 for Marathi, 3 for English. Press 7 to hear options again.',
         welcomeLocalized: 'Welcome to KarigarConnect.',
         mainMenu: 'Main menu. Press 1 for availability update. Press 2 for nearby jobs. Press 3 for leaderboard. Press 4 for profile summary. Press 5 for help. Press 8 to change language. Press 0 to end call. Press 7 to hear options again.',
@@ -159,9 +168,9 @@ const TTS_LANG_MAP = {
 };
 
 const TTS_VOICE_MAP = {
-    hi: process.env.TWILIO_TTS_VOICE_HI || 'hi-IN-Chirp3-HD-Kore',
-    mr: process.env.TWILIO_TTS_VOICE_MR || 'mr-IN-Chirp3-HD-Kore',
-    en: process.env.TWILIO_TTS_VOICE_EN || 'en-IN-Chirp3-HD-Kore',
+    hi: process.env.TWILIO_TTS_VOICE_HI || 'hi-IN-Standard-A',
+    mr: process.env.TWILIO_TTS_VOICE_MR || 'mr-IN-Standard-A',
+    en: process.env.TWILIO_TTS_VOICE_EN || 'en-IN-Standard-C',
 };
 
 const getTtsLanguage = (session) => TTS_LANG_MAP[getLang(session)] || 'en-IN';
@@ -174,9 +183,17 @@ const getTtsVoiceByLanguage = (language = '') => {
 };
 
 const say = (text, language = '') => {
-    const langAttr = language ? ` language="${xmlEscape(language)}"` : '';
-    const voice = language ? getTtsVoiceByLanguage(language) : '';
-    const voiceAttr = voice ? ` voice="${xmlEscape(voice)}"` : '';
+    let langAttr = '';
+    let voiceAttr = '';
+    
+    if (language) {
+        langAttr = ` language="${xmlEscape(language)}"`;
+        const voice = getTtsVoiceByLanguage(language);
+        if (voice) {
+            voiceAttr = ` voice="${xmlEscape(voice)}"`;
+        }
+    }
+    
     return `<Say${langAttr}${voiceAttr}>${xmlEscape(text)}</Say>`;
 };
 const hangup = () => '<Hangup/>';
@@ -538,44 +555,119 @@ const jobQuickSummaryPrompt = (session) => {
 };
 
 const handleUnregisteredState = async (session, digits) => {
-    if (!digits) {
-        session.state = 'unregistered_menu';
+    // Step 1: Language selection for unregistered workers (if no language set yet)
+    if (!session.language) {
+        if (!digits) {
+            return xmlResponse(
+                say(msg(session, 'unregistered'), getTtsLanguage(session)),
+                gather({ session, prompt: msg(session, 'languageMenu'), sid: session.callSid })
+            );
+        }
+
+        // Validate language selection
+        if (digits === '7') {
+            // Repeat language menu
+            return xmlResponse(gather({ session, prompt: msg(session, 'languageMenu'), sid: session.callSid }));
+        }
+
+        if (!LANG_MENU[digits]) {
+            session.retries += 1;
+            if (session.retries >= 3) {
+                return xmlResponse(
+                    say(msg(session, 'invalid'), getTtsLanguage(session)),
+                    say(msg(session, 'goodbye'), getTtsLanguage(session)),
+                    hangup()
+                );
+            }
+            return xmlResponse(gather({ session, prompt: `${msg(session, 'invalid')} ${msg(session, 'languageMenu')}`, sid: session.callSid }));
+        }
+
+        // Language selected!
+        session.language = LANG_MENU[digits];
+        session.retries = 0;
+        pushEvent(session, 'language_selected', session.language);
+        
+        // Now show the unregistered menu in selected language
         return xmlResponse(
-            say(msg(session, 'unregistered')),
+            say(msg(session, 'unregistered'), getTtsLanguage(session)),
             gather({ session, prompt: msg(session, 'unregisteredMenu'), sid: session.callSid })
         );
     }
 
-    if (digits === '7') {
+    // Step 2: Unregistered menu options (after language is selected)
+    if (!digits) {
+        session.state = 'unregistered_menu';
+        return xmlResponse(
+            say(msg(session, 'unregistered'), getTtsLanguage(session)),
+            gather({ session, prompt: msg(session, 'unregisteredMenu'), sid: session.callSid })
+        );
+    }
+
+    // Option 3: Repeat menu
+    if (digits === '3') {
         pushEvent(session, 'menu_selected', 'unregistered_repeat');
-        return xmlResponse(gather({ session, prompt: msg(session, 'unregisteredMenu'), sid: session.callSid }));
+        return xmlResponse(
+            say(msg(session, 'unregisteredRepeat'), getTtsLanguage(session)),
+            gather({ session, prompt: msg(session, 'unregisteredMenu'), sid: session.callSid })
+        );
     }
 
+    // Option 1: Show required documents
     if (digits === '1') {
-        pushEvent(session, 'menu_selected', 'unregistered_info');
-        session.ended = true;
-        session.endReason = 'registration_info_provided';
-        return xmlResponse(say(msg(session, 'unregisteredInfo')), say(msg(session, 'thankYouRegister')), hangup());
+        pushEvent(session, 'menu_selected', 'unregistered_documents');
+        return xmlResponse(
+            say(msg(session, 'unregisteredDocuments'), getTtsLanguage(session)),
+            say(msg(session, 'unregisteredRepeat'), getTtsLanguage(session)),
+            gather({ session, prompt: msg(session, 'unregisteredMenu'), sid: session.callSid })
+        );
     }
 
+    // Option 2: Send registration link and support contact via SMS
     if (digits === '2') {
-        await sendCustomSms(session.phone, `Register here: ${REGISTRATION_LINK}`);
+        pushEvent(session, 'menu_selected', 'unregistered_registration_info');
+        
+        const registrationSmsText = `KarigarConnect Registration: ${REGISTRATION_LINK}\n\nRegister now to start earning! Documents needed: Aadhar, ID proof, Bank details, Certificate, and Portfolio photo.\n\nSupport: +91 9876543210 (WhatsApp)\nEmail: support@karigarconnect.in`;
+        
+        await sendCustomSms(session.phone, registrationSmsText);
         await markLeadSmsSent(session.phone);
-        pushEvent(session, 'sms_sent', 'registration_link');
-        session.ended = true;
-        session.endReason = 'registration_sms_sent';
-        return xmlResponse(say(msg(session, 'smsSent')), say(msg(session, 'thankYouRegister')), hangup());
+        
+        return xmlResponse(
+            say(msg(session, 'unregisteredRegistrationInfo'), getTtsLanguage(session)),
+            say(msg(session, 'supportContact'), getTtsLanguage(session)),
+            say(msg(session, 'smsSent'), getTtsLanguage(session)),
+            say(msg(session, 'thankYouRegister'), getTtsLanguage(session)),
+            hangup()
+        );
     }
 
+    // Option 0 or 4: End call
+    if (digits === '0' || digits === '4') {
+        pushEvent(session, 'menu_selected', 'call_ended');
+        session.ended = true;
+        session.endReason = 'user_ended_call';
+        return xmlResponse(
+            say(msg(session, 'goodbye'), getTtsLanguage(session)),
+            hangup()
+        );
+    }
+
+    // Invalid input
     session.retries += 1;
     pushEvent(session, 'invalid_input', 'unregistered_menu', { digits });
-    if (session.retries >= 2) {
+    if (session.retries >= 3) {
         session.ended = true;
         session.endReason = 'invalid_input_exceeded';
-        return xmlResponse(say(msg(session, 'invalid')), say(msg(session, 'goodbye')), hangup());
+        return xmlResponse(
+            say(msg(session, 'invalid'), getTtsLanguage(session)),
+            say(msg(session, 'goodbye'), getTtsLanguage(session)),
+            hangup()
+        );
     }
 
-    return xmlResponse(gather({ session, prompt: `${msg(session, 'invalid')} ${msg(session, 'unregisteredMenu')}`, sid: session.callSid }));
+    return xmlResponse(
+        say(msg(session, 'invalid'), getTtsLanguage(session)),
+        gather({ session, prompt: msg(session, 'unregisteredMenu'), sid: session.callSid })
+    );
 };
 
 const handleRegisteredFlow = async (session, worker, digits, speech) => {
@@ -905,6 +997,7 @@ exports.twilioVoiceWebhook = async (req, res) => {
                 workerId: worker?._id || null,
                 registered: !!worker,
                 workerApproved: worker?.verificationStatus === 'approved',
+                language: 'hi',  // Default language
                 state: worker && worker.verificationStatus === 'approved' ? 'language_menu' : 'unregistered_menu',
                 defaultLocation: {
                     city: worker?.address?.city || '',
@@ -938,7 +1031,7 @@ exports.twilioVoiceWebhook = async (req, res) => {
         console.log('[IVR] Gather configured');
         
         gather.say(
-            { language: 'en-IN', voice: getTtsVoiceByLanguage('en-IN') },
+            { language: 'en-IN', voice: 'en-IN-Standard-C' },
             'Welcome to KarigarConnect. Bhasha chuniyega. Hindi ke liye 1, Marathi ke liye 2, English ke liye 3 dabaiye.'
         );
         console.log('[IVR] Say configured, returning response');

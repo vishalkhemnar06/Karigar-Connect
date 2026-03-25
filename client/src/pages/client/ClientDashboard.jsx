@@ -402,7 +402,7 @@ const ClientDashboard = () => {
   const hasFilters = !!(searchTerm || skillFilter || locationFilter || experienceFilter);
   const availCount = karigars.filter(k => k.availability !== false).length;
   const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good Evening';
   const firstName = clientData?.name?.split(' ')[0] || null;
 
   return (

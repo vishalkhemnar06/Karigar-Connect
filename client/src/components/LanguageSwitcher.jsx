@@ -1,104 +1,130 @@
-// src/components/LanguageSwitcher.jsx
-// Supports three display modes:
-//   <LanguageSwitcher />           → default (desktop navbar)
-//   <LanguageSwitcher compact />   → icon-only small version (mobile header)
-//   <LanguageSwitcher fullWidth /> → full width row (mobile menu)
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Globe, ChevronDown, Check } from 'lucide-react';
 
-import React from 'react';
-import { useTranslation } from 'react-i18next';
-
-const languages = [
-    { code: 'en', label: 'EN', fullLabel: 'English', flag: '🇬🇧' },
-    { code: 'hi', label: 'हि', fullLabel: 'हिंदी',   flag: '🇮🇳' },
-    { code: 'mr', label: 'म',  fullLabel: 'मराठी',   flag: '🇮🇳' },
+const LANGUAGES = [
+  { code: 'en', label: 'English', native: 'English', flag: '🇬🇧' },
+  { code: 'hi', label: 'Hindi',   native: 'हिन्दी',  flag: '🇮🇳' },
+  { code: 'mr', label: 'Marathi', native: 'मराठी',   flag: '🇮🇳' },
 ];
 
-const LanguageSwitcher = ({ compact = false, fullWidth = false }) => {
-    const { i18n } = useTranslation();
-    // normalize: 'en-US' → 'en'
-    const currentLang = (i18n.language || 'en').split('-')[0];
+const LanguageSwitcher = () => {
+  const [open, setOpen]               = useState(false);
+  const [selected, setSelected]       = useState(LANGUAGES[0]);
+  const dropdownRef                   = useRef(null);
 
-    const handleChange = (code) => {
-        i18n.changeLanguage(code);
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false);
+      }
     };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
-    // ── Compact mode: small pill with flag only (mobile top-bar) ──
-    if (compact) {
-        return (
-            <div className="flex items-center gap-0.5 bg-orange-50 rounded-lg p-0.5 border border-orange-200">
-                {languages.map((lang) => (
-                    <button
-                        key={lang.code}
-                        onClick={() => handleChange(lang.code)}
-                        title={lang.fullLabel}
-                        className={`
-                            w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center
-                            transition-all duration-200
-                            ${currentLang === lang.code
-                                ? 'bg-orange-500 text-white shadow-sm'
-                                : 'text-gray-500 hover:bg-orange-100'
-                            }
-                        `}
-                    >
-                        {lang.label}
-                    </button>
-                ))}
-            </div>
-        );
+  const changeLanguage = (lang) => {
+    setSelected(lang);
+    setOpen(false);
+
+    if (lang.code === 'en') {
+      // Reset to English - reload with no cookie
+      const iframe = document.querySelector('.goog-te-banner-frame');
+      if (iframe) {
+        const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+        const restore = innerDoc.querySelector('.goog-te-button button');
+        if (restore) restore.click();
+      }
+      // Fallback: delete cookie and reload
+      document.cookie =
+        'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie =
+        'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' +
+        window.location.hostname;
+      window.location.reload();
+      return;
     }
 
-    // ── Full-width mode: horizontal button row (inside mobile menu) ──
-    if (fullWidth) {
-        return (
-            <div className="flex gap-2 px-2">
-                {languages.map((lang) => (
-                    <button
-                        key={lang.code}
-                        onClick={() => handleChange(lang.code)}
-                        className={`
-                            flex-1 flex items-center justify-center gap-2
-                            py-2.5 rounded-xl text-sm font-bold
-                            transition-all duration-200 border-2
-                            ${currentLang === lang.code
-                                ? 'bg-orange-500 text-white border-orange-500 shadow-md'
-                                : 'text-gray-600 border-gray-200 hover:border-orange-300 hover:bg-orange-50'
-                            }
-                        `}
-                    >
-                        <span className="text-base">{lang.flag}</span>
-                        <span>{lang.fullLabel}</span>
-                    </button>
-                ))}
-            </div>
-        );
-    }
+    // Set Google Translate cookie
+    const cookieValue = `/en/${lang.code}`;
+    document.cookie = `googtrans=${cookieValue}; path=/`;
+    document.cookie = `googtrans=${cookieValue}; path=/; domain=${window.location.hostname}`;
 
-    // ── Default mode: pill buttons (desktop navbar) ──
-    return (
-        <div
-            className="flex items-center gap-1 bg-gray-50 rounded-xl p-1 border border-gray-200"
-            title="Change Language / भाषा बदलें / भाषा बदला"
-        >
-            {languages.map((lang) => (
-                <button
-                    key={lang.code}
-                    onClick={() => handleChange(lang.code)}
-                    title={lang.fullLabel}
-                    className={`
-                        flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold
-                        transition-all duration-200
-                        ${currentLang === lang.code
-                            ? 'bg-orange-500 text-white shadow-sm'
-                            : 'text-gray-600 hover:bg-orange-50 hover:text-orange-600'
-                        }
-                    `}
-                >
-                    <span>{lang.flag}</span>
-                    <span>{lang.label}</span>
-                </button>
+    // Trigger translate via hidden select
+    const select = document.querySelector('.goog-te-combo');
+    if (select) {
+      select.value = lang.code;
+      select.dispatchEvent(new Event('change'));
+    } else {
+      // If widget not ready, reload with cookie set
+      window.location.reload();
+    }
+  };
+
+  // On mount, read cookie to sync selected state
+  useEffect(() => {
+    const match = document.cookie.match(/googtrans=\/en\/(\w+)/);
+    if (match) {
+      const found = LANGUAGES.find((l) => l.code === match[1]);
+      if (found) setSelected(found);
+    }
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-all duration-200 bg-white"
+        title="Change Language"
+      >
+        <Globe size={14} className="text-orange-500" />
+        <span className="text-xs font-semibold text-gray-700 hidden sm:inline">
+          {selected.native}
+        </span>
+        <span className="text-sm sm:hidden">{selected.flag}</span>
+        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+          <ChevronDown size={12} className="text-gray-400" />
+        </motion.div>
+      </motion.button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 z-50 overflow-hidden"
+          >
+            <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              Select Language
+            </p>
+            {LANGUAGES.map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => changeLanguage(lang)}
+                className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-orange-50 transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{lang.flag}</span>
+                  <div className="text-left">
+                    <p className="font-medium text-gray-800 text-xs">{lang.native}</p>
+                    <p className="text-[10px] text-gray-400">{lang.label}</p>
+                  </div>
+                </div>
+                {selected.code === lang.code && (
+                  <Check size={13} className="text-orange-500" />
+                )}
+              </button>
             ))}
-        </div>
-    );
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 };
 
 export default LanguageSwitcher;
