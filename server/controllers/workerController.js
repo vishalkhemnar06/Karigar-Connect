@@ -3,14 +3,149 @@ const User = require('../models/userModel');
 const Rating = require('../models/ratingModel');
 const Complaint = require('../models/complaintModel');
 const crypto = require('crypto');
+const path = require('path');
 const { createNotification } = require('../utils/notificationHelper');
 const { canWorkerCancelJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { sendPasswordChangeOtpSms, sendCustomSms } = require('../utils/smsHelper');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const { upsertWorkerById, removeWorkerById, submitFeedback } = require('../services/semanticMatchingService');
+const { cloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 
 const CANCEL_PENALTY = 30;
+
+const isLegacyDocumentPath = (value) => {
+    if (typeof value !== 'string') return false;
+    const normalized = value.replace(/\\/g, '/').toLowerCase();
+    return (
+        normalized.includes('/uploads/documents/') ||
+        normalized.startsWith('uploads/documents/') ||
+        normalized.includes('/uploads/document/') ||
+        normalized.startsWith('uploads/document/') ||
+        normalized.includes('/uploads/certificates/') ||
+        normalized.startsWith('uploads/certificates/') ||
+        normalized.includes('/uploads/certificate/') ||
+        normalized.startsWith('uploads/certificate/')
+    );
+};
+
+const resolveLegacyDocumentToCloudinary = async (value) => {
+    if (!isLegacyDocumentPath(value)) return value;
+    try {
+        const cleanValue = String(value || '').replace(/\\/g, '/').split(/[?#]/)[0];
+        let decodedValue = cleanValue;
+        try {
+            decodedValue = decodeURIComponent(cleanValue);
+        } catch {
+            decodedValue = cleanValue;
+        }
+        const fileName = path.basename(decodedValue);
+        if (!fileName) return value;
+
+        const extension = path.extname(fileName).toLowerCase();
+        const publicIdBase = fileName.replace(/\.[^/.]+$/, '');
+        const publicIdCandidates = [
+            `karigarconnect/worker-docs/${publicIdBase}`,
+            `karigarconnect/documents/${publicIdBase}`,
+            `karigarconnect/misc/${publicIdBase}`,
+        ];
+        const resourceTypes = extension === '.pdf' ? ['raw', 'image'] : ['image', 'raw'];
+
+        for (const publicId of publicIdCandidates) {
+            for (const resourceType of resourceTypes) {
+                try {
+                    const asset = await cloudinary.api.resource(publicId, { resource_type: resourceType, type: 'upload' });
+                    if (asset?.secure_url) return asset.secure_url;
+                } catch {
+                    // Try next candidate.
+                }
+            }
+        }
+
+        const escapedBase = publicIdBase.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const folders = ['karigarconnect/misc', 'karigarconnect/documents', 'karigarconnect/worker-docs'];
+
+        for (const folder of folders) {
+            const escapedFolder = folder.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            try {
+                const result = await cloudinary.search
+                    .expression(`folder="${escapedFolder}" AND filename="${escapedBase}"`)
+                    .sort_by('created_at', 'desc')
+                    .max_results(1)
+                    .execute();
+                const secureUrl = result?.resources?.[0]?.secure_url;
+                if (secureUrl) return secureUrl;
+            } catch {
+                // Try next lookup strategy.
+            }
+        }
+
+        try {
+            const result = await cloudinary.search
+                .expression(`filename="${escapedBase}"`)
+                .sort_by('created_at', 'desc')
+                .max_results(1)
+                .execute();
+            const secureUrl = result?.resources?.[0]?.secure_url;
+            if (secureUrl) return secureUrl;
+        } catch {
+            // Return original value if no search match.
+        }
+
+        return value;
+    } catch {
+        return value;
+    }
+};
+
+const normalizeWorkerDocumentUrls = async (workerDoc) => {
+    const worker = workerDoc?.toObject ? workerDoc.toObject() : { ...(workerDoc || {}) };
+    if (!worker || typeof worker !== 'object') return worker;
+
+    if (worker.idProof?.filePath) {
+        worker.idProof.filePath = await resolveLegacyDocumentToCloudinary(worker.idProof.filePath);
+    }
+
+    if (worker.eShramCardPath) {
+        worker.eShramCardPath = await resolveLegacyDocumentToCloudinary(worker.eShramCardPath);
+    }
+
+    if (Array.isArray(worker.skillCertificates) && worker.skillCertificates.length) {
+        worker.skillCertificates = await Promise.all(
+            worker.skillCertificates.map((entry) => resolveLegacyDocumentToCloudinary(entry))
+        );
+    }
+
+    if (Array.isArray(worker.otherCertificates) && worker.otherCertificates.length) {
+        worker.otherCertificates = await Promise.all(
+            worker.otherCertificates.map((entry) => resolveLegacyDocumentToCloudinary(entry))
+        );
+    }
+
+    return worker;
+};
+
+const sanitizeWorkerSensitiveFields = (workerDoc) => {
+    const worker = workerDoc?.toObject ? workerDoc.toObject() : { ...(workerDoc || {}) };
+    if (!worker || typeof worker !== 'object') return worker;
+
+    const idType = String(worker?.idProof?.idType || '').trim();
+    const last4 = String(worker?.idProof?.numberLast4 || '').trim();
+    const label = idType === 'PAN Card' ? 'PAN' : 'Aadhaar';
+
+    if (worker.idProof) {
+        if (Object.prototype.hasOwnProperty.call(worker.idProof, 'numberHash')) {
+            delete worker.idProof.numberHash;
+        }
+        worker.idProof.maskedNumber = last4 ? `${label} ending with ${last4}` : '';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(worker, 'aadharNumber')) {
+        delete worker.aadharNumber;
+    }
+
+    return worker;
+};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PASSWORD CHANGE — OTP FLOW (3 steps)
@@ -520,7 +655,9 @@ exports.getWorkerProfile = async (req, res) => {
     try {
         const w = await User.findById(req.user.id).select('-password -resetPasswordToken -resetPasswordExpire -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry');
         if (!w) return res.status(404).json({ message: 'Not found.' });
-        return res.json(w);
+        const normalized = await normalizeWorkerDocumentUrls(w);
+        const sanitized = sanitizeWorkerSensitiveFields(normalized);
+        return res.json(sanitized);
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
@@ -528,9 +665,22 @@ exports.updateWorkerProfile = async (req, res) => {
     try {
         const w = await User.findById(req.user.id);
         if (!w) return res.status(404).json({ message: 'Not found.' });
-        ['email', 'phoneType', 'overallExperience', 'education'].forEach(f => {
+
+        if (req.files?.idProof?.[0] || req.body.idDocumentType !== undefined || req.body.idNumber !== undefined || req.body.aadharNumber !== undefined || req.body.panNumber !== undefined) {
+            return res.status(403).json({ message: 'ID proof type and ID number are locked after registration and cannot be updated.' });
+        }
+
+        ['email', 'phoneType', 'overallExperience', 'education', 'gender', 'eShramNumber', 'travelMethod'].forEach(f => {
             if (req.body[f] !== undefined) w[f] = req.body[f];
         });
+        if (req.body.dob !== undefined) {
+            const dob = req.body.dob ? new Date(req.body.dob) : null;
+            if (dob && !Number.isNaN(dob.getTime())) w.dob = dob;
+        }
+        if (req.body.experience !== undefined) {
+            const exp = Number(req.body.experience);
+            if (Number.isFinite(exp) && exp >= 0) w.experience = exp;
+        }
         w.address = w.address || {};
         ['city', 'pincode', 'locality', 'fullAddress', 'village'].forEach(f => {
             if (req.body[f] !== undefined) w.address[f] = req.body[f];
@@ -546,6 +696,21 @@ exports.updateWorkerProfile = async (req, res) => {
         if (req.body.skills) {
             try { w.skills = JSON.parse(req.body.skills).filter(s => s?.name?.trim()); } catch {}
         }
+        if (req.body.references) {
+            try {
+                const refs = JSON.parse(req.body.references);
+                if (Array.isArray(refs)) {
+                    w.references = refs
+                        .map(r => ({ name: String(r?.name || '').trim(), contact: String(r?.contact || '').trim() }))
+                        .filter(r => r.name && r.contact);
+                }
+            } catch {}
+        }
+        if (req.body.emergencyContactName !== undefined || req.body.emergencyContactMobile !== undefined) {
+            w.emergencyContact = w.emergencyContact || {};
+            if (req.body.emergencyContactName !== undefined) w.emergencyContact.name = req.body.emergencyContactName;
+            if (req.body.emergencyContactMobile !== undefined) w.emergencyContact.mobile = req.body.emergencyContactMobile;
+        }
         if (req.body.preferredJobCategories) {
             try {
                 const categories = JSON.parse(req.body.preferredJobCategories);
@@ -560,13 +725,73 @@ exports.updateWorkerProfile = async (req, res) => {
             const maxPay = Number(req.body.expectedMaxPay);
             w.expectedMaxPay = Number.isFinite(maxPay) && maxPay >= 0 ? maxPay : 0;
         }
-        if (req.file) w.photo = req.file.path;
+        if (req.files?.photo?.[0]?.path) w.photo = req.files.photo[0].path;
+        if (req.files?.eShramCard?.[0]?.path) {
+            w.eShramCardPath = req.files.eShramCard[0].path;
+        }
+        // Individual deletion support from Update/View profile actions.
+        if (req.body.deletedSkillCertificates !== undefined) {
+            let deleteTargets = [];
+            try {
+                const parsed = typeof req.body.deletedSkillCertificates === 'string'
+                    ? JSON.parse(req.body.deletedSkillCertificates)
+                    : req.body.deletedSkillCertificates;
+                if (Array.isArray(parsed)) deleteTargets = parsed.map((v) => String(v || '').trim()).filter(Boolean);
+            } catch {
+                deleteTargets = [];
+            }
+
+            if (deleteTargets.length > 0) {
+                w.skillCertificates = (w.skillCertificates || []).filter((url) => !deleteTargets.includes(url));
+                await Promise.all(deleteTargets.map((url) => deleteFromCloudinary(url)));
+            }
+        }
+
+        if (Array.isArray(req.files?.skillCertificates) && req.files.skillCertificates.length > 0) {
+            const uploaded = req.files.skillCertificates.map((f) => f.path).filter(Boolean);
+            const current = Array.isArray(w.skillCertificates) ? w.skillCertificates : [];
+            const next = [...current, ...uploaded];
+            if (next.length > 3) {
+                return res.status(400).json({ message: 'Maximum 3 skill certificates are allowed.' });
+            }
+            w.skillCertificates = next;
+        }
+
+        if (req.body.deletedPortfolioPhotos !== undefined) {
+            let deleteTargets = [];
+            try {
+                const parsed = typeof req.body.deletedPortfolioPhotos === 'string'
+                    ? JSON.parse(req.body.deletedPortfolioPhotos)
+                    : req.body.deletedPortfolioPhotos;
+                if (Array.isArray(parsed)) deleteTargets = parsed.map((v) => String(v || '').trim()).filter(Boolean);
+            } catch {
+                deleteTargets = [];
+            }
+
+            if (deleteTargets.length > 0) {
+                w.portfolioPhotos = (w.portfolioPhotos || []).filter((url) => !deleteTargets.includes(url));
+                await Promise.all(deleteTargets.map((url) => deleteFromCloudinary(url)));
+            }
+        }
+
+        if (Array.isArray(req.files?.portfolioPhotos) && req.files.portfolioPhotos.length > 0) {
+            const uploaded = req.files.portfolioPhotos.map((f) => f.path).filter(Boolean);
+            const current = Array.isArray(w.portfolioPhotos) ? w.portfolioPhotos : [];
+            const next = [...current, ...uploaded];
+            if (next.length > 4) {
+                return res.status(400).json({ message: 'Maximum 4 portfolio photos are allowed.' });
+            }
+            w.portfolioPhotos = next;
+        }
         await w.save();
         upsertWorkerById(w._id).catch((err) => {
             console.error('semantic upsertWorkerById(updateWorkerProfile):', err.message);
         });
         await logAuditEvent({ userId: w._id, role: 'worker', action: 'profile_update', req, metadata: { fields: Object.keys(req.body || {}) } });
-        return res.json(await User.findById(w._id).select('-password -resetPasswordToken -resetPasswordExpire'));
+        const updated = await User.findById(w._id).select('-password -resetPasswordToken -resetPasswordExpire');
+        const normalized = await normalizeWorkerDocumentUrls(updated);
+        const sanitized = sanitizeWorkerSensitiveFields(normalized);
+        return res.json(sanitized);
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
@@ -597,7 +822,7 @@ exports.deleteAccount = async (req, res) => {
 exports.getPublicWorkerProfile = async (req, res) => {
     try {
         const w = await User.findOne({ karigarId: req.params.id, role: 'worker' })
-            .select('name photo karigarId skills overallExperience experience points verificationStatus address dob mobile gender portfolioPhotos');
+            .select('name photo karigarId skills overallExperience experience points verificationStatus address dob mobile gender portfolioPhotos travelMethod');
         if (!w) return res.status(404).json({ message: 'Not found.' });
 
         const [completedJobs, ratings, rankCount, completedJobDocs] = await Promise.all([

@@ -25,6 +25,56 @@ const generateKarigarId = () =>
     'KC-' + Math.random().toString(36).substring(2, 7).toUpperCase() +
     Math.floor(100 + Math.random() * 900);
 
+const normalizeIdNumber = (value = '') => String(value).replace(/\s+/g, '').toUpperCase().trim();
+
+const validateWorkerIdNumber = (idType = '', rawNumber = '') => {
+    const normalized = normalizeIdNumber(rawNumber);
+
+    if (!normalized) {
+        return { valid: false, normalized, message: 'ID number is required.' };
+    }
+
+    if (idType === 'Aadhar Card') {
+        if (!/^\d{12}$/.test(normalized)) {
+            return { valid: false, normalized, message: 'Aadhaar number must be exactly 12 digits.' };
+        }
+        return { valid: true, normalized };
+    }
+
+    if (idType === 'PAN Card') {
+        if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(normalized)) {
+            return { valid: false, normalized, message: 'PAN number format is invalid (example: ABCDE1234F).' };
+        }
+        return { valid: true, normalized };
+    }
+
+    return { valid: true, normalized };
+};
+
+const hashWorkerIdNumber = (normalizedIdNumber) => {
+    const secret = process.env.ID_PROOF_HASH_SECRET || process.env.JWT_SECRET || 'karigarconnect-id-proof-fallback-secret';
+    return crypto.createHmac('sha256', secret).update(String(normalizedIdNumber)).digest('hex');
+};
+
+const normalizeTravelMethod = (value = '') => {
+    const method = String(value || '').trim().toLowerCase();
+    const allowed = new Set(['cycle', 'bike', 'bus', 'other']);
+    return allowed.has(method) ? method : 'other';
+};
+
+const parseBoolean = (value) => value === true || String(value).toLowerCase() === 'true';
+
+const calculateAgeFromDob = (dobValue) => {
+    const dobDate = new Date(dobValue);
+    if (Number.isNaN(dobDate.getTime())) return null;
+
+    const now = new Date();
+    let years = now.getFullYear() - dobDate.getFullYear();
+    const monthDelta = now.getMonth() - dobDate.getMonth();
+    if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dobDate.getDate())) years -= 1;
+    return years;
+};
+
 const signToken = (id, role) =>
     jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
@@ -195,8 +245,8 @@ exports.registerWorker = async (req, res) => {
         const {
             name, dob, mobile, email, password, confirmPassword,
             city, pincode, locality, fullAddress, village, latitude, longitude, overallExperience, experience,
-            aadharNumber, gender, eShramNumber, idDocumentType,
-            emergencyContactName, emergencyContactMobile, phoneType, skills, references,
+            idNumber, gender, eShramNumber, idDocumentType,
+            emergencyContactName, emergencyContactMobile, phoneType, travelMethod, ageConsent, skills, references,
             expectedMinPay, expectedMaxPay, preferredJobCategories,
         } = req.body;
 
@@ -208,8 +258,21 @@ exports.registerWorker = async (req, res) => {
             return res.status(400).json({ message: 'Passwords do not match.' });
         if (!validateStrongPassword(password).isValid)
             return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
-        if (dob && new Date().getFullYear() - new Date(dob).getFullYear() < 18)
+
+        if (!dob) {
+            return res.status(400).json({ message: 'Date of birth is required.' });
+        }
+
+        const computedAge = calculateAgeFromDob(dob);
+        if (computedAge === null) {
+            return res.status(400).json({ message: 'Date of birth is invalid.' });
+        }
+        if (computedAge < 18)
             return res.status(400).json({ message: 'You must be at least 18 years old.' });
+
+        if (!parseBoolean(ageConsent)) {
+            return res.status(400).json({ message: 'Age consent is required for registration.' });
+        }
 
         // ── Duplicate check ───────────────────────────────────────────────────
         if (await User.findOne({ mobile }))
@@ -226,8 +289,27 @@ exports.registerWorker = async (req, res) => {
         if (!photoFile)   return res.status(400).json({ message: 'Profile photo is required.' });
         if (!idProofFile) return res.status(400).json({ message: 'ID proof is required.' });
 
+        const resolvedIdType = idDocumentType || 'Aadhar Card';
+        const idValidation = validateWorkerIdNumber(resolvedIdType, idNumber);
+        if (!idValidation.valid) {
+            return res.status(400).json({ message: idValidation.message });
+        }
+
+        const idHash = hashWorkerIdNumber(idValidation.normalized);
+        const existingWorkerWithId = await User.findOne({ role: 'worker', 'idProof.numberHash': idHash }).select('_id');
+        if (existingWorkerWithId) {
+            return res.status(409).json({ message: `${resolvedIdType} number is already registered.` });
+        }
+
         const skillCerts = req.files?.skillCertificates?.map(f => f.path) || [];
         const portfolio  = req.files?.portfolioPhotos?.map(f => f.path)   || [];
+
+        if (skillCerts.length > 3) {
+            return res.status(400).json({ message: 'Maximum 3 skill certificates are allowed during registration.' });
+        }
+        if (portfolio.length > 4) {
+            return res.status(400).json({ message: 'Maximum 4 portfolio photos are allowed during registration.' });
+        }
 
         let parsedSkills = [];
         try { parsedSkills = JSON.parse(skills || '[]'); } catch {}
@@ -238,10 +320,12 @@ exports.registerWorker = async (req, res) => {
         let parsedPreferredCategories = [];
         try { parsedPreferredCategories = JSON.parse(preferredJobCategories || '[]'); } catch {}
 
+        const normalizedTravelMethod = normalizeTravelMethod(travelMethod);
+
         // ── Create user ───────────────────────────────────────────────────────
         const user   = await User.create({
             karigarId: generateKarigarId(),
-            role: 'worker', name: name.trim(), dob, mobile, phoneType,
+            role: 'worker', name: name.trim(), dob, age: computedAge, mobile, phoneType,
             email: email || null, password,
             address:   {
                 city,
@@ -252,13 +336,19 @@ exports.registerWorker = async (req, res) => {
                 latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
                 longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
             },
-            idProof:   { idType: idDocumentType || 'Aadhar Card', filePath: idProofFile.path },
+            idProof:   {
+                idType: resolvedIdType,
+                filePath: idProofFile.path,
+                numberHash: idHash,
+                numberLast4: idValidation.normalized.slice(-4),
+            },
             photo:     photoFile.path,
-            gender,    aadharNumber, eShramNumber,
+            gender,    eShramNumber,
             eShramCardPath: eShramFile?.path || null,
             overallExperience, experience: Number(experience) || 0,
             expectedMinPay: Number(expectedMinPay) || 0,
             expectedMaxPay: Number(expectedMaxPay) || 0,
+            travelMethod: normalizedTravelMethod,
             preferredJobCategories: Array.isArray(parsedPreferredCategories) ? parsedPreferredCategories : [],
             skills: parsedSkills, references: parsedRefs,
             skillCertificates: skillCerts, portfolioPhotos: portfolio,

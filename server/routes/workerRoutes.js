@@ -61,8 +61,8 @@ const {
 // ── Job controller (respondToGroupJob lives here in your codebase) ────────────
 const { respondToGroupJob } = require('../controllers/jobController');
 
-// ── Cloudinary uploader (original — not multer diskStorage) ───────────────────
-const { profilePhotoUploader } = require('../utils/cloudinary');
+// ── Cloudinary uploaders ──────────────────────────────────────────────────────
+const { mixedUploader } = require('../utils/cloudinary');
 
 // ═════════════════════════════════════════════════════════════════════════════
 // NEW: Password-change OTP flow — mounted FIRST to avoid any path conflicts
@@ -93,7 +93,12 @@ router.get('/analytics',  protect, worker, getWorkerAnalytics);
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 router.get('/profile',              protect, worker, getWorkerProfile);
-router.put('/profile/update',       protect, worker, profilePhotoUploader.single('photo'), updateWorkerProfile);
+router.put('/profile/update',       protect, worker, mixedUploader.fields([
+    { name: 'photo', maxCount: 1 },
+    { name: 'eShramCard', maxCount: 1 },
+    { name: 'skillCertificates', maxCount: 3 },
+    { name: 'portfolioPhotos', maxCount: 4 },
+]), updateWorkerProfile);
 router.post('/availability',        protect, worker, toggleAvailability);
 router.delete('/account/delete',    protect, worker, deleteAccount);
 

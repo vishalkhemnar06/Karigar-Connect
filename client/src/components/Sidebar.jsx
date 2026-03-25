@@ -12,7 +12,6 @@ import {
     Star,
     Calendar,
     UserCheck,
-    Award,
     Users,
     Layers,
     MessageSquare,
@@ -68,31 +67,22 @@ const Sidebar = () => {
 
             {/* Mobile Menu Overlay */}
             {mobileMenuOpen && (
-                <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+                <div className="lg:hidden fixed inset-x-0 top-16 sm:top-20 bottom-0 z-40 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
             )}
 
             {/* Mobile Sidebar Drawer */}
             <div className={`
-                lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
+                lg:hidden fixed top-16 sm:top-20 bottom-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
                 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
                 <div className="flex flex-col h-full">
-                    {/* Header */}
-                    <div className="p-5 bg-gradient-to-r from-orange-500 to-amber-500">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <Award size={22} className="text-white" />
-                            </div>
-                            <div>
-                                <h2 className="font-bold text-white text-lg">Worker Portal</h2>
-                                <p className="text-orange-100 text-xs">Welcome back!</p>
-                            </div>
-                        </div>
+                    <div className="p-3 flex justify-end border-b border-gray-100">
                         <button
                             onClick={() => setMobileMenuOpen(false)}
-                            className="absolute top-4 right-4 p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                            className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                            aria-label="Close menu"
                         >
-                            <X size={18} className="text-white" />
+                            <X size={18} className="text-gray-700" />
                         </button>
                     </div>
 
@@ -138,24 +128,7 @@ const Sidebar = () => {
             </div>
 
             {/* DESKTOP SIDEBAR */}
-            <aside className="hidden lg:flex flex-col w-72 h-screen sticky top-0 border-r border-gray-200 bg-white shadow-sm">
-                {/* Fixed Header */}
-                <div className="p-5 bg-gradient-to-r from-orange-500 to-amber-500">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-white/20 rounded-lg">
-                            <Award size={24} className="text-white" />
-                        </div>
-                        <div>
-                            <h2 className="font-bold text-white text-lg leading-tight">
-                                Worker Portal
-                            </h2>
-                            <p className="text-orange-100 text-xs mt-0.5">
-                                Manage your work
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
+            <aside className="hidden lg:flex flex-col w-72 h-[calc(100vh-5rem)] sticky top-20 border-r border-gray-200 bg-white shadow-sm">
                 {/* Scrollable Nav Area */}
                 <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
                     {navLinks.map((link) => {

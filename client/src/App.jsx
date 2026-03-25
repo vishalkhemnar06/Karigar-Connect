@@ -18,6 +18,7 @@ import Header from './components/Header';
 import ProtectedRoute from './components/ProtectedRoute';
 import WorkerLayout from './components/WorkerLayout';
 import ClientLayout from './components/ClientLayout';
+import AppErrorBoundary from './components/AppErrorBoundary';
 
 // General
 import Splash from './components/splash';
@@ -102,7 +103,8 @@ function App() {
     return (
         <Router>
             <Toaster position="top-center" reverseOrder={false} />
-            <Routes>
+            <AppErrorBoundary>
+                <Routes>
                 {/* ── Standalone pages ── */}
                 <Route path="/"                       element={<Splash />} />
                 <Route path="/notification"           element={<Notification />} />
@@ -191,8 +193,9 @@ function App() {
                     </Route>
                 </Route>
 
-                <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+            </AppErrorBoundary>
         </Router>
     );
 }

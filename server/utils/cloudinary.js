@@ -10,6 +10,7 @@
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
+const path = require('path');
 
 // Configure Cloudinary credentials from .env
 cloudinary.config({
@@ -51,13 +52,40 @@ const createUploader = (folder, allowed = ['image']) => {
             if (!isAllowed) {
                 throw new Error(`File type ${file.mimetype} is not allowed`);
             }
-            return {
+
+            const originalExt = path.extname(file.originalname || '').replace('.', '').toLowerCase();
+            const rawBaseName = path.basename(file.originalname || 'file', path.extname(file.originalname || ''));
+            const safeBaseName = rawBaseName
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '') || 'file';
+
+            const isImage = file.mimetype.startsWith('image');
+            const isPdf = file.mimetype === 'application/pdf';
+
+            const allowedImageFormats = ['jpg', 'jpeg', 'png', 'webp'];
+            const imageFormat = allowedImageFormats.includes(originalExt) ? originalExt : 'jpg';
+            const fileExt = isPdf ? 'pdf' : (isImage ? imageFormat : originalExt || 'bin');
+
+            const cloudinaryParams = {
                 folder,
-                // For non-image files (PDFs) use 'raw' resource type
-                resource_type: file.mimetype.startsWith('image') ? 'image' : 'raw',
-                // Limit: 5 MB for images, 10 MB for docs
-                // (actual byte enforcement done in multer limits below)
+                // Keep PDFs as image resource_type so browsers can preview inline more reliably.
+                resource_type: (isImage || isPdf) ? 'image' : 'raw',
+                // Restrict supported output formats for safety and consistency
                 allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+                public_id: `${Date.now()}-${safeBaseName}${(isImage || isPdf) ? '' : `.${fileExt}`}`,
+            };
+
+            if (isImage) {
+                cloudinaryParams.format = imageFormat;
+            }
+            if (isPdf) {
+                cloudinaryParams.format = 'pdf';
+            }
+
+            return {
+                ...cloudinaryParams,
             };
         },
     });

@@ -3,8 +3,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { getImageUrl } from '../constants/config';
-import * as api from '../api';
 import {
     LayoutDashboard, PlusSquare, Briefcase, Bot,
     User, LogOut, X, Menu, ChevronRight, Sparkles,
@@ -27,24 +25,8 @@ export default function ClientLayout() {
     const navigate = useNavigate();
     const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [profile, setProfile] = useState(null);
     const [showScrollHint, setShowScrollHint] = useState(true);
     const bottomNavRef = useRef(null);
-
-    useEffect(() => {
-        const fetchProfile = async () => {
-            try {
-                const { data } = await api.getClientProfile();
-                setProfile(data);
-            } catch {
-                try {
-                    const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                    setProfile(stored);
-                } catch { /* ignore */ }
-            }
-        };
-        fetchProfile();
-    }, []);
 
     // Check if bottom nav is scrollable
     useEffect(() => {
@@ -68,33 +50,6 @@ export default function ClientLayout() {
 
     const SidebarContent = ({ onNavClick }) => (
         <div className="flex flex-col h-full">
-            {/* Profile Header */}
-            <div className="p-5 bg-gradient-to-br from-orange-500 to-orange-600 relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                    <div className="absolute bottom-0 left-0 w-20 h-20 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
-                </div>
-                <div className="relative flex items-center gap-3">
-                    <div className="relative">
-                        <img
-                            src={getImageUrl(profile?.photo, `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'Client')}&background=ff7e33&color=fff`)}
-                            alt={profile?.name || 'Client'}
-                            className="w-12 h-12 rounded-2xl object-cover border-2 border-white/50 shadow-lg"
-                        />
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <p className="font-black text-white text-sm truncate">{profile?.name || 'Client'}</p>
-                        <p className="text-orange-100 text-xs truncate">{profile?.email || profile?.mobile || 'Employer'}</p>
-                    </div>
-                </div>
-                <div className="relative mt-4 flex items-center gap-2">
-                    <span className="px-2 py-1 bg-white/20 backdrop-blur-sm text-white text-xs font-bold rounded-lg flex items-center gap-1">
-                        <Sparkles size={10} /> Employer Account
-                    </span>
-                </div>
-            </div>
-
             {/* Navigation */}
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
                 {navItems.map(({ to, label, icon: Icon, desc }) => (
@@ -144,17 +99,17 @@ export default function ClientLayout() {
     return (
         <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30">
             {/* Desktop Sidebar */}
-            <aside className="hidden md:flex flex-col w-64 bg-white border-r border-orange-100 shadow-sm fixed top-0 left-0 h-full z-20">
+            <aside className="hidden md:flex flex-col w-64 bg-white border-r border-orange-100 shadow-sm fixed top-20 left-0 h-[calc(100vh-5rem)] z-20">
                 <SidebarContent onNavClick={undefined} />
             </aside>
 
             {/* Mobile Overlay */}
             {menuOpen && (
-                <div className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={() => setMenuOpen(false)} />
+                <div className="md:hidden fixed inset-x-0 top-16 bottom-0 bg-black/50 backdrop-blur-sm z-40" onClick={() => setMenuOpen(false)} />
             )}
 
             {/* Mobile Drawer */}
-            <aside className={`md:hidden fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside className={`md:hidden fixed top-16 bottom-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="absolute top-4 right-4 z-10">
                     <button onClick={() => setMenuOpen(false)} className="p-2 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200 transition-all">
                         <X size={18} />

@@ -495,10 +495,10 @@ const Header = () => {
                                                             bgColor="bg-purple-50"
                                                         />
                                                         <MenuItem 
-                                                            icon={Zap} 
-                                                            title="My Bookings" 
-                                                            subtitle="View all bookings"
-                                                            to="/client/bookings"
+                                                            icon={User} 
+                                                            title="My Profile" 
+                                                            subtitle="View and edit profile"
+                                                            to="/client/profile"
                                                             onClick={() => setDropdownOpen(false)}
                                                             iconColor="text-amber-500"
                                                             bgColor="bg-amber-50"

@@ -68,6 +68,12 @@ const PublicProfile = () => {
   };
 
   const age = getAge(worker?.dob);
+  const travelMethodLabel = {
+    cycle: 'Cycle',
+    bike: 'Bike',
+    bus: 'Bus',
+    other: 'Other',
+  }[String(worker?.travelMethod || 'other').toLowerCase()] || 'Other';
   const addressText = worker?.address
     ? [worker.address.houseNumber, worker.address.locality, worker.address.city, worker.address.pincode]
         .filter(Boolean)
@@ -197,6 +203,17 @@ const PublicProfile = () => {
 
             {/* Info Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+              <div className="sm:col-span-2 flex items-center justify-between gap-3 bg-gradient-to-r from-amber-100 via-orange-100 to-amber-50 p-3 sm:p-4 rounded-xl border border-amber-300 shadow-sm">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <MapPin size={16} className="text-orange-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wide text-orange-700">Travel Method</p>
+                    <p className="text-sm sm:text-base font-extrabold text-orange-900">{travelMethodLabel}</p>
+                  </div>
+                </div>
+                <span className="text-[10px] sm:text-xs px-2.5 py-1 rounded-full bg-white text-orange-700 font-bold border border-orange-200">Highlighted</span>
+              </div>
+
               {worker.mobile && (
                 <div className="flex items-center gap-2 sm:gap-3 bg-orange-50 p-2.5 sm:p-3 rounded-xl">
                   <Phone size={14} className="text-orange-500 flex-shrink-0" />

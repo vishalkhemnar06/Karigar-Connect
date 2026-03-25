@@ -9,6 +9,7 @@ const dotenv   = require('dotenv');
 const path     = require('path');
 const fs       = require('fs');
 const axios    = require('axios');
+const { cloudinary } = require('./utils/cloudinary');
 
 dotenv.config();
 
@@ -61,8 +62,6 @@ if (!fs.existsSync(uploadsRoot)) {
     fs.mkdirSync(uploadsRoot, { recursive: true });
     console.log('📁  Created uploads/ directory');
 }
-app.use('/uploads', express.static(uploadsRoot, { maxAge: '1d', index: false }));
-console.log('📂  Serving static files from:', uploadsRoot);
 
 // Legacy specific subdirectory mounts kept for backward compatibility
 const legacyStaticDirs = [
@@ -76,6 +75,109 @@ legacyStaticDirs.forEach(({ url, dir }) => {
     if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true });
     app.use(url, express.static(abs));
 });
+
+const escapeCloudinaryTerm = (value = '') => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+const resolveLegacyFileFromCloudinary = async (fileName) => {
+    const safeName = String(fileName || '').trim();
+    if (!safeName) return null;
+
+    let decoded = safeName;
+    try {
+        decoded = decodeURIComponent(safeName);
+    } catch {
+        decoded = safeName;
+    }
+    const ext = path.extname(decoded).toLowerCase();
+    const base = decoded.replace(/\.[^/.]+$/, '');
+
+    const folders = ['karigarconnect/misc', 'karigarconnect/documents', 'karigarconnect/worker-docs'];
+    const resourceTypes = ext === '.pdf' ? ['raw', 'image'] : ['image', 'raw'];
+
+    // 1) Direct public_id attempts for common legacy patterns
+    for (const folder of folders) {
+        const publicIdCandidates = [
+            `${folder}/${base}`,
+            `${folder}/${decoded}`,
+        ];
+
+        for (const publicId of publicIdCandidates) {
+            for (const resourceType of resourceTypes) {
+                try {
+                    const asset = await cloudinary.api.resource(publicId, { resource_type: resourceType, type: 'upload' });
+                    if (asset?.secure_url) return asset.secure_url;
+                } catch {
+                    // Continue searching.
+                }
+            }
+        }
+    }
+
+    // 2) Search by filename within known folders (covers timestamped public IDs)
+    const escapedBase = escapeCloudinaryTerm(base);
+    for (const folder of folders) {
+        const escapedFolder = escapeCloudinaryTerm(folder);
+        try {
+            const result = await cloudinary.search
+                .expression(`folder="${escapedFolder}" AND filename="${escapedBase}"`)
+                .sort_by('created_at', 'desc')
+                .max_results(1)
+                .execute();
+
+            const secureUrl = result?.resources?.[0]?.secure_url;
+            if (secureUrl) return secureUrl;
+        } catch {
+            // Continue searching.
+        }
+    }
+
+    // 3) Global fallback by filename regardless of folder (for historical storage paths)
+    try {
+        const globalResult = await cloudinary.search
+            .expression(`filename="${escapedBase}"`)
+            .sort_by('created_at', 'desc')
+            .max_results(1)
+            .execute();
+
+        const secureUrl = globalResult?.resources?.[0]?.secure_url;
+        if (secureUrl) return secureUrl;
+    } catch {
+        // No global match.
+    }
+
+    return null;
+};
+
+// Backward compatibility for older DB paths like /uploads/documents/<file>
+// that may now physically exist in /uploads/ or legacy subfolders.
+app.get(/^\/uploads\/(documents|document|certificates|certificate)\/(.+)$/i, async (req, res, next) => {
+    const legacyFolder = String(req.params?.[0] || '').toLowerCase();
+    const fileName = path.basename(String(req.params?.[1] || ''));
+    if (!fileName) return next();
+
+    const candidates = [
+        path.join(uploadsRoot, legacyFolder, fileName),
+        path.join(uploadsRoot, fileName),
+        path.join(uploadsRoot, 'photos', fileName),
+        path.join(uploadsRoot, 'clients', fileName),
+        path.join(uploadsRoot, 'community', fileName),
+    ];
+
+    const found = candidates.find((p) => fs.existsSync(p));
+    if (found) return res.sendFile(found);
+
+    try {
+        const cloudUrl = await resolveLegacyFileFromCloudinary(fileName);
+        if (cloudUrl) return res.redirect(cloudUrl);
+    } catch {
+        // Fall through to default 404 handler.
+    }
+
+    return next();
+});
+
+app.use('/uploads', express.static(uploadsRoot, { maxAge: '1d', index: false }));
+console.log('📂  Serving static files from:', uploadsRoot);
 
 // ── Database ──────────────────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGO_URI)

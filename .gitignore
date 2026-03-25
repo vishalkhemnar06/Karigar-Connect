@@ -109,3 +109,8 @@ server/fraud_service/models/*.npz
 # Runtime Uploads
 # =========================
 server/uploads/**
+
+# =========================
+# Mobile App (local only)
+# =========================
+mobile/

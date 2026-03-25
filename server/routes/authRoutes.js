@@ -36,8 +36,8 @@ router.post('/register/worker',
     workerUpload.fields([
         { name: 'photo',              maxCount: 1  },
         { name: 'idProof',            maxCount: 1  },
-        { name: 'skillCertificates',  maxCount: 5  },
-        { name: 'portfolioPhotos',    maxCount: 10 },
+        { name: 'skillCertificates',  maxCount: 3  },
+        { name: 'portfolioPhotos',    maxCount: 4 },
         { name: 'eShramCard',         maxCount: 1  },
         { name: 'livePhoto',          maxCount: 1  }, // ← face verification capture
     ]),

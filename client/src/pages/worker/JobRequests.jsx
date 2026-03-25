@@ -35,6 +35,43 @@ const normSkill = (s) => {
 
 const asPercent = (value) => Math.round(Math.max(0, Math.min(1, Number(value || 0))) * 100);
 
+const formatPaymentMethod = (method) => {
+    switch (method) {
+        case 'cash': return 'Cash';
+        case 'upi_qr': return 'Online UPI / QR';
+        case 'bank_transfer': return 'Direct Bank Account';
+        default: return 'Flexible (Any)';
+    }
+};
+
+const openGoogleMapsDirections = ({ lat, lng }) => {
+    const dLat = Number(lat);
+    const dLng = Number(lng);
+    if (!Number.isFinite(dLat) || !Number.isFinite(dLng)) {
+        toast.error('Job location coordinates are not available.');
+        return;
+    }
+
+    const openUrl = (originLat, originLng) => {
+        let url = `https://www.google.com/maps/dir/?api=1&destination=${dLat},${dLng}&travelmode=driving`;
+        if (Number.isFinite(originLat) && Number.isFinite(originLng)) {
+            url += `&origin=${originLat},${originLng}`;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        openUrl();
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => openUrl(Number(pos.coords.latitude), Number(pos.coords.longitude)),
+        () => openUrl(),
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+    );
+};
+
 const normalizeSemanticJobMatch = (row = {}) => ({
     jobId: row.jobId,
     score: Number(row.score || 0),
@@ -562,6 +599,23 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                             </div>
                         )}
 
+                        {/* Payment method + negotiation terms */}
+                        <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                <DollarSign size={12} /> Payment Terms
+                            </p>
+                            <div className="bg-gray-50 rounded-2xl p-3 space-y-1.5">
+                                <p className="text-sm text-gray-700 break-words">
+                                    <span className="font-semibold">Method:</span> {formatPaymentMethod(job.paymentMethod)}
+                                </p>
+                                {job.negotiable && Number(job.minBudget || 0) > 0 && (
+                                    <p className="text-sm text-gray-700 break-words">
+                                        <span className="font-semibold">Negotiable Minimum:</span> ₹{Number(job.minBudget).toLocaleString()}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
                         {/* Schedule */}
                         {(job.scheduledDate || job.scheduledTime) && (
                             <div>
@@ -602,7 +656,16 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                                 )}
                             </div>
                             {job.location?.lat && job.location?.lng && (
-                                <MiniMap lat={job.location.lat} lng={job.location.lng} />
+                                <>
+                                    <MiniMap lat={job.location.lat} lng={job.location.lng} />
+                                    <button
+                                        type="button"
+                                        onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
+                                        className="mt-2 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-semibold text-sm hover:bg-blue-100 transition-all"
+                                    >
+                                        <Navigation size={14} /> View Location In Google Maps
+                                    </button>
+                                </>
                             )}
                         </div>
 
@@ -1271,9 +1334,24 @@ export default function JobRequests() {
                                                             <div className="text-xs text-gray-400">Tap for details</div>
                                                         );
                                                     })()}
+                                                    <div className="mt-1 text-[10px] text-gray-500">
+                                                        {formatPaymentMethod(job.paymentMethod)}
+                                                        {job.negotiable && Number(job.minBudget || 0) > 0
+                                                            ? ` · Min ₹${Number(job.minBudget).toLocaleString()}`
+                                                            : ''}
+                                                    </div>
                                                 </div>
 
                                                 <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                                    {job.location?.lat && job.location?.lng && (
+                                                        <button
+                                                            onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
+                                                            className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 font-bold transition-all active:scale-95"
+                                                        >
+                                                            <Navigation size={12} className="inline mr-1" />
+                                                            Maps
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => handleOpenDetails(job)}
                                                         className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-all active:scale-95"

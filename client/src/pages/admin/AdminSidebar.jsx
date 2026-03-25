@@ -8,7 +8,7 @@ import { useLocation } from 'react-router-dom';
 import {
     Users, UserCheck, UserX, Clock, ShieldX,
     AlertTriangle, MessageSquare, Store, X as CloseIcon,
-    Shield, ShieldAlert
+    ShieldAlert
 } from 'lucide-react';
 
 const NAV_SECTIONS = [
@@ -119,16 +119,6 @@ const AdminSidebar = ({
         <>
             {/* ── Desktop Sidebar ──────────────────────────────────────── */}
             <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-orange-100 h-[calc(100vh-64px)] sticky top-16 shadow-sm">
-                {/* Brand strip */}
-                <div className="px-5 py-4 border-b border-orange-50">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center">
-                            <Shield size={14} className="text-white" />
-                        </div>
-                        <span className="text-sm font-bold text-gray-700 tracking-wide">Admin Panel</span>
-                    </div>
-                </div>
-
                 {/* Scrollable nav */}
                 <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6 scrollbar-thin scrollbar-thumb-orange-100 scrollbar-track-transparent">
                     {NAV_SECTIONS.map((section) => (
@@ -177,27 +167,21 @@ const AdminSidebar = ({
             <>
                 {/* Backdrop */}
                 <div
-                    className={`lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300
+                    className={`lg:hidden fixed inset-x-0 top-16 bottom-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300
                         ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     onClick={onClose}
                 />
 
                 {/* Drawer panel */}
-                <aside className={`lg:hidden fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl flex flex-col
+                <aside className={`lg:hidden fixed top-16 left-0 h-[calc(100vh-4rem)] w-72 bg-white z-50 shadow-2xl flex flex-col
                     transition-transform duration-300 ease-in-out
                     ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
                 >
-                    {/* Drawer header */}
-                    <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-orange-600 to-amber-500">
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
-                                <Shield size={14} className="text-white" />
-                            </div>
-                            <span className="text-white font-bold text-sm">Navigation</span>
-                        </div>
+                    <div className="px-3 py-3 border-b border-orange-100 flex justify-end">
                         <button
                             onClick={onClose}
-                            className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors"
+                            aria-label="Close menu"
                         >
                             <CloseIcon size={16} />
                         </button>

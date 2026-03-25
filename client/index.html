@@ -3,6 +3,10 @@
   <head>
     <meta name="google" content="notranslate" />
     <meta charset="UTF-8" />
+    <link rel="dns-prefetch" href="//translate.google.com" />
+    <link rel="dns-prefetch" href="//translate.googleapis.com" />
+    <link rel="preconnect" href="https://translate.google.com" crossorigin />
+    <link rel="preconnect" href="https://translate.googleapis.com" crossorigin />
     <link rel="icon" type="image/svg+xml" href="logo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KarigarConnect</title>
@@ -13,6 +17,39 @@
     <script type="module" src="/src/main.jsx"></script>
     <!-- Google Translate -->
 <script type="text/javascript">
+  function hideGoogleTranslateUi() {
+    const selectors = [
+      '.goog-te-banner-frame',
+      '.goog-te-banner-frame.skiptranslate',
+      '.goog-te-gadget-icon',
+      '.goog-te-spinner-pos',
+      '.goog-logo-link',
+      '.goog-te-gadget-simple img',
+      'iframe.goog-te-banner-frame',
+      '#goog-gt-tt',
+      '.goog-tooltip',
+      '.goog-tooltip:hover',
+      '.goog-text-highlight',
+      '.goog-te-balloon-frame',
+      '.VIpgJd-ZVi9od-aZ2wEe-wOHMyf',
+      '.VIpgJd-yAWNEb-VIpgJd-fmcmS-sn54Q',
+      '.VIpgJd-yAWNEb-hvhgNd',
+      '.VIpgJd-yAWNEb-L7lbkb'
+    ];
+
+    selectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((el) => {
+        el.style.display = 'none';
+        el.style.visibility = 'hidden';
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+      });
+    });
+
+    document.body.style.top = '0px';
+    document.documentElement.style.top = '0px';
+  }
+
   function googleTranslateElementInit() {
     new google.translate.TranslateElement(
       {
@@ -23,6 +60,15 @@
       },
       'google_translate_element'
     );
+
+    // Keep translator engine active but hide all injected Google UI.
+    hideGoogleTranslateUi();
+
+    const observer = new MutationObserver(() => {
+      hideGoogleTranslateUi();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 </script>
 <script

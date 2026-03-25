@@ -20,14 +20,58 @@ const skillList = [
     "Mover","Security Guard","Handyman","Other",
 ];
 const documentTypes = ["Aadhar Card","PAN Card","Voter ID","Driving License","Passport"];
+const travelMethods = [
+    { value: 'cycle', label: 'Cycle' },
+    { value: 'bike', label: 'Bike' },
+    { value: 'bus', label: 'Bus' },
+    { value: 'other', label: 'Other' },
+];
 const DRAFT_KEY = 'worker_register_draft_v1';
+
+const getIdNumberMeta = (idType) => {
+    if (idType === 'PAN Card') {
+        return {
+            label: 'PAN Number *',
+            placeholder: 'e.g. ABCDE1234F',
+            maxLength: 10,
+            inputMode: 'text',
+        };
+    }
+
+    if (idType === 'Aadhar Card') {
+        return {
+            label: 'Aadhaar Number *',
+            placeholder: '12-digit Aadhaar number',
+            maxLength: 12,
+            inputMode: 'numeric',
+        };
+    }
+
+    return {
+        label: 'ID Number *',
+        placeholder: 'Enter selected ID number',
+        maxLength: 24,
+        inputMode: 'text',
+    };
+};
+
+const calculateAgeFromDob = (dob) => {
+    if (!dob) return null;
+    const birthDate = new Date(dob);
+    if (Number.isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age -= 1;
+    return age;
+};
 
 const WorkerRegister = () => {
     const [formData, setFormData] = useState({
         name:'', dob:'', phoneType:'Smartphone', mobile:'', email:'', password:'', confirmPassword:'',
         city:'', pincode:'', locality:'', fullAddress:'', village:'', latitude:'', longitude:'', overallExperience:'Beginner', experience:'',
-        aadharNumber:'', gender:'Male', eShramNumber:'', otherSkill:'',
-        emergencyContactName:'', emergencyContactMobile:'', idDocumentType:'Aadhar Card',
+        idNumber:'', gender:'Male', eShramNumber:'', otherSkill:'',
+        emergencyContactName:'', emergencyContactMobile:'', idDocumentType:'Aadhar Card', travelMethod: 'other',
     });
     const [files, setFiles] = useState({
         photo:null, idProof:null, eShramCard:null, skillCertificates:[], portfolioPhotos:[],
@@ -40,6 +84,7 @@ const WorkerRegister = () => {
     const [otpTimer,     setOtpTimer]      = useState(0);
     const [activeSection,setActiveSection] = useState(0);
     const [agreedToTerms,setAgreedToTerms] = useState(false);
+    const [ageConsent,   setAgeConsent]    = useState(false);
 
     // ── Face verification state ───────────────────────────────────────────────
     const [showFaceVerification, setShowFaceVerification] = useState(false);
@@ -55,6 +100,8 @@ const WorkerRegister = () => {
 
     const navigate = useNavigate();
     const strength = getPasswordStrength(formData.password);
+    const idNumberMeta = getIdNumberMeta(formData.idDocumentType);
+    const computedAge = calculateAgeFromDob(formData.dob);
 
     useEffect(() => {
         let interval;
@@ -75,6 +122,7 @@ const WorkerRegister = () => {
             if (typeof draft.otpSent === 'boolean') setOtpSent(draft.otpSent);
             if (typeof draft.activeSection === 'number') setActiveSection(draft.activeSection);
             if (typeof draft.agreedToTerms === 'boolean') setAgreedToTerms(draft.agreedToTerms);
+            if (typeof draft.ageConsent === 'boolean') setAgeConsent(draft.ageConsent);
             if (draft.livePhotoData) setLivePhotoData(draft.livePhotoData);
             if (typeof draft.similarity === 'number') setSimilarity(draft.similarity);
             if (typeof draft.similarityThreshold === 'number') setSimilarityThreshold(draft.similarityThreshold);
@@ -94,6 +142,7 @@ const WorkerRegister = () => {
             otpSent,
             activeSection,
             agreedToTerms,
+            ageConsent,
             livePhotoData,
             similarity,
             similarityThreshold,
@@ -109,6 +158,7 @@ const WorkerRegister = () => {
         otpSent,
         activeSection,
         agreedToTerms,
+        ageConsent,
         livePhotoData,
         similarity,
         similarityThreshold,
@@ -116,12 +166,47 @@ const WorkerRegister = () => {
         faceMessage,
     ]);
 
-    const handleChange     = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+
+        if (name === 'idDocumentType') {
+            setFormData((prev) => ({ ...prev, idDocumentType: value, idNumber: '' }));
+            return;
+        }
+
+        if (name === 'idNumber') {
+            if (formData.idDocumentType === 'Aadhar Card') {
+                const numeric = value.replace(/\D/g, '').slice(0, 12);
+                setFormData((prev) => ({ ...prev, idNumber: numeric }));
+                return;
+            }
+
+            if (formData.idDocumentType === 'PAN Card') {
+                const pan = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+                setFormData((prev) => ({ ...prev, idNumber: pan }));
+                return;
+            }
+        }
+
+        setFormData((prev) => ({ ...prev, [name]: value }));
+    };
     const handleFileChange = e => {
         const { name, files: sel } = e.target;
         if (!sel) return;
-        if (name === 'skillCertificates' || name === 'portfolioPhotos') {
-            setFiles(p => ({ ...p, [name]: Array.from(sel) }));
+        if (name === 'skillCertificates') {
+            const selected = Array.from(sel);
+            const limited = selected.slice(0, 3);
+            if (selected.length > 3) {
+                toast.error('Maximum 3 skill certificates are allowed.');
+            }
+            setFiles(p => ({ ...p, skillCertificates: limited }));
+        } else if (name === 'portfolioPhotos') {
+            const selected = Array.from(sel);
+            const limited = selected.slice(0, 4);
+            if (selected.length > 4) {
+                toast.error('Maximum 4 portfolio photos are allowed.');
+            }
+            setFiles(p => ({ ...p, portfolioPhotos: limited }));
         } else {
             setFiles(p => ({ ...p, [name]: sel[0] }));
         }
@@ -259,15 +344,24 @@ const WorkerRegister = () => {
         e.preventDefault();
         if (!mobileVerified)    return toast.error('Verify mobile first');
         if (!agreedToTerms)     return toast.error('Agree to Terms and Conditions');
+        if (!ageConsent)        return toast.error('Please confirm you are 18+ and provide consent');
         if (!livePhotoData)     return toast.error('Complete face verification first');
         if (!faceMatchPassed)   return toast.error('Face similarity is below threshold. Please retry face verification.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
         if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
-        if (new Date().getFullYear() - new Date(formData.dob).getFullYear() < 18)
+        if (computedAge === null || computedAge < 18)
             return toast.error('Must be at least 18 years old');
+        if (!formData.idNumber?.trim()) return toast.error('ID number is required');
+        if (formData.idDocumentType === 'Aadhar Card' && !/^\d{12}$/.test(formData.idNumber.trim())) {
+            return toast.error('Enter a valid 12-digit Aadhaar number');
+        }
+        if (formData.idDocumentType === 'PAN Card' && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(formData.idNumber.trim().toUpperCase())) {
+            return toast.error('Enter a valid PAN number (example: ABCDE1234F)');
+        }
 
         const data = new FormData();
         Object.keys(formData).forEach(k => data.append(k, formData[k]));
+        data.append('ageConsent', String(ageConsent));
         data.append('skills',     JSON.stringify(Object.values(skills)));
         data.append('references', JSON.stringify(references));
         if (files.photo)     data.append('photo',     files.photo);
@@ -380,6 +474,11 @@ const WorkerRegister = () => {
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Date of Birth *</label>
                                         <div className="relative"><Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 h-5 w-5"/>
                                         <input name="dob" type="date" value={formData.dob} onChange={handleChange} required className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-orange-50/50"/></div>
+                                        {computedAge !== null && (
+                                            <p className={`mt-2 text-xs font-semibold ${computedAge >= 18 ? 'text-green-700' : 'text-red-600'}`}>
+                                                Age: {computedAge} {computedAge >= 18 ? '(Eligible)' : '(Must be 18+)'}
+                                            </p>
+                                        )}
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Type</label>
@@ -389,6 +488,12 @@ const WorkerRegister = () => {
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Gender *</label>
                                         <select name="gender" value={formData.gender} onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"><option>Male</option><option>Female</option><option>Other</option></select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Travel Method *</label>
+                                        <select name="travelMethod" value={formData.travelMethod} onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50">
+                                            {travelMethods.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                        </select>
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Mobile Number *</label>
@@ -415,8 +520,23 @@ const WorkerRegister = () => {
                                         <input type="email" name="email" value={formData.email} placeholder="For notifications" onChange={handleChange} className="w-full pl-12 pr-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Aadhar Number *</label>
-                                        <input name="aadharNumber" value={formData.aadharNumber} placeholder="12-digit Aadhar" onChange={handleChange} required maxLength={12} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">ID Proof Type *</label>
+                                        <select name="idDocumentType" value={formData.idDocumentType} onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50">
+                                            {documentTypes.map(d => <option key={d}>{d}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">{idNumberMeta.label}</label>
+                                        <input
+                                            name="idNumber"
+                                            value={formData.idNumber}
+                                            placeholder={idNumberMeta.placeholder}
+                                            onChange={handleChange}
+                                            required
+                                            maxLength={idNumberMeta.maxLength}
+                                            inputMode={idNumberMeta.inputMode}
+                                            className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Create Password *</label>
@@ -531,9 +651,6 @@ const WorkerRegister = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">ID Proof *</label>
-                                        <select name="idDocumentType" value={formData.idDocumentType} onChange={handleChange} className="w-full mb-3 px-4 py-3 border-2 border-orange-200 rounded-xl bg-white">
-                                            {documentTypes.map(d => <option key={d}>{d}</option>)}
-                                        </select>
                                         <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
                                             <Upload className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
                                             <input type="file" name="idProof" onChange={handleFileChange} accept="image/*,.pdf" className="hidden" id="idProof" required/>
@@ -591,7 +708,7 @@ const WorkerRegister = () => {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Skill Certificates (optional)</label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Skill Certificates (optional, max 3)</label>
                                         <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
                                             <Award className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
                                             <input type="file" name="skillCertificates" onChange={handleFileChange} accept="image/*,.pdf" multiple className="hidden" id="skillCertificates"/>
@@ -600,7 +717,7 @@ const WorkerRegister = () => {
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Portfolio Photos (optional)</label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Portfolio Photos (optional, max 4)</label>
                                         <div className="border-2 border-dashed border-orange-300 rounded-xl p-6 text-center bg-orange-50/50">
                                             <ImageIcon className="h-8 w-8 text-orange-500 mx-auto mb-2"/>
                                             <input type="file" name="portfolioPhotos" onChange={handleFileChange} accept="image/*" multiple className="hidden" id="portfolioPhotos"/>
@@ -727,7 +844,9 @@ const WorkerRegister = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
                                         <p><span className="font-semibold">Name:</span> {formData.name || 'N/A'}</p>
                                         <p><span className="font-semibold">Mobile:</span> {formData.mobile || 'N/A'}</p>
-                                        <p><span className="font-semibold">Aadhar:</span> {formData.aadharNumber || 'N/A'}</p>
+                                        <p><span className="font-semibold">Age:</span> {computedAge ?? 'N/A'}</p>
+                                        <p><span className="font-semibold">{formData.idDocumentType} Number:</span> {formData.idNumber || 'N/A'}</p>
+                                        <p><span className="font-semibold">Travel:</span> {travelMethods.find((m) => m.value === formData.travelMethod)?.label || 'Other'}</p>
                                         <p><span className="font-semibold">E-Shram:</span> {formData.eShramNumber || 'Not provided'}</p>
                                         <p><span className="font-semibold">City:</span> {formData.city || 'N/A'}</p>
                                         <p><span className="font-semibold">Locality:</span> {formData.locality || 'N/A'}</p>
@@ -744,11 +863,15 @@ const WorkerRegister = () => {
                                         <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="h-5 w-5 rounded border-orange-300 text-orange-600"/>
                                         <span className="text-sm text-gray-700">I agree to the <Link to="/terms-and-conditions" target="_blank" className="text-orange-600 underline font-medium">Terms and Conditions</Link></span>
                                     </label>
+                                    <label className="flex items-center gap-3 cursor-pointer mt-3">
+                                        <input type="checkbox" checked={ageConsent} onChange={e => setAgeConsent(e.target.checked)} className="h-5 w-5 rounded border-orange-300 text-orange-600"/>
+                                        <span className="text-sm text-gray-700">I confirm I am above 18 years old and provide consent for registration verification.</span>
+                                    </label>
                                 </div>
 
                                 <div className="flex justify-between pt-4">
                                     <button type="button" onClick={() => setActiveSection(3)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
-                                    <button type="submit" disabled={!mobileVerified || !agreedToTerms || !livePhotoData || !faceMatchPassed || checkingSimilarity}
+                                    <button type="submit" disabled={!mobileVerified || !agreedToTerms || !ageConsent || !livePhotoData || !faceMatchPassed || checkingSimilarity}
                                         className="px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl disabled:from-gray-400 disabled:to-gray-500 shadow-xl text-lg flex items-center">
                                         <CheckCircle className="h-6 w-6 mr-3"/>Submit for Verification
                                     </button>

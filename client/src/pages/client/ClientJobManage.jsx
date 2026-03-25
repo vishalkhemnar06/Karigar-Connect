@@ -203,6 +203,12 @@ function WorkerModal({ workerId, onClose, onStar, starredIds = [] }) {
     };
 
     const starred = starredIds.includes(workerId?.toString());
+    const travelMethodLabel = {
+        cycle: 'Cycle',
+        bike: 'Bike',
+        bus: 'Bus',
+        other: 'Other',
+    }[String(w?.travelMethod || 'other').toLowerCase()] || 'Other';
     return (
         <motion.div
             initial={{ opacity: 0 }}
@@ -267,6 +273,17 @@ function WorkerModal({ workerId, onClose, onStar, starredIds = [] }) {
                         </div>
 
                         <div className="px-4 sm:px-5 md:px-6 py-4 md:py-5 space-y-3 md:space-y-5">
+                            <div className="bg-gradient-to-r from-amber-100 via-orange-100 to-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Navigation size={14} className="text-orange-700" />
+                                    <div>
+                                        <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-wide text-orange-700">Travel Method</p>
+                                        <p className="text-[12px] sm:text-sm font-black text-orange-900">{travelMethodLabel}</p>
+                                    </div>
+                                </div>
+                                <span className="text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full bg-white text-orange-700 font-bold border border-orange-200">Highlighted</span>
+                            </div>
+
                             <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
                                 <button
                                     onClick={handleGenerateSummary}
@@ -581,6 +598,7 @@ function SlotRatingModal({ job, onClose, onSlotRated }) {
                 exit={{ y: '100%', opacity: 0 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                 className="bg-white w-full sm:rounded-3xl sm:max-w-md shadow-2xl rounded-t-3xl overflow-hidden"
+                onClick={e => e.stopPropagation()}
             >
                 <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3">
                     <div className="flex items-center justify-between">

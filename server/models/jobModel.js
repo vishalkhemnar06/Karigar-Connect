@@ -70,6 +70,11 @@ const jobSchema = new mongoose.Schema({
     detailedDescription: String,
     skills:              [{ type: String }],
     payment:             { type: Number, default: 0, min: 0 },
+    paymentMethod:       {
+        type: String,
+        enum: ['cash', 'upi_qr', 'bank_transfer', 'flexible'],
+        default: 'flexible',
+    },
     negotiable:          { type: Boolean, default: false },
     minBudget:           { type: Number, default: 0, min: 0 },
     duration:            String,

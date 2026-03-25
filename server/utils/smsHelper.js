@@ -4,14 +4,23 @@
 
 const twilio = require('twilio');
 
-const client = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
+const hasTwilioConfig = Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+    process.env.TWILIO_AUTH_TOKEN &&
+    process.env.TWILIO_PHONE_NUMBER
 );
+
+const client = hasTwilioConfig
+    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+    : null;
 
 // ── BASE FUNCTION ─────────────────────────────────────────────────────────────
 const sendSms = async (to, body) => {
     if (!to || !body) return;
+    if (!client) {
+        console.warn(`SMS skipped (Twilio not configured) to ${to}`);
+        return;
+    }
     try {
         await client.messages.create({
             body,

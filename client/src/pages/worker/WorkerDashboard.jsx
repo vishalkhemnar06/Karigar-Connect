@@ -40,6 +40,7 @@ const ToastList = ({ toasts }) => (
 );
 
 const safeNum = v => (v === null || v === undefined ? 0 : Number(v));
+const safeArray = v => (Array.isArray(v) ? v : []);
 
 const Skel = ({ h = 'h-24', r = 'rounded-2xl' }) => (
   <div className={`${h} ${r} bg-gradient-to-r from-orange-50 via-orange-100 to-orange-50 animate-pulse`} />
@@ -62,7 +63,8 @@ const StatCard = ({ title, value, subtitle, icon: Icon, grad, prefix = '', suffi
 );
 
 const ClientCard = ({ client }) => {
-  const initials = (client.name || 'C').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const safeName = typeof client?.name === 'string' ? client.name : 'Client';
+  const initials = safeName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const location = [client.address?.locality, client.address?.city].filter(Boolean).join(', ') || 'Unknown';
   return (
     <div className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm active:bg-orange-50/30 transition-all">
@@ -117,7 +119,7 @@ const WorkerDashboard = () => {
       ]);
       if (resAnalytic?.data) setAnalytics(resAnalytic.data.data || resAnalytic.data);
       if (resProfile?.data) setProfile(resProfile.data.data || resProfile.data);
-      if (resNear?.data) setNearClients(resNear.data.data || resNear.data || []);
+      if (resNear?.data) setNearClients(safeArray(resNear.data.data || resNear.data));
     } catch (error) {
       console.error("Dashboard Load Error:", error);
     } finally {
@@ -189,9 +191,9 @@ const WorkerDashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[1,2,3].map(i => <Skel key={i} h="h-44" />)}
         </div>
-      ) : nearClients.length > 0 ? (
+      ) : safeArray(nearClients).length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {nearClients.map(c => <ClientCard key={c._id} client={c} />)}
+          {safeArray(nearClients).map(c => <ClientCard key={c._id} client={c} />)}
         </div>
       ) : (
         <div className="bg-white rounded-3xl p-10 text-center border border-orange-100">

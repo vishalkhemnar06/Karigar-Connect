@@ -4,18 +4,62 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getWorkerBookings, workerCancelJob, getImageUrl } from '../../api/index';
+import { getWorkerBookings, workerCancelJob, getImageUrl, getJobDetails } from '../../api/index';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
     Star, Shield, AlertCircle, CheckCircle, XCircle, Truck,
     Phone, Mail, ExternalLink, ChevronDown, ChevronUp,
-    Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle, X
+    Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle, X, Eye
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const CANCEL_CUTOFF_MINS = 30;
+
+const normSkill = (s) => {
+    if (!s) return '';
+    if (typeof s === 'string') return s.toLowerCase().trim();
+    if (typeof s === 'object') return (s.name || s.skill || '').toLowerCase().trim();
+    return String(s).toLowerCase().trim();
+};
+
+const formatPaymentMethod = (method) => {
+    switch (method) {
+        case 'cash': return 'Cash';
+        case 'upi_qr': return 'Online UPI / QR';
+        case 'bank_transfer': return 'Direct Bank Account';
+        default: return 'Flexible (Any)';
+    }
+};
+
+const openGoogleMapsDirections = ({ lat, lng }) => {
+    const dLat = Number(lat);
+    const dLng = Number(lng);
+    if (!Number.isFinite(dLat) || !Number.isFinite(dLng)) {
+        toast.error('Job location coordinates are not available.');
+        return;
+    }
+
+    const openUrl = (originLat, originLng) => {
+        let url = `https://www.google.com/maps/dir/?api=1&destination=${dLat},${dLng}&travelmode=driving`;
+        if (Number.isFinite(originLat) && Number.isFinite(originLng)) {
+            url += `&origin=${originLat},${originLng}`;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        openUrl();
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => openUrl(Number(pos.coords.latitude), Number(pos.coords.longitude)),
+        () => openUrl(),
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+    );
+};
 
 const getCancelInfo = (job) => {
     if (!job) return { show: false, allowed: false, reason: 'invalid' };
@@ -177,6 +221,237 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
     );
 }
 
+function BookingDetailModal({ jobId, workerSkills, onClose }) {
+    const [job, setJob] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const { data } = await getJobDetails(jobId);
+                if (!active) return;
+                setJob(data || null);
+            } catch {
+                if (!active) return;
+                setError('Failed to load job details.');
+            } finally {
+                if (active) setLoading(false);
+            }
+        })();
+        return () => { active = false; };
+    }, [jobId]);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ y: '100%', opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="bg-white w-full sm:rounded-3xl shadow-2xl sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+                onClick={e => e.stopPropagation()}
+            >
+                {loading ? (
+                    <div className="p-6 text-center">
+                        <Loader2 size={32} className="animate-spin text-orange-500 mx-auto mb-3" />
+                        <p className="text-gray-500 text-sm">Loading job details...</p>
+                    </div>
+                ) : error || !job ? (
+                    <div className="p-6 text-center">
+                        <AlertCircle size={42} className="text-red-500 mx-auto mb-3" />
+                        <p className="text-gray-600 text-sm">{error || 'Job not found.'}</p>
+                        <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-100 rounded-xl text-sm">Close</button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 sm:px-6 py-4 sm:py-5 flex-shrink-0">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-white font-black text-lg sm:text-xl leading-tight line-clamp-2">{job.title}</h2>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {job.urgent && (
+                                            <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                                                <Zap size={10} /> Urgent
+                                            </span>
+                                        )}
+                                        {job.negotiable && (
+                                            <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                                                <Gift size={10} /> Negotiable
+                                            </span>
+                                        )}
+                                        {job.shift && (
+                                            <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold">
+                                                {job.shift.split('(')[0].trim()}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white flex-shrink-0 active:scale-95">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
+                            {job.postedBy && (
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4">
+                                    <div className="flex items-start gap-3 sm:gap-4">
+                                        <img
+                                            src={getImageUrl(job.postedBy.photo)}
+                                            alt={job.postedBy.name || 'Client'}
+                                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-white shadow-md flex-shrink-0"
+                                            onError={e => { e.target.src = '/admin.png'; }}
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-gray-900 text-base sm:text-lg truncate block">{job.postedBy.name || 'Unknown Client'}</span>
+                                            {job.postedBy.mobile && (
+                                                <a href={`tel:${job.postedBy.mobile}`} className="text-sm text-blue-600 font-semibold mt-1 inline-flex items-center gap-1 break-all">
+                                                    <Phone size={12} /> {job.postedBy.mobile}
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <Briefcase size={12} /> About the Job
+                                </p>
+                                <div className="bg-gray-50 rounded-2xl p-4">
+                                    <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
+                                </div>
+                            </div>
+
+                            {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
+                                <div>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <Users size={12} /> Positions Available
+                                    </p>
+                                    <div className="space-y-2">
+                                        {Object.entries(job.openSlotSummary).map(([skill, count]) => {
+                                            const isMatch = workerSkills.includes(normSkill(skill));
+                                            return (
+                                                <div key={skill} className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="font-bold text-orange-700 capitalize text-sm">{skill}</span>
+                                                            {isMatch && (
+                                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                                    <Star size={10} /> Your skill
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-full font-bold">
+                                                            {count} slot{count > 1 ? 's' : ''}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <DollarSign size={12} /> Payment Terms
+                                </p>
+                                <div className="bg-gray-50 rounded-2xl p-3 space-y-1.5">
+                                    <p className="text-sm text-gray-700 break-words">
+                                        <span className="font-semibold">Method:</span> {formatPaymentMethod(job.paymentMethod)}
+                                    </p>
+                                    {job.negotiable && Number(job.minBudget || 0) > 0 && (
+                                        <p className="text-sm text-gray-700 break-words">
+                                            <span className="font-semibold">Negotiable Minimum:</span> ₹{Number(job.minBudget).toLocaleString()}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {(job.scheduledDate || job.scheduledTime) && (
+                                <div>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <Calendar size={12} /> Schedule
+                                    </p>
+                                    <div className="bg-gray-50 rounded-2xl p-3 space-y-1">
+                                        {job.scheduledDate && (
+                                            <p className="text-sm text-gray-700 flex items-center gap-2 break-words">
+                                                <Calendar size={14} className="flex-shrink-0" />
+                                                {new Date(job.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                            </p>
+                                        )}
+                                        {job.scheduledTime && <p className="text-sm text-gray-700 break-words">🕐 {job.scheduledTime}</p>}
+                                        {job.shift && <p className="text-sm text-gray-600 break-words">{job.shift}</p>}
+                                    </div>
+                                </div>
+                            )}
+
+                            {job.location?.city && (
+                                <div>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <MapPin size={12} /> Location
+                                    </p>
+                                    <div className="bg-gray-50 rounded-2xl p-3">
+                                        <p className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
+                                            <MapPin size={14} />
+                                            {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
+                                        </p>
+                                    </div>
+                                    {job.location?.lat && job.location?.lng && (
+                                        <button
+                                            type="button"
+                                            onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
+                                            className="mt-2 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-semibold text-sm hover:bg-blue-100 transition-all"
+                                        >
+                                            <Navigation size={14} /> View Location In Google Maps
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {job.qaAnswers?.filter(q => q.answer).length > 0 && (
+                                <div>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <MessageCircle size={12} /> Client's Answers
+                                    </p>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+                                        {job.qaAnswers.filter(q => q.answer).slice(0, 5).map((qa, i) => (
+                                            <div key={i} className="p-3 sm:p-4 border-b border-amber-100 last:border-0">
+                                                <p className="text-xs font-bold text-amber-700 mb-1 break-words">Q: {qa.question}</p>
+                                                <p className="text-sm text-gray-800 break-words">A: {qa.answer}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {job.photos?.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {job.photos.slice(0, 6).map((p, i) => (
+                                            <img key={i} src={getImageUrl(p)} alt="" className="w-full aspect-square object-cover rounded-xl border border-gray-200" />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
+            </motion.div>
+        </motion.div>
+    );
+}
+
 // ── Error Boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
     constructor(props) { 
@@ -212,7 +487,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // ── Job Card (Mobile Optimized) ──────────────────────────────────────────────────
-function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection }) {
+function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, activeSection }) {
     const navigate = useNavigate();
     const { t } = useTranslation();
 
@@ -373,7 +648,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                         {job.postedBy.mobile && (
                                             <a 
                                                 href={`tel:${job.postedBy.mobile}`} 
-                                                className="text-xs text-blue-600 flex items-center gap-1 mt-0.5 inline-flex touch-manipulation"
+                                                className="text-xs text-blue-600 inline-flex items-center gap-1 mt-0.5 touch-manipulation"
                                             >
                                                 <Phone size={10} /> <span className="truncate">{job.postedBy.mobile}</span>
                                             </a>
@@ -387,9 +662,20 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                 <div className="bg-gray-50 rounded-xl p-3">
                                     <div className="flex items-start gap-2">
                                         <MapPin size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
-                                        <p className="text-xs font-semibold text-gray-700 flex-1 break-words">
-                                            {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
-                                        </p>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-semibold text-gray-700 break-words">
+                                                {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
+                                            </p>
+                                            {job?.location?.lat && job?.location?.lng && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
+                                                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-all"
+                                                >
+                                                    <Navigation size={12} /> View Location In Google Maps
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -417,6 +703,14 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, activeSection })
                                     <Navigation size={16} /> {t('job_bookings.share_location', 'Share Live Location')}
                                 </motion.button>
                             )}
+
+                            <motion.button
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => onViewDetails(job._id)}
+                                className="w-full flex items-center justify-center gap-2 py-3.5 border-2 border-orange-200 bg-orange-50 text-orange-700 rounded-xl font-bold text-sm hover:bg-orange-100 transition-all active:bg-orange-100 touch-manipulation"
+                            >
+                                <Eye size={16} /> View Full Details
+                            </motion.button>
 
                             {/* Cancel Button */}
                             {cancelInfo.show && (
@@ -461,13 +755,14 @@ export default function JobBookings() {
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [cancelData, setCancelData] = useState(null);
+    const [detailId, setDetailId] = useState(null);
     const [expanded, setExpanded] = useState(null);
     const [activeSection, setActiveSection] = useState('in_progress');
     const [error, setError] = useState(null);
 
     const workerData = JSON.parse(localStorage.getItem('user') || '{}');
     const workerId = String(workerData._id || workerData.id || '');
-    const workerSkills = (workerData.skills || []).map(s => (typeof s === 'string' ? s : s?.name || '')).map(s => s.toLowerCase().trim()).filter(Boolean);
+    const workerSkills = (workerData.skills || []).map(normSkill).filter(Boolean);
 
     const loadBookings = useCallback(async () => {
         try {
@@ -690,6 +985,7 @@ export default function JobBookings() {
                                                     expanded={expanded}
                                                     onToggle={(id) => setExpanded(expanded === id ? null : id)}
                                                     onCancel={setCancelData}
+                                                    onViewDetails={setDetailId}
                                                     activeSection={activeSection}
                                                 />
                                             ))}
@@ -708,6 +1004,16 @@ export default function JobBookings() {
                             mySlot={cancelData.mySlot}
                             onClose={() => setCancelData(null)}
                             onCancelled={handleCancelled}
+                        />
+                    )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                    {detailId && (
+                        <BookingDetailModal
+                            jobId={detailId}
+                            workerSkills={workerSkills}
+                            onClose={() => setDetailId(null)}
                         />
                     )}
                 </AnimatePresence>

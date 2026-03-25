@@ -77,13 +77,15 @@ const StatCard = ({ icon: Icon, grad, label, value, sub }) => (
 const KarigarCard = ({ karigar, idx }) => {
   const [imgErr, setImgErr] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [isFlipped, setIsFlipped] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
   const [summaryData, setSummaryData] = useState(null);
-  const initials = (karigar.name || 'K').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const safeName = typeof karigar?.name === 'string' ? karigar.name : 'Karigar';
+  const initials = safeName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const isAvailable = karigar.availability !== false;
   const rating = karigar.avgStars || 0;
-  const skills = karigar.skills || [];
+  const skills = Array.isArray(karigar.skills) ? karigar.skills : [];
 
   const toSummaryLine = (point) => {
     if (typeof point === 'string' || typeof point === 'number') return String(point);
@@ -129,178 +131,243 @@ const KarigarCard = ({ karigar, idx }) => {
     }
   };
 
+  const handleFlipAndGenerateSummary = async () => {
+    if (!isFlipped) setIsFlipped(true);
+    if (!summaryData) {
+      await handleGenerateSummary();
+    }
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-all">
-      {/* Photo Section */}
-      <div className="relative pt-[100%] bg-gradient-to-br from-orange-50 to-amber-50">
-        <div className="absolute inset-0">
-  {karigar.photo && !imgErr ? (
-    <img
-      src={getImageUrl(karigar.photo)}
-      alt={karigar.name}
-      onError={() => setImgErr(true)}
-      className="w-full h-full object-cover"
-    />
-  ) : (
-    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100">
-      <span className="text-4xl sm:text-5xl font-black text-orange-400">
-        {initials}
-      </span>
-    </div>
-  )}
-</div>
-        
-        {/* Experience Badge */}
-        <div className="absolute bottom-2 left-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full shadow-md">
-          {karigar.experience || 0}+ yrs exp
-        </div>
-        
-        {/* Availability Badge */}
-        <div className={`absolute top-2 right-2 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 ${
-          isAvailable ? 'bg-green-500' : 'bg-gray-500'
-        }`}>
-          <div className={`w-1.5 h-1.5 rounded-full bg-white ${isAvailable ? 'animate-pulse' : ''}`} />
-          {isAvailable ? 'Available' : 'Busy'}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-3 sm:p-4 space-y-2">
-        {/* Name & Location */}
-        <div>
-          <h3 className="font-bold text-gray-900 text-sm sm:text-base truncate">{karigar.name}</h3>
-          <div className="flex items-center gap-1 mt-0.5">
-            <MapPin size={12} className="text-orange-500 flex-shrink-0" />
-            <span className="text-[11px] sm:text-xs text-gray-500 truncate">
-              {karigar.address?.city || 'Location not set'}
-            </span>
-          </div>
-        </div>
-
-        {/* Rating */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex gap-0.5">
-            {[1, 2, 3, 4, 5].map(s => (
-              <Star key={s} size={12} className={s <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'} />
-            ))}
-          </div>
-          <span className="text-[10px] sm:text-xs font-semibold text-gray-500">
-            {rating > 0 ? rating.toFixed(1) : 'New'}
-          </span>
-        </div>
-
-        {/* Skills */}
-        <div className="flex flex-wrap gap-1.5">
-          {skills.slice(0, 2).map((sk, i) => (
-            <span key={i} className="text-[9px] sm:text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
-              {sk.name || sk}
-            </span>
-          ))}
-          {skills.length > 2 && (
-            <span className="text-[9px] sm:text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
-              +{skills.length - 2}
-            </span>
-          )}
-        </div>
-
-        {/* Karigar ID */}
-        {karigar.karigarId && (
-          <p className="text-[9px] sm:text-[10px] text-gray-400 font-mono font-semibold">
-            {karigar.karigarId}
-          </p>
-        )}
-
-        {/* Rank & Points */}
-        <div className="flex gap-2">
-          <div className="flex items-center gap-1 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
-            <Award size={10} className="text-orange-500" />
-            <span className="text-[9px] sm:text-[10px] font-bold text-orange-600">#{karigar.rank || idx + 1}</span>
-          </div>
-          <div className="flex items-center gap-1 bg-yellow-50 px-2 py-0.5 rounded-full border border-yellow-200">
-            <TrendingUp size={10} className="text-yellow-600" />
-            <span className="text-[9px] sm:text-[10px] font-bold text-yellow-700">{karigar.points || 0} pts</span>
-          </div>
-        </div>
-
-        {/* Expandable Details */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-between pt-2 text-gray-500 hover:text-orange-600 transition-colors"
-        >
-          <span className="text-[10px] font-semibold">More Details</span>
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
-
-        {expanded && (
-          <div className="space-y-2 pt-1 border-t border-gray-100">
-            {karigar.experience && (
-              <div className="flex items-center gap-2 text-[11px]">
-                <Clock size={12} className="text-gray-400" />
-                <span className="text-gray-600">{karigar.experience} years experience</span>
+    <div className="relative min-h-[580px]">
+      {!isFlipped ? (
+        <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-all h-full">
+          <div className="h-full overflow-y-auto">
+            <div className="relative pt-[92%] bg-gradient-to-br from-orange-50 to-amber-50">
+              <div className="absolute inset-0">
+                {karigar.photo && !imgErr ? (
+                  <img
+                    src={getImageUrl(karigar.photo)}
+                    alt={karigar.name}
+                    onError={() => setImgErr(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-100 to-amber-100">
+                    <span className="text-4xl sm:text-5xl font-black text-orange-400">{initials}</span>
+                  </div>
+                )}
               </div>
-            )}
-            {karigar.email && (
-              <div className="flex items-center gap-2 text-[11px]">
-                <Mail size={12} className="text-gray-400" />
-                <span className="text-gray-600 truncate">{karigar.email}</span>
+
+              <div className="absolute bottom-2 left-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full shadow-md">
+                {karigar.experience || 0}+ yrs exp
               </div>
-            )}
-            {karigar.workHours && (
-              <div className="flex items-center gap-2 text-[11px]">
-                <Calendar size={12} className="text-gray-400" />
-                <span className="text-gray-600">{karigar.workHours}</span>
+
+              <div className={`absolute top-2 right-2 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1 ${isAvailable ? 'bg-green-500' : 'bg-gray-500'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full bg-white ${isAvailable ? 'animate-pulse' : ''}`} />
+                {isAvailable ? 'Available' : 'Busy'}
               </div>
-            )}
-          </div>
-        )}
+            </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2 pt-2">
-          {karigar.mobile && (
-            <a
-              href={`tel:${karigar.mobile}`}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
-            >
-              <Phone size={12} /> Contact
-            </a>
-          )}
-          <Link
-            to={`/profile/public/${karigar.karigarId}`}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
-          >
-            View Profile <ChevronRight size={12} />
-          </Link>
-        </div>
+            <div className="p-3 sm:p-4 space-y-2">
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm sm:text-base truncate">{karigar.name}</h3>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <MapPin size={12} className="text-orange-500 flex-shrink-0" />
+                  <span className="text-[11px] sm:text-xs text-gray-500 truncate">{karigar.address?.city || 'Location not set'}</span>
+                </div>
+              </div>
 
-        <button
-          onClick={handleGenerateSummary}
-          disabled={summaryLoading}
-          className="w-full mt-2 border-2 border-orange-200 text-orange-700 py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:bg-orange-50 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {summaryLoading ? 'Generating Profile Summary...' : (summaryData ? 'Regenerate Profile Summary' : 'Generate Profile Summary')}
-        </button>
+              <div className="flex items-center gap-1.5">
+                <div className="flex gap-0.5">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star key={s} size={12} className={s <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'} />
+                  ))}
+                </div>
+                <span className="text-[10px] sm:text-xs font-semibold text-gray-500">{rating > 0 ? rating.toFixed(1) : 'New'}</span>
+              </div>
 
-        {summaryError && (
-          <p className="text-[10px] text-red-500 font-semibold mt-2">{summaryError}</p>
-        )}
-
-        {summaryData && (
-          <div className="mt-2 bg-orange-50 border border-orange-100 rounded-xl p-2.5 space-y-2">
-            {summaryData.intro && (
-              <p className="text-[10px] sm:text-[11px] text-gray-700 leading-relaxed">{summaryData.intro}</p>
-            )}
-            {Array.isArray(summaryData.points) && summaryData.points.length > 0 && (
-              <ul className="space-y-1">
-                {summaryData.points.map((point, i) => (
-                  <li key={i} className="text-[10px] sm:text-[11px] text-gray-700 leading-relaxed">
-                    <span className="text-orange-500 font-black mr-1">•</span>{point}
-                  </li>
+              <div className="flex flex-wrap gap-1.5">
+                {skills.slice(0, 2).map((sk, i) => (
+                  <span key={i} className="text-[9px] sm:text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
+                    {sk.name || sk}
+                  </span>
                 ))}
-              </ul>
-            )}
+                {skills.length > 2 && (
+                  <span className="text-[9px] sm:text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">+{skills.length - 2}</span>
+                )}
+              </div>
+
+              {karigar.karigarId && (
+                <p className="text-[9px] sm:text-[10px] text-gray-400 font-mono font-semibold">{karigar.karigarId}</p>
+              )}
+
+              <div className="flex gap-2">
+                <div className="flex items-center gap-1 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
+                  <Award size={10} className="text-orange-500" />
+                  <span className="text-[9px] sm:text-[10px] font-bold text-orange-600">#{karigar.rank || idx + 1}</span>
+                </div>
+                <div className="flex items-center gap-1 bg-yellow-50 px-2 py-0.5 rounded-full border border-yellow-200">
+                  <TrendingUp size={10} className="text-yellow-600" />
+                  <span className="text-[9px] sm:text-[10px] font-bold text-yellow-700">{karigar.points || 0} pts</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="w-full flex items-center justify-between pt-2 text-gray-500 hover:text-orange-600 transition-colors"
+              >
+                <span className="text-[10px] font-semibold">More Details</span>
+                {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              {expanded && (
+                <div className="space-y-2 pt-1 border-t border-gray-100">
+                  {karigar.experience && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <Clock size={12} className="text-gray-400" />
+                      <span className="text-gray-600">{karigar.experience} years experience</span>
+                    </div>
+                  )}
+                  {karigar.email && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <Mail size={12} className="text-gray-400" />
+                      <span className="text-gray-600 truncate">{karigar.email}</span>
+                    </div>
+                  )}
+                  {karigar.workHours && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <Calendar size={12} className="text-gray-400" />
+                      <span className="text-gray-600">{karigar.workHours}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                {karigar.mobile && (
+                  <a
+                    href={`tel:${karigar.mobile}`}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
+                  >
+                    <Phone size={12} /> Contact
+                  </a>
+                )}
+                <Link
+                  to={`/profile/public/${karigar.karigarId}`}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
+                >
+                  View Profile <ChevronRight size={12} />
+                </Link>
+              </div>
+
+              <button
+                onClick={handleFlipAndGenerateSummary}
+                disabled={summaryLoading}
+                className="w-full mt-2 border-2 border-orange-200 text-orange-700 py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:bg-orange-50 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {summaryLoading ? 'Generating Profile Summary...' : (summaryData ? 'View Profile Summary' : 'Generate Profile Summary')}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-orange-100 shadow-sm overflow-hidden h-full">
+          <div className="h-full flex flex-col">
+            <div className="p-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {karigar.photo && !imgErr ? (
+                  <img
+                    src={getImageUrl(karigar.photo)}
+                    alt={karigar.name}
+                    className="w-9 h-9 rounded-xl object-cover border border-white/50"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-sm font-black">
+                    {initials}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-black truncate">{karigar.name}</p>
+                  <p className="text-[10px] text-orange-100 truncate">AI Profile Summary</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsFlipped(false)}
+                className="text-[10px] font-bold bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg"
+              >
+                Back
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+              {summaryLoading && (
+                <div className="h-full min-h-[260px] flex flex-col items-center justify-center gap-3">
+                  <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-xs font-semibold text-gray-500">Generating profile summary...</p>
+                </div>
+              )}
+
+              {!summaryLoading && summaryError && (
+                <div className="space-y-3">
+                  <p className="text-xs text-red-500 font-semibold">{summaryError}</p>
+                  <button
+                    onClick={handleGenerateSummary}
+                    className="w-full border border-red-200 text-red-600 py-2 rounded-xl text-xs font-bold hover:bg-red-50"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
+
+              {!summaryLoading && !summaryError && summaryData && (
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 space-y-2">
+                  {summaryData.intro && (
+                    <p className="text-xs text-gray-700 leading-relaxed">{summaryData.intro}</p>
+                  )}
+                  {Array.isArray(summaryData.points) && summaryData.points.length > 0 && (
+                    <ul className="space-y-1">
+                      {summaryData.points.map((point, i) => (
+                        <li key={i} className="text-xs text-gray-700 leading-relaxed">
+                          <span className="text-orange-500 font-black mr-1">•</span>{point}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {!summaryLoading && !summaryError && !summaryData && (
+                <div className="h-full min-h-[260px] flex flex-col items-center justify-center text-center gap-3">
+                  <p className="text-xs text-gray-500">No summary generated yet.</p>
+                  <button
+                    onClick={handleGenerateSummary}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold"
+                  >
+                    Generate Summary
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-t border-orange-100 flex gap-2">
+              <button
+                onClick={handleGenerateSummary}
+                disabled={summaryLoading}
+                className="flex-1 border-2 border-orange-200 text-orange-700 py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:bg-orange-50 transition-all disabled:opacity-60"
+              >
+                Regenerate
+              </button>
+              <button
+                onClick={() => setIsFlipped(false)}
+                className="flex-1 bg-gradient-to-r from-gray-700 to-gray-800 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold"
+              >
+                Back to Card
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -342,6 +409,14 @@ const ClientDashboard = () => {
   const [experienceFilter, setExperienceFilter] = useState('');
   const toast = useToast();
 
+  const normalizeKarigarList = (payload) => {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.workers)) return payload.workers;
+    if (Array.isArray(payload?.items)) return payload.items;
+    return [];
+  };
+
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
     try {
@@ -351,7 +426,7 @@ const ClientDashboard = () => {
       ]);
       if (clientRes.status === 'fulfilled') setClientData(clientRes.value?.data || null);
       if (karigarRes.status === 'fulfilled') {
-        const list = karigarRes.value?.data || [];
+        const list = normalizeKarigarList(karigarRes.value?.data);
         setKarigars(list);
         setFilteredKarigars(list);
       }

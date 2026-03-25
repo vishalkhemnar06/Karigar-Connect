@@ -85,6 +85,7 @@ const buildFallbackWorkerSummary = (worker = {}) => {
         { label: 'Karigar ID', value: worker.karigarId || 'Not provided' },
         { label: 'Skills', value: skills.length ? skills.join(', ') : 'Not specified' },
         { label: 'Experience', value: worker.overallExperience || worker.experience || 'Not specified' },
+        { label: 'Travel Method', value: worker.travelMethod || 'Not specified' },
         { label: 'Completed Jobs', value: String(worker.completedJobs || 0) },
         { label: 'Points', value: String(worker.points || 0) },
         { label: 'Average Rating', value: `${Number(worker.avgStars || 0).toFixed(1)} (${worker.ratingCount || 0} reviews)` },
@@ -113,6 +114,7 @@ const generateSummaryWithGroq = async (worker = {}) => {
         karigarId: worker.karigarId || '',
         skills: getWorkerSkills(worker.skills),
         experience: worker.overallExperience || worker.experience || '',
+        travelMethod: worker.travelMethod || '',
         completedJobs: worker.completedJobs || 0,
         points: worker.points || 0,
         avgStars: Number(worker.avgStars || 0),
@@ -870,8 +872,13 @@ exports.postJob = async (req, res) => {
             title, description, shortDescription, detailedDescription,
             skills, payment, duration, workersRequired, location,
             scheduledDate, scheduledTime, budgetBreakdown, totalEstimatedCost,
-            negotiable, minBudget, shift, qaAnswers, urgent, category, experienceRequired,
+            negotiable, minBudget, paymentMethod, shift, qaAnswers, urgent, category, experienceRequired,
         } = req.body;
+
+        const allowedPaymentMethods = new Set(['cash', 'upi_qr', 'bank_transfer', 'flexible']);
+        const normalizedPaymentMethod = allowedPaymentMethods.has(String(paymentMethod || '').trim())
+            ? String(paymentMethod).trim()
+            : 'flexible';
 
         const errors = [
             validateNeg(payment,          'Budget'),
@@ -909,6 +916,7 @@ exports.postJob = async (req, res) => {
             detailedDescription: detailedDescription || description.trim(),
             skills:              pSkills,
             payment:             Math.max(0, Number(payment) || 0),
+            paymentMethod:       normalizedPaymentMethod,
             duration:            duration || '',
             experienceRequired:  experienceRequired || '',
             workersRequired:     pWR,
@@ -1061,6 +1069,9 @@ exports.repostMissingSkill = async (req, res) => {
             detailedDescription: parentJob.detailedDescription || parentJob.description,
             skills:              [slot.skill],
             payment:             slotPayment,
+            paymentMethod:       parentJob.paymentMethod || 'flexible',
+            negotiable:          !!parentJob.negotiable,
+            minBudget:           Math.max(0, Number(parentJob.minBudget) || 0),
             duration:            slot.hoursEstimated ? `${slot.hoursEstimated} hours` : (parentJob.duration || ''),
             workersRequired:     1,
             location:            parentJob.location,
@@ -1640,7 +1651,7 @@ exports.inviteWorkersToJob = async (req, res) => {
 
 exports.getWorkerPublicProfile = async (req, res) => {
     try {
-        const w = await User.findById(req.params.workerId).select('name photo karigarId skills overallExperience points verificationStatus location address mobile');
+        const w = await User.findById(req.params.workerId).select('name photo karigarId skills overallExperience points verificationStatus location address mobile travelMethod');
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const completedJobs = await Job.countDocuments({ assignedTo: w._id, status: 'completed' });
         const ratings       = await Rating.find({ worker: w._id }).populate('client','name photo').sort({ createdAt: -1 }).limit(10);
@@ -1653,7 +1664,7 @@ exports.generateWorkerProfileSummary = async (req, res) => {
     try {
         const workerId = req.params.workerId;
         const worker = await User.findById(workerId)
-            .select('role name photo karigarId skills overallExperience experience points verificationStatus location address mobile email');
+            .select('role name photo karigarId skills overallExperience experience points verificationStatus location address mobile email travelMethod');
 
         if (!worker || worker.role === 'client') {
             return res.status(404).json({ message: 'Worker not found.' });

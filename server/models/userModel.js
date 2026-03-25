@@ -42,6 +42,8 @@ const userSchema = new mongoose.Schema({
     idProof: {
         idType: String,
         filePath: String,
+        numberHash: { type: String, select: false },
+        numberLast4: String,
     },
 
     // Worker fields
@@ -54,6 +56,11 @@ const userSchema = new mongoose.Schema({
     experience: { type: Number },
     expectedMinPay: { type: Number, default: 0, min: 0 },
     expectedMaxPay: { type: Number, default: 0, min: 0 },
+    travelMethod: {
+        type: String,
+        enum: ['cycle', 'bike', 'bus', 'other'],
+        default: 'other',
+    },
     preferredJobCategories: [{ type: String }],
     references: [referenceSchema],
     emergencyContact: { name: String, mobile: String },

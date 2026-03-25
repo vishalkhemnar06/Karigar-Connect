@@ -10,7 +10,7 @@ import {
   DollarSign, Users, Briefcase, AlertCircle, CheckCircle,
   Plus, X, Edit, Camera, Upload, Loader2, Sparkles,
   TrendingUp, Target, Zap, Award, Eye, EyeOff, Home,
-  ChevronDown, ChevronUp, RefreshCw
+    ChevronDown, ChevronUp, RefreshCw, Rocket
 } from 'lucide-react';
 
 // ── Leaflet ───────────────────────────────────────────────────────────────────
@@ -56,6 +56,51 @@ const todayStr = () => {
 };
 
 const ensureNonNeg = (v, fb = 0) => { const n = Number(v); return isNaN(n) || n < 0 ? fb : n; };
+
+const PAYMENT_METHODS = [
+    { value: 'cash', label: 'Cash' },
+    { value: 'upi_qr', label: 'Online UPI / QR' },
+    { value: 'bank_transfer', label: 'Direct Bank Account' },
+    { value: 'flexible', label: 'Flexible (Any)' },
+];
+
+const paymentMethodLabel = (method) => {
+    const found = PAYMENT_METHODS.find((item) => item.value === method);
+    return found?.label || 'Flexible (Any)';
+};
+
+const normalizeQuestions = (rawQuestions = []) => {
+    if (!Array.isArray(rawQuestions)) return [];
+
+    return rawQuestions
+        .map((item, index) => {
+            if (!item) return null;
+
+            if (typeof item === 'string') {
+                const text = item.trim();
+                if (!text) return null;
+                return { id: `q_${index + 1}`, question: text, type: 'text' };
+            }
+
+            if (typeof item !== 'object') return null;
+
+            const questionText = typeof item.question === 'string' ? item.question.trim() : '';
+            if (!questionText) return null;
+
+            const safeType = item.type === 'number' || item.type === 'select' ? item.type : 'text';
+            const safeOptions = safeType === 'select' && Array.isArray(item.options)
+                ? item.options.filter(opt => typeof opt === 'string' && opt.trim())
+                : [];
+
+            return {
+                id: String(item.id || `q_${index + 1}`),
+                question: questionText,
+                type: safeType,
+                options: safeOptions,
+            };
+        })
+        .filter(Boolean);
+};
 
 // ── Work flow suggestion engine ───────────────────────────────────────────────
 const SKILL_ORDER = { mason: 1, plumber: 2, carpenter: 3, electrician: 4, tiler: 5, welder: 6, painter: 7, ac_technician: 8, cleaner: 9, handyman: 5, general: 5 };
@@ -370,6 +415,7 @@ export default function ClientJobPost() {
     const [duration, setDuration] = useState('');
     const [workersRequired, setWorkersRequired] = useState(1);
     const [customBudget, setCustomBudget] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState('flexible');
     const [negotiable, setNegotiable] = useState(false);
     const [minBudget, setMinBudget] = useState('');
     const [scheduledDate, setScheduledDate] = useState('');
@@ -453,8 +499,13 @@ export default function ClientJobPost() {
         try {
             setLoadingQ(true);
             const { data } = await aiGenerateQuestions({ workDescription: description, city });
-            setQuestions(data.questions || []); setStep(1);
-        } catch { toast.error('Could not generate questions.'); setQuestions([]); setStep(1); }
+            setQuestions(normalizeQuestions(data?.questions));
+            setStep(1);
+        } catch {
+            toast.error('Could not generate questions.');
+            setQuestions([]);
+            setStep(1);
+        }
         finally { setLoadingQ(false); }
     };
 
@@ -535,6 +586,7 @@ export default function ClientJobPost() {
             fd.append('detailedDescription', description);
             fd.append('skills', JSON.stringify(editableSkills));
             fd.append('payment', String(ensureNonNeg(customBudget)));
+            fd.append('paymentMethod', paymentMethod);
             fd.append('negotiable', String(negotiable));
             fd.append('minBudget', negotiable ? String(ensureNonNeg(minBudget)) : '0');
             fd.append('duration', duration);
@@ -555,6 +607,7 @@ export default function ClientJobPost() {
             setQuestions([]); setAnswers({}); setEstimate(null); setEditableSkills([]);
             setTitle(''); setDuration(''); setCustomBudget(''); setMinBudget('');
             setCategory(''); setExperienceRequired('');
+            setPaymentMethod('flexible');
             setNegotiable(false); setWorkersRequired(1);
             setScheduledDate(''); setScheduledTime(''); setShift('');
             setLocation({ city: '', locality: '', pincode: '', fullAddress: '', lat: null, lng: null });
@@ -921,6 +974,20 @@ export default function ClientJobPost() {
                         </AnimatePresence>
                     </div>
 
+                    {/* Payment method */}
+                    <div>
+                        <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">Payment Method</label>
+                        <select
+                            value={paymentMethod}
+                            onChange={e => setPaymentMethod(e.target.value)}
+                            className="w-full border-2 border-gray-200 rounded-xl px-3 sm:px-4 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
+                        >
+                            {PAYMENT_METHODS.map((method) => (
+                                <option key={method.value} value={method.value}>{method.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     {estimate?.recommendation && (
                         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs sm:text-sm text-amber-700 flex gap-2">
                             <span>💡</span>
@@ -1185,6 +1252,7 @@ export default function ClientJobPost() {
                             <PRow label="Category" value={category || 'Not specified'} />
                             <PRow label="Experience" value={experienceRequired || 'Not specified'} />
                             <PRow label="Budget" value={`₹${Number(customBudget).toLocaleString()}${negotiable ? ` (Min ₹${Number(minBudget).toLocaleString()})` : ' · Fixed'}`} vc="text-green-600 font-bold" />
+                            <PRow label="Payment Method" value={paymentMethodLabel(paymentMethod)} />
                             <PRow label="Duration" value={duration} />
                             <PRow label="Date" value={scheduledDate ? new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''} />
                             <PRow label="Start Time" value={scheduledTime} />
@@ -1276,5 +1344,3 @@ export default function ClientJobPost() {
     );
 }
 
-// Add missing import
-import { Rocket } from 'lucide-react';
