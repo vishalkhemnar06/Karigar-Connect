@@ -119,7 +119,7 @@ const Splash = () => {
       </div>
 
       {/* Custom Styles */}
-      <style jsx>{`
+      <style>{`
         /* Card Entrance */
         @keyframes card-enter {
           0% {

@@ -365,6 +365,8 @@ export default function ClientJobPost() {
     const [workerCountChanged, setWorkerCountChanged] = useState(false);
     const [recalcLoading, setRecalcLoading] = useState(false);
     const [title, setTitle] = useState('');
+    const [category, setCategory] = useState('');
+    const [experienceRequired, setExperienceRequired] = useState('');
     const [duration, setDuration] = useState('');
     const [workersRequired, setWorkersRequired] = useState(1);
     const [customBudget, setCustomBudget] = useState('');
@@ -526,6 +528,8 @@ export default function ClientJobPost() {
             const qaRecord = questions.map(q => ({ question: q.question, answer: answers[q.id] || '' })).filter(x => x.answer);
             const fd = new FormData();
             fd.append('title', title.trim());
+            fd.append('category', category);
+            fd.append('experienceRequired', experienceRequired);
             fd.append('description', description);
             fd.append('shortDescription', description.slice(0, 150));
             fd.append('detailedDescription', description);
@@ -550,6 +554,7 @@ export default function ClientJobPost() {
             setStep(0); setDescription(''); setCity(''); setUrgent(false);
             setQuestions([]); setAnswers({}); setEstimate(null); setEditableSkills([]);
             setTitle(''); setDuration(''); setCustomBudget(''); setMinBudget('');
+            setCategory(''); setExperienceRequired('');
             setNegotiable(false); setWorkersRequired(1);
             setScheduledDate(''); setScheduledTime(''); setShift('');
             setLocation({ city: '', locality: '', pincode: '', fullAddress: '', lat: null, lng: null });
@@ -689,6 +694,42 @@ export default function ClientJobPost() {
                             placeholder="E.g., Bathroom Renovation — Pune"
                             className="w-full border-2 border-gray-200 rounded-xl px-3 sm:px-4 py-2.5 text-sm focus:outline-none focus:border-orange-400"
                         />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">Job Category</label>
+                            <select
+                                value={category}
+                                onChange={e => setCategory(e.target.value)}
+                                className="w-full border-2 border-gray-200 rounded-xl px-3 sm:px-4 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
+                            >
+                                <option value="">Select category</option>
+                                <option value="home_renovation">Home Renovation</option>
+                                <option value="repair_maintenance">Repair & Maintenance</option>
+                                <option value="electrical">Electrical Work</option>
+                                <option value="plumbing">Plumbing</option>
+                                <option value="painting">Painting</option>
+                                <option value="cleaning">Cleaning</option>
+                                <option value="furniture">Furniture Work</option>
+                                <option value="construction">Construction</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">Experience Needed</label>
+                            <select
+                                value={experienceRequired}
+                                onChange={e => setExperienceRequired(e.target.value)}
+                                className="w-full border-2 border-gray-200 rounded-xl px-3 sm:px-4 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
+                            >
+                                <option value="">Not specified</option>
+                                <option value="0-1 years">0-1 years</option>
+                                <option value="1-3 years">1-3 years</option>
+                                <option value="3-5 years">3-5 years</option>
+                                <option value="5+ years">5+ years</option>
+                            </select>
+                        </div>
                     </div>
 
                     {/* Skill editor */}
@@ -1141,6 +1182,8 @@ export default function ClientJobPost() {
                         </div>
                         <div className="px-4 sm:px-5 py-3 sm:py-4 divide-y divide-gray-50">
                             <PRow label="Description" value={description.slice(0, 150) + (description.length > 150 ? '…' : '')} />
+                            <PRow label="Category" value={category || 'Not specified'} />
+                            <PRow label="Experience" value={experienceRequired || 'Not specified'} />
                             <PRow label="Budget" value={`₹${Number(customBudget).toLocaleString()}${negotiable ? ` (Min ₹${Number(minBudget).toLocaleString()})` : ' · Fixed'}`} vc="text-green-600 font-bold" />
                             <PRow label="Duration" value={duration} />
                             <PRow label="Date" value={scheduledDate ? new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''} />

@@ -17,7 +17,8 @@ import {
     Layers,
     MessageSquare,
     Store,
-    ChevronRight
+    ChevronRight,
+    Sparkles
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -28,6 +29,7 @@ const Sidebar = () => {
         { to: '/worker/dashboard', icon: <LayoutDashboard size={22} />, text: t('worker_sidebar.dashboard') },
         { to: '/worker/job-requests', icon: <Briefcase size={22} />, text: t('worker_sidebar.job_requests') },
         { to: '/worker/job-bookings', icon: <Calendar size={22} />, text: t('worker_sidebar.my_bookings') },
+        { to: '/worker/direct-invites', icon: <Sparkles size={22} />, text: 'Direct Invites', isNew: true },
         { to: '/worker/shops', icon: <Store size={22} />, text: t('worker_sidebar.shops', 'Shops'), isNew: true },
         { to: '/worker/community', icon: <MessageSquare size={22} />, text: t('worker_sidebar.community') },
         { to: '/worker/create-group', icon: <Users size={22} />, text: t('worker_sidebar.create_group') },

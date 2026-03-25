@@ -10,7 +10,7 @@ const {
     removeAssignedWorker, completeWorkerTask,
     repostMissingSkill, cancelSlotRequirement, respondToSubTaskApplicant, completeSubTask,
     getJobApplicants, getSmartWorkerSuggestions, inviteWorkersToJob, respondToApplicant, hireWorker, submitRating,
-    getWorkerPublicProfile, toggleStarWorker,
+    getWorkerPublicProfile, generateWorkerProfileSummary, toggleStarWorker,
     getClientAIHistory, getAIHistoryItem, saveAIAnalysis,
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
     deleteClientAccount,
@@ -58,6 +58,7 @@ router.post('/jobs/:jobId/hire',      protect, client, hireWorker);
 router.post('/jobs/:jobId/rate',      protect, client, submitRating);
 
 router.get('/workers/:workerId/profile', protect, client, getWorkerPublicProfile);
+router.get('/workers/:workerId/profile-summary', protect, client, generateWorkerProfileSummary);
 router.post('/star/worker',              protect, client, toggleStarWorker);
 
 // Notifications — specific BEFORE :id

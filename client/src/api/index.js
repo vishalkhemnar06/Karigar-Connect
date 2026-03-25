@@ -135,6 +135,9 @@ export const workerCancelJob                = (jobId, reason) => API.patch(`/api
 export const getWorkerBookings              = ()              => API.get('/api/worker/bookings');
 export const getWorkerAnalytics             = ()              => API.get('/api/worker/analytics');
 export const getNearClients                 = ()              => API.get('/api/worker/near-clients');
+export const getDirectInvites               = ()              => API.get('/api/worker/invites/direct');
+export const acceptDirectInvite             = (jobId)         => API.post(`/api/worker/invites/${jobId}/accept`);
+export const rejectDirectInvite             = (jobId)         => API.post(`/api/worker/invites/${jobId}/reject`);
 export const getWorkerProfile               = ()              => API.get('/api/worker/profile');
 export const updateWorkerProfile            = (fd)            => API.put('/api/worker/profile/update',         fd, mp);
 export const toggleAvailability             = (d = {})        => API.post('/api/worker/availability',           d);
@@ -176,6 +179,7 @@ export const verifyAssignedWorkerFace   = (fd)    => API.post('/api/client/face/
 export const updateClientProfile        = (fd)    => API.put('/api/client/profile/update',          fd, mp);
 export const deleteClientAccount        = ()      => API.delete('/api/client/account/delete');
 export const getWorkerFullProfile       = (wId)   => API.get(`/api/client/workers/${wId}/profile`);
+export const generateWorkerProfileSummary = (wId) => API.get(`/api/client/workers/${wId}/profile-summary`);
 export const toggleStarWorker           = (wId)   => API.post('/api/client/star/worker',            { workerId: wId });
 
 export const getClientJobs              = ()                              => API.get('/api/client/jobs');
@@ -195,6 +199,11 @@ export const inviteWorkersToJob         = (jobId, workerIds = [])         => API
 export const respondToApplicant         = (jobId, d)                      => API.post(`/api/client/jobs/${jobId}/respond`,  d);
 export const hireWorker                 = (jobId, wId)                    => API.post(`/api/client/jobs/${jobId}/hire`,    { workerId: wId });
 export const submitRating               = (jobId, d)                      => API.post(`/api/client/jobs/${jobId}/rate`,    d);
+
+// ── SEMANTIC MATCHING ───────────────────────────────────────────────────────
+export const getSemanticWorkersForJob = (jobId, params = {}) => API.get(`/api/matching/jobs/${jobId}/workers`, { params });
+export const getSemanticJobsForWorker = (params = {}) => API.get('/api/matching/worker/jobs', { params });
+export const recordSemanticFeedback = (payload) => API.post('/api/matching/feedback', payload);
 
 export const repostMissingSkill = (id, d, newDate, newTime) => {
     const payload = typeof d === 'object' && d !== null ? d : { slotId: d, newScheduledDate: newDate, newScheduledTime: newTime };

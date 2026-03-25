@@ -28,6 +28,8 @@ const workerComplaintRoutes      = require('./routes/workerComplaintRoutes');
 const communityRoutes            = require('./routes/communityRoutes');
 const adminCommunityRoutes       = require('./routes/adminCommunityRoutes');
 const locationRoutes             = require('./routes/locationRoutes');
+const semanticMatchingRoutes     = require('./routes/semanticMatchingRoutes');
+const { rebuildAllIndexes }      = require('./services/semanticMatchingService');
 const { ensureAdminAccounts }    = require('./utils/adminAccounts');
 
 // ── Shop & Coupon routes ──────────────────────────────────────────────────────
@@ -113,6 +115,7 @@ app.use('/api/groups',                   groupRoutes);
 app.use('/api/jobs',                     jobRoutes);
 app.use('/api/ivr',                      ivrRoutes);
 app.use('/api/location',                 locationRoutes);
+app.use('/api/matching',                 semanticMatchingRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.5.0' }));
@@ -160,9 +163,35 @@ app.use((err, req, res, next) => {
 
 // ── Start server ──────────────────────────────────────────────────────────────
 const PORT   = process.env.PORT || 5000;
-const server = app.listen(PORT, '0.0.0.0', () =>
-    console.log(`🚀  Server running on port ${PORT}`)
-);
+
+const shouldRebuildSemanticOnStartup = () => {
+    const forceRebuild = String(process.env.FORCE_SEMANTIC_REBUILD_ON_STARTUP || '').toLowerCase() === 'true';
+    if (forceRebuild) return true;
+
+    const skipRebuild = String(process.env.SKIP_SEMANTIC_REBUILD_ON_STARTUP || '').toLowerCase() === 'true';
+    if (skipRebuild) return false;
+
+    // Nodemon restarts on file writes; rebuilding indexes writes index files and can create a restart loop.
+    return process.env.NODEMON !== 'true';
+};
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀  Server running on port ${PORT}`);
+    // Auto-rebuild semantic index on startup (non-blocking)
+    if (!shouldRebuildSemanticOnStartup()) {
+        console.log('ℹ️   Semantic startup rebuild skipped (nodemon detected or disabled by env).');
+        return;
+    }
+
+    setImmediate(async () => {
+        try {
+            const result = await rebuildAllIndexes();
+            console.log(`✅  Semantic index rebuilt on startup: ${result.workersIndexed} workers, ${result.jobsIndexed} jobs indexed`);
+        } catch (err) {
+            console.error('⚠️   Failed to rebuild semantic index on startup:', err.message);
+        }
+    });
+});
 
 process.on('SIGTERM', () => { server.close(async () => { await mongoose.connection.close().catch(console.error); process.exit(0); }); });
 process.on('SIGINT',  () => { server.close(async () => { await mongoose.connection.close().catch(console.error); process.exit(0); }); });

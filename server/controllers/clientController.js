@@ -14,18 +14,145 @@ const User      = require('../models/userModel');
 const Rating    = require('../models/ratingModel');
 const AIHistory = require('../models/aiHistoryModel');
 const Location  = require('../models/locationModel');
+const mongoose = require('mongoose');
 const crypto = require('crypto');
+const Groq = require('groq-sdk');
 const { createNotification }           = require('../utils/notificationHelper');
 const { checkWorkerScheduleConflict, validateWorkTime, canStartJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { sendCustomSms, sendPasswordChangeOtpSms } = require('../utils/smsHelper');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
+const { upsertJobById, removeJobById, getWorkersForJob, submitFeedback } = require('../services/semanticMatchingService');
 const faceClient = require('../utils/faceServiceClient');
+
+const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 const parseJSON   = (v, fb) => { if (!v) return fb; try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return fb; } };
 const validateNeg = (v, l)  => { const n = Number(v); if (!isNaN(n) && n < 0) return `${l} cannot be negative.`; return null; };
 const ALERT_RADIUS_KM = 5;
 const MAX_URGENT_ALERT_RECIPIENTS = 75;
+
+const mapSemanticWorkersToLegacyShape = (matches = []) =>
+    matches.map((match) => ({
+        _id: match.workerId,
+        name: match.worker?.name || '',
+        photo: match.worker?.photo || '',
+        karigarId: match.worker?.karigarId || '',
+        mobile: match.worker?.mobile || '',
+        points: Number(match.worker?.points || 0),
+        overallExperience: match.worker?.overallExperience || '',
+        avgStars: Number(match.worker?.avgStars || 0),
+        ratingCount: Number(match.worker?.ratingCount || 0),
+        matchedSkills: match.matchedSkills || [],
+        distanceKm: match.distanceKm,
+        withinRadius: match.distanceKm === null ? false : match.distanceKm <= ALERT_RADIUS_KM,
+        semanticScore: match.semanticScore,
+        score: match.score,
+        reasons: match.reasons || [],
+    }));
+
+const parseModelJson = (text = '') => {
+    const cleaned = String(text)
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+    return JSON.parse(cleaned);
+};
+
+const getWorkerSkills = (skills = []) =>
+    (Array.isArray(skills) ? skills : [])
+        .map((s) => (typeof s === 'string' ? s : s?.name || ''))
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+
+const formatAddress = (address = {}) => {
+    const chunks = [
+        address?.house,
+        address?.street,
+        address?.locality,
+        address?.city,
+        address?.state,
+        address?.pincode,
+    ].map((v) => String(v || '').trim()).filter(Boolean);
+    return chunks.join(', ') || 'Not provided';
+};
+
+const buildFallbackWorkerSummary = (worker = {}) => {
+    const skills = getWorkerSkills(worker.skills);
+    const summaryPoints = [
+        { label: 'Name', value: worker.name || 'Not provided' },
+        { label: 'Karigar ID', value: worker.karigarId || 'Not provided' },
+        { label: 'Skills', value: skills.length ? skills.join(', ') : 'Not specified' },
+        { label: 'Experience', value: worker.overallExperience || worker.experience || 'Not specified' },
+        { label: 'Completed Jobs', value: String(worker.completedJobs || 0) },
+        { label: 'Points', value: String(worker.points || 0) },
+        { label: 'Average Rating', value: `${Number(worker.avgStars || 0).toFixed(1)} (${worker.ratingCount || 0} reviews)` },
+        { label: 'Contact', value: worker.mobile || worker.email || 'Not provided' },
+        { label: 'Address', value: formatAddress(worker.address) },
+        { label: 'Verification', value: worker.verificationStatus || 'unknown' },
+    ];
+
+    const intro = [
+        `${worker.name || 'This worker'} is a${worker.verificationStatus === 'approved' ? ' verified' : ''} professional on KarigarConnect`,
+        `${skills.length ? `with key skills in ${skills.join(', ')}` : 'with a diverse work profile'}`,
+        `${worker.overallExperience || worker.experience ? `and ${worker.overallExperience || worker.experience} of experience` : ''}.`,
+        `They have completed ${worker.completedJobs || 0} jobs, hold ${worker.points || 0} points, and currently maintain an average rating of ${Number(worker.avgStars || 0).toFixed(1)}.`,
+        `${worker.mobile ? `Clients can contact them at ${worker.mobile}` : 'Contact details are available in their profile'}`,
+        `and they are based in ${worker.address?.city || 'their registered location'}.`
+    ].join(' ').replace(/\s+/g, ' ').trim();
+
+    return { intro, points: summaryPoints };
+};
+
+const generateSummaryWithGroq = async (worker = {}) => {
+    if (!groq) return null;
+
+    const payload = {
+        name: worker.name || '',
+        karigarId: worker.karigarId || '',
+        skills: getWorkerSkills(worker.skills),
+        experience: worker.overallExperience || worker.experience || '',
+        completedJobs: worker.completedJobs || 0,
+        points: worker.points || 0,
+        avgStars: Number(worker.avgStars || 0),
+        ratingCount: Number(worker.ratingCount || 0),
+        mobile: worker.mobile || '',
+        email: worker.email || '',
+        address: formatAddress(worker.address),
+        verificationStatus: worker.verificationStatus || '',
+    };
+
+    const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.3,
+        max_tokens: 600,
+        response_format: { type: 'json_object' },
+        messages: [
+            {
+                role: 'system',
+                content: 'You are writing a concise worker profile summary for a client app. Return valid JSON only with keys: intro (string) and points (array of {label, value}). Use clear English. Keep intro to 4-6 sentences.',
+            },
+            {
+                role: 'user',
+                content: `Create a complete summary using this worker data: ${JSON.stringify(payload)}`,
+            },
+        ],
+    });
+
+    const raw = completion?.choices?.[0]?.message?.content || '{}';
+    const parsed = parseModelJson(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.intro !== 'string' || !Array.isArray(parsed.points)) return null;
+
+    const points = parsed.points
+        .filter((p) => p && typeof p === 'object')
+        .map((p) => ({ label: String(p.label || '').trim(), value: String(p.value || '').trim() }))
+        .filter((p) => p.label && p.value);
+
+    if (!points.length) return null;
+    return { intro: parsed.intro.trim(), points };
+};
 
 // ── FIX: normalise AI complexity values ──────────────────────────────────────
 const COMPLEXITY_MAP = {
@@ -126,6 +253,87 @@ const getJobSkillSet = (job) => {
     const fromSkills = (job.skills || []).map(normSkillName).filter(Boolean);
     const fromSlots = (job.workerSlots || []).map((s) => normSkillName(s.skill)).filter(Boolean);
     return [...new Set([...fromSkills, ...fromSlots])];
+};
+
+const collectWorkerIdsFromJobs = (jobs = []) => {
+    const ids = new Set();
+    const addId = (value) => {
+        const id = String(value?._id || value || '');
+        if (id) ids.add(id);
+    };
+
+    jobs.forEach((job) => {
+        (job.assignedTo || []).forEach(addId);
+        (job.applicants || []).forEach((app) => addId(app?.workerId));
+        (job.workerSlots || []).forEach((slot) => addId(slot?.assignedWorker));
+        (job.subTasks || []).forEach((subTask) => {
+            addId(subTask?.assignedWorker);
+            (subTask?.applicants || []).forEach((app) => addId(app?.workerId));
+        });
+    });
+
+    return [...ids];
+};
+
+const buildRatingStatsMap = async (workerIds = []) => {
+    const objectIds = workerIds
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
+
+    if (!objectIds.length) return new Map();
+
+    const ratings = await Rating.aggregate([
+        { $match: { worker: { $in: objectIds } } },
+        { $group: { _id: '$worker', avgStars: { $avg: '$stars' }, ratingCount: { $sum: 1 } } },
+    ]);
+
+    return new Map(
+        ratings.map((row) => [
+            String(row._id),
+            {
+                avgStars: Number((row.avgStars || 0).toFixed(1)),
+                ratingCount: Number(row.ratingCount || 0),
+            },
+        ])
+    );
+};
+
+const attachRatingStatsToWorker = (worker, ratingMap) => {
+    if (!worker || typeof worker !== 'object') return worker;
+    const workerId = String(worker._id || '');
+    if (!workerId) return worker;
+    const stats = ratingMap.get(workerId) || { avgStars: 0, ratingCount: 0 };
+    return {
+        ...worker,
+        avgStars: stats.avgStars,
+        ratingCount: stats.ratingCount,
+    };
+};
+
+const enrichClientJobsWithRatings = async (jobs = []) => {
+    const workerIds = collectWorkerIdsFromJobs(jobs);
+    const ratingMap = await buildRatingStatsMap(workerIds);
+
+    return jobs.map((job) => ({
+        ...job,
+        assignedTo: (job.assignedTo || []).map((worker) => attachRatingStatsToWorker(worker, ratingMap)),
+        applicants: (job.applicants || []).map((app) => ({
+            ...app,
+            workerId: attachRatingStatsToWorker(app.workerId, ratingMap),
+        })),
+        workerSlots: (job.workerSlots || []).map((slot) => ({
+            ...slot,
+            assignedWorker: attachRatingStatsToWorker(slot.assignedWorker, ratingMap),
+        })),
+        subTasks: (job.subTasks || []).map((subTask) => ({
+            ...subTask,
+            assignedWorker: attachRatingStatsToWorker(subTask.assignedWorker, ratingMap),
+            applicants: (subTask.applicants || []).map((app) => ({
+                ...app,
+                workerId: attachRatingStatsToWorker(app.workerId, ratingMap),
+            })),
+        })),
+    }));
 };
 
 const buildSmartWorkerSuggestions = async (job, { limit = 3, withinRadiusOnly = false } = {}) => {
@@ -647,7 +855,8 @@ exports.getClientJobs = async (req, res) => {
             .sort({ createdAt: -1 });
         try { await runAutoMaintenance(jobs); } catch (e) { console.error('Auto-maintenance error:', e.message); }
         const jobsWithSubTasks = await attachSubTasksToParents(jobs, req.user.id);
-        return res.json(jobsWithSubTasks);
+        const jobsWithRatings = await enrichClientJobsWithRatings(jobsWithSubTasks);
+        return res.json(jobsWithRatings);
     } catch { return res.status(500).json({ message: 'Failed to fetch jobs.' }); }
 };
 
@@ -661,7 +870,7 @@ exports.postJob = async (req, res) => {
             title, description, shortDescription, detailedDescription,
             skills, payment, duration, workersRequired, location,
             scheduledDate, scheduledTime, budgetBreakdown, totalEstimatedCost,
-            negotiable, minBudget, shift, qaAnswers, urgent,
+            negotiable, minBudget, shift, qaAnswers, urgent, category, experienceRequired,
         } = req.body;
 
         const errors = [
@@ -694,12 +903,14 @@ exports.postJob = async (req, res) => {
         const job = await Job.create({
             postedBy:            req.user.id,
             title:               title.trim(),
+            category:            category || '',
             description:         description.trim(),
             shortDescription:    shortDescription || description.trim().slice(0, 150),
             detailedDescription: detailedDescription || description.trim(),
             skills:              pSkills,
             payment:             Math.max(0, Number(payment) || 0),
             duration:            duration || '',
+            experienceRequired:  experienceRequired || '',
             workersRequired:     pWR,
             location:            parseJSON(location, {}),
             photos,
@@ -715,7 +926,18 @@ exports.postJob = async (req, res) => {
             workerSlots:         buildWorkerSlots(pBD, pSkills, pWR),
         });
 
-        const smartSuggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(postJob):', err.message);
+        });
+
+        let smartSuggestions = [];
+        try {
+            const semantic = await getWorkersForJob(job._id, { topK: 3, minScore: 0.25, includeUnavailable: false });
+            smartSuggestions = mapSemanticWorkersToLegacyShape(semantic?.matches || []);
+        } catch (err) {
+            console.error('semantic getWorkersForJob(postJob):', err.message);
+            smartSuggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
+        }
         let urgentAlertRecipients = [];
         if (job.urgent) {
             urgentAlertRecipients = await notifyUrgentNearbyWorkers(job);
@@ -751,6 +973,9 @@ exports.deleteJob = async (req, res) => {
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (job.status !== 'open') return res.status(403).json({ message: 'Only open jobs can be deleted.' });
         await job.deleteOne();
+        removeJobById(req.params.id).catch((err) => {
+            console.error('semantic removeJobById(deleteJob):', err.message);
+        });
         return res.json({ message: 'Deleted.' });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -778,6 +1003,9 @@ exports.cancelJob = async (req, res) => {
             }
         }
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(cancelJob):', err.message);
+        });
         await logAuditEvent({ userId: req.user.id, role: 'client', action: 'job_cancelled', req, metadata: { jobId: job._id, reason: reason.trim() } });
         return res.json({ message: 'Cancelled.', job });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
@@ -852,6 +1080,12 @@ exports.repostMissingSkill = async (req, res) => {
         slot.status       = 'reposted';
         slot.subTaskJobId = childJob._id;
         await parentJob.save();
+        upsertJobById(parentJob._id).catch((err) => {
+            console.error('semantic upsertJobById(repostMissingSkill parent):', err.message);
+        });
+        upsertJobById(childJob._id).catch((err) => {
+            console.error('semantic upsertJobById(repostMissingSkill child):', err.message);
+        });
 
         await parentJob.populate('workerSlots.assignedWorker', 'name photo karigarId mobile');
         await parentJob.populate('applicants.workerId',        'name photo karigarId');
@@ -887,6 +1121,9 @@ exports.cancelSlotRequirement = async (req, res) => {
 
         slot.status = 'cancelled';
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(cancelSlotRequirement):', err.message);
+        });
         await job.populate('workerSlots.assignedWorker', 'name photo karigarId mobile');
 
         const skillLabel = slot.skill.charAt(0).toUpperCase() + slot.skill.slice(1);
@@ -959,6 +1196,17 @@ exports.respondToApplicant = async (req, res) => {
         }
 
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(respondToApplicant):', err.message);
+        });
+        submitFeedback({
+            workerId,
+            jobId: job._id,
+            event: status === 'accepted' ? 'hired' : 'rejected',
+            source: 'client_response',
+        }).catch((err) => {
+            console.error('semantic submitFeedback(respondToApplicant):', err.message);
+        });
         await job.populate('assignedTo',                'name photo karigarId mobile');
         await job.populate('applicants.workerId',        'name photo karigarId');
         await job.populate('workerSlots.assignedWorker', 'name photo karigarId mobile');
@@ -1035,6 +1283,20 @@ exports.respondToSubTaskApplicant = async (req, res) => {
 
         await subTask.save();
         await parentJob.save();
+        upsertJobById(subTask._id).catch((err) => {
+            console.error('semantic upsertJobById(respondToSubTaskApplicant subTask):', err.message);
+        });
+        upsertJobById(parentJob._id).catch((err) => {
+            console.error('semantic upsertJobById(respondToSubTaskApplicant parent):', err.message);
+        });
+        submitFeedback({
+            workerId,
+            jobId: subTask._id,
+            event: status === 'accepted' ? 'hired' : 'rejected',
+            source: 'client_subtask_response',
+        }).catch((err) => {
+            console.error('semantic submitFeedback(respondToSubTaskApplicant):', err.message);
+        });
         const parent = await loadParentJobWithSubTasks(req.params.id, req.user.id);
         if (!parent) return res.status(404).json({ message: 'Parent job not found.' });
         return res.json({ message: `Sub-task applicant ${status}.`, job: parent });
@@ -1059,6 +1321,9 @@ exports.completeWorkerTask = async (req, res) => {
         await createNotification({ userId: workerId, type: 'job_update', title: 'Task Marked Complete ✅', message: `Your ${slot.skill} task for "${job.title}" has been marked complete. You are now free for new jobs.` });
         if (job.allSlotsCompleted() && job.completionPhotos?.length) { job.status = 'completed'; job.actualEndTime = new Date(); }
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(completeWorkerTask):', err.message);
+        });
         await job.populate('workerSlots.assignedWorker', 'name photo karigarId mobile');
         return res.json({ message: `${slot.skill} task complete.`, job, allDone: job.allSlotsCompleted() });
     } catch (err) {
@@ -1170,6 +1435,9 @@ exports.updateJobStatus = async (req, res) => {
         }
         job.status = status;
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(updateJobStatus):', err.message);
+        });
         return res.json({ message: 'Status updated.', job });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -1203,6 +1471,9 @@ exports.startJob = async (req, res) => {
             await createNotification({ userId: wId, type: 'job_update', title: 'Job Started 🚀', message: `"${job.title}" has been started. Please proceed to the work site.` });
         }
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(startJob):', err.message);
+        });
         return res.json({ message: 'Job started.', job });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -1214,6 +1485,9 @@ exports.toggleJobApplications = async (req, res) => {
         if (!['open','scheduled'].includes(job.status)) return res.status(403).json({ message: 'Cannot toggle at this stage.' });
         job.applicationsOpen = !job.applicationsOpen;
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(toggleJobApplications):', err.message);
+        });
         await logAuditEvent({ userId: req.user.id, role: 'client', action: 'toggle_applications', req, metadata: { jobId: job._id, applicationsOpen: job.applicationsOpen } });
         return res.json({ applicationsOpen: job.applicationsOpen });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
@@ -1256,7 +1530,18 @@ exports.getSmartWorkerSuggestions = async (req, res) => {
         const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
 
-        const suggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
+        let suggestions = [];
+        try {
+            const semantic = await getWorkersForJob(job._id, {
+                topK: Number(req.query.topK) || 3,
+                minScore: Number(req.query.minScore) || 0.25,
+                includeUnavailable: req.query.includeUnavailable === 'true',
+            });
+            suggestions = mapSemanticWorkersToLegacyShape(semantic?.matches || []);
+        } catch (err) {
+            console.error('semantic getWorkersForJob(getSmartWorkerSuggestions):', err.message);
+            suggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
+        }
         return res.json({
             jobId: job._id,
             suggestions,
@@ -1319,9 +1604,21 @@ exports.inviteWorkersToJob = async (req, res) => {
                     `KarigarConnect: You have a direct ${job.urgent ? 'URGENT ' : ''}invite for job "${job.title}". Open Job Requests to apply.`
                 );
             }
+
+            submitFeedback({
+                workerId,
+                jobId: job._id,
+                event: 'invited',
+                source: 'client_invite',
+            }).catch((err) => {
+                console.error('semantic submitFeedback(inviteWorkersToJob):', err.message);
+            });
         }
 
         await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(inviteWorkersToJob):', err.message);
+        });
         await logAuditEvent({
             userId: req.user.id,
             role: 'client',
@@ -1350,6 +1647,51 @@ exports.getWorkerPublicProfile = async (req, res) => {
         const avgStars      = ratings.length ? ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length : 0;
         return res.json({ ...w.toObject(), completedJobs, avgStars: Math.round(avgStars * 10) / 10, ratings });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
+};
+
+exports.generateWorkerProfileSummary = async (req, res) => {
+    try {
+        const workerId = req.params.workerId;
+        const worker = await User.findById(workerId)
+            .select('role name photo karigarId skills overallExperience experience points verificationStatus location address mobile email');
+
+        if (!worker || worker.role === 'client') {
+            return res.status(404).json({ message: 'Worker not found.' });
+        }
+
+        const [completedJobs, ratingStats] = await Promise.all([
+            Job.countDocuments({ assignedTo: worker._id, status: 'completed' }),
+            Rating.aggregate([
+                { $match: { worker: worker._id } },
+                { $group: { _id: '$worker', avgStars: { $avg: '$stars' }, ratingCount: { $sum: 1 } } },
+            ]),
+        ]);
+
+        const stats = ratingStats?.[0] || { avgStars: 0, ratingCount: 0 };
+        const workerData = {
+            ...worker.toObject(),
+            completedJobs,
+            avgStars: Number(stats.avgStars || 0),
+            ratingCount: Number(stats.ratingCount || 0),
+        };
+
+        let summary = null;
+        let generatedBy = 'fallback';
+
+        try {
+            summary = await generateSummaryWithGroq(workerData);
+            if (summary) generatedBy = 'groq';
+        } catch (err) {
+            console.error('generateWorkerProfileSummary groq error:', err.message);
+        }
+
+        if (!summary) summary = buildFallbackWorkerSummary(workerData);
+
+        return res.json({ summary, generatedBy });
+    } catch (err) {
+        console.error('generateWorkerProfileSummary error:', err);
+        return res.status(500).json({ message: 'Failed to generate worker profile summary.' });
+    }
 };
 
 exports.toggleStarWorker = async (req, res) => {

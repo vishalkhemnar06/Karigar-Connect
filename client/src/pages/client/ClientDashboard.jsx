@@ -77,10 +77,57 @@ const StatCard = ({ icon: Icon, grad, label, value, sub }) => (
 const KarigarCard = ({ karigar, idx }) => {
   const [imgErr, setImgErr] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const [summaryData, setSummaryData] = useState(null);
   const initials = (karigar.name || 'K').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const isAvailable = karigar.availability !== false;
   const rating = karigar.avgStars || 0;
   const skills = karigar.skills || [];
+
+  const toSummaryLine = (point) => {
+    if (typeof point === 'string' || typeof point === 'number') return String(point);
+    if (point && typeof point === 'object') {
+      const label = typeof point.label === 'string' ? point.label.trim() : '';
+      const value = point.value === null || point.value === undefined ? '' : String(point.value).trim();
+      if (label && value) return `${label}: ${value}`;
+      if (label) return label;
+      if (value) return value;
+    }
+    return '';
+  };
+
+  const handleGenerateSummary = async () => {
+    if (!karigar?._id) {
+      setSummaryError('Worker information is incomplete.');
+      return;
+    }
+
+    setSummaryLoading(true);
+    setSummaryError('');
+
+    try {
+      const res = await api.generateWorkerProfileSummary(karigar._id);
+      const payload = res?.data?.summary;
+
+      const normalized = {
+        intro: typeof payload?.intro === 'string' ? payload.intro : '',
+        points: Array.isArray(payload?.points)
+          ? payload.points.map(toSummaryLine).filter(Boolean)
+          : [],
+      };
+
+      if (!normalized.intro && normalized.points.length === 0) {
+        throw new Error('Summary generation failed.');
+      }
+
+      setSummaryData(normalized);
+    } catch (err) {
+      setSummaryError(err?.response?.data?.message || err?.message || 'Unable to generate summary right now.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-all">
@@ -224,6 +271,35 @@ const KarigarCard = ({ karigar, idx }) => {
             View Profile <ChevronRight size={12} />
           </Link>
         </div>
+
+        <button
+          onClick={handleGenerateSummary}
+          disabled={summaryLoading}
+          className="w-full mt-2 border-2 border-orange-200 text-orange-700 py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:bg-orange-50 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {summaryLoading ? 'Generating Profile Summary...' : (summaryData ? 'Regenerate Profile Summary' : 'Generate Profile Summary')}
+        </button>
+
+        {summaryError && (
+          <p className="text-[10px] text-red-500 font-semibold mt-2">{summaryError}</p>
+        )}
+
+        {summaryData && (
+          <div className="mt-2 bg-orange-50 border border-orange-100 rounded-xl p-2.5 space-y-2">
+            {summaryData.intro && (
+              <p className="text-[10px] sm:text-[11px] text-gray-700 leading-relaxed">{summaryData.intro}</p>
+            )}
+            {Array.isArray(summaryData.points) && summaryData.points.length > 0 && (
+              <ul className="space-y-1">
+                {summaryData.points.map((point, i) => (
+                  <li key={i} className="text-[10px] sm:text-[11px] text-gray-700 leading-relaxed">
+                    <span className="text-orange-500 font-black mr-1">•</span>{point}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

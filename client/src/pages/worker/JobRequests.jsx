@@ -3,7 +3,16 @@
 // Enhanced with: Better touch targets, responsive layouts, mobile-optimized interactions
 
 import { useState, useEffect, useRef } from 'react';
-import { getAvailableJobs, getJobDetails, applyForJob, applyForSubTask, getWorkerProfile, getImageUrl } from '../../api/index';
+import {
+    getAvailableJobs,
+    getJobDetails,
+    applyForJob,
+    applyForSubTask,
+    getWorkerProfile,
+    getImageUrl,
+    getSemanticJobsForWorker,
+    recordSemanticFeedback,
+} from '../../api/index';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,6 +31,57 @@ const normSkill = (s) => {
     if (typeof s === 'string') return s.toLowerCase().trim();
     if (typeof s === 'object') return (s.name || s.skill || '').toLowerCase().trim();
     return String(s).toLowerCase().trim();
+};
+
+const asPercent = (value) => Math.round(Math.max(0, Math.min(1, Number(value || 0))) * 100);
+
+const normalizeSemanticJobMatch = (row = {}) => ({
+    jobId: row.jobId,
+    score: Number(row.score || 0),
+    semanticScore: Number(row.semanticScore || 0),
+    matchPercent: asPercent(row.score || 0),
+    semanticPercent: asPercent(row.semanticScore || 0),
+    matchedSkills: Array.isArray(row.matchedSkills) ? row.matchedSkills : [],
+    reasons: Array.isArray(row.reasons) ? row.reasons : [],
+    distanceKm: row.distanceKm ?? null,
+});
+
+const getJobSkillSet = (job = {}) => {
+    const all = [
+        ...(job.relevantSkills || []),
+        ...(job.skills || []),
+        ...((job.workerSlots || []).map((slot) => slot?.skill)),
+        ...Object.keys(job.openSlotSummary || {}),
+    ].map(normSkill).filter(Boolean);
+    return [...new Set(all)];
+};
+
+const getSkillOverlapStats = (job = {}, workerSkills = []) => {
+    const workerSet = new Set((workerSkills || []).map(normSkill).filter(Boolean));
+    const jobSkills = getJobSkillSet(job);
+    if (!jobSkills.length || !workerSet.size) {
+        return { overlapSkills: [], overlapCount: 0, overlapRatio: 0 };
+    }
+
+    const overlapSkills = jobSkills.filter((skill) => workerSet.has(skill));
+    return {
+        overlapSkills,
+        overlapCount: overlapSkills.length,
+        overlapRatio: overlapSkills.length / Math.max(1, jobSkills.length),
+    };
+};
+
+const isHighMatchJob = (job = {}) => {
+    const semanticPercent = Number(job.semanticMatch?.semanticPercent || 0);
+    const finalPercent = Number(job.semanticMatch?.matchPercent || 0);
+    const overlapCount = Number(job.skillOverlapCount || 0);
+    const overlapRatio = Number(job.skillOverlapRatio || 0);
+
+    if (finalPercent >= 60 || semanticPercent >= 65) return true;
+    if (overlapCount >= 2) return true;
+    if (overlapCount >= 1 && (semanticPercent >= 40 || finalPercent >= 45 || !job.semanticMatch)) return true;
+    if (overlapRatio >= 0.5 && semanticPercent >= 35) return true;
+    return false;
 };
 
 // ── Mini map (Leaflet lazy-loaded) ────────────────────────────────────────────
@@ -237,7 +297,7 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
 }
 
 // ── Job Detail Modal (Mobile Optimized) ───────────────────────────────────────
-function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
+function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose, onApplied }) {
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -337,6 +397,34 @@ function DetailModal({ jobId, workerSkills, isAvailable, onClose, onApplied }) {
 
                     {/* Body with improved scrolling */}
                     <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 custom-scrollbar">
+                        {semanticMatch && (
+                            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-2xl p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-xs font-black text-indigo-700 uppercase tracking-wider flex items-center gap-2">
+                                        <Sparkles size={12} /> Semantic Match
+                                    </p>
+                                    <span className="text-xs font-black text-indigo-700 bg-white border border-indigo-100 px-2.5 py-1 rounded-full">
+                                        {semanticMatch.matchPercent}%
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-indigo-500 mt-1">Semantic similarity: {semanticMatch.semanticPercent}%</p>
+                                {semanticMatch.matchedSkills?.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                        {semanticMatch.matchedSkills.slice(0, 5).map((skill) => (
+                                            <span key={`detail-skill-${skill}`} className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 capitalize">
+                                                {skill}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {semanticMatch.reasons?.length > 0 && (
+                                    <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                                        {semanticMatch.reasons.slice(0, 2).join(' • ')}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
                         {/* Client Info */}
                         {job.postedBy && (
                             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4">
@@ -680,10 +768,12 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
 // ── Main Component (Mobile Optimized) ─────────────────────────────────────────────
 export default function JobRequests() {
     const [jobs, setJobs] = useState([]);
+    const [semanticMatchesByJob, setSemanticMatchesByJob] = useState({});
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterSkill, setFilterSkill] = useState('all');
     const [filterCity, setFilterCity] = useState('all');
+    const [highMatchOnly, setHighMatchOnly] = useState(false);
     const [detailId, setDetailId] = useState(null);
     const [applyModal, setApplyModal] = useState(null);
     const [applying, setApplying] = useState({});
@@ -691,7 +781,16 @@ export default function JobRequests() {
     const [showFilters, setShowFilters] = useState(false);
 
     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const workerId = localUser?._id || localUser?.id || null;
     const workerSkills = (localUser?.skills || []).map(normSkill).filter(Boolean);
+
+    const handleOpenDetails = async (job) => {
+        setDetailId(job?._id || null);
+        if (!workerId || !job?._id || !semanticMatchesByJob[job._id]) return;
+        try {
+            await recordSemanticFeedback({ jobId: job._id, workerId, event: 'viewed', source: 'worker_ui' });
+        } catch { }
+    };
 
     const loadJobs = async () => {
         try {
@@ -700,6 +799,15 @@ export default function JobRequests() {
                 getAvailableJobs(),
                 getWorkerProfile(),
             ]);
+
+            const semanticRes = await getSemanticJobsForWorker({ topK: 100, minScore: 0.15 }).catch(() => ({ data: { matches: [] } }));
+            const semanticMap = (semanticRes?.data?.matches || []).reduce((acc, row) => {
+                const item = normalizeSemanticJobMatch(row);
+                if (item.jobId) acc[item.jobId] = item;
+                return acc;
+            }, {});
+
+            setSemanticMatchesByJob(semanticMap);
             setJobs(Array.isArray(jobsRes.data) ? jobsRes.data : []);
             setIsAvailable(profileRes.data?.availability !== false);
         } catch {
@@ -753,7 +861,23 @@ export default function JobRequests() {
 
     const allCities = [...new Set(jobs.map(j => j.location?.city).filter(Boolean))].slice(0, 15);
 
-    const filtered = jobs.filter(j => {
+    const mergedJobs = jobs.map((job) => {
+        const semanticMatch = semanticMatchesByJob[job._id] || null;
+        const overlap = getSkillOverlapStats(job, workerSkills);
+        const merged = {
+            ...job,
+            semanticMatch,
+            matchedSkillsFallback: overlap.overlapSkills,
+            skillOverlapCount: overlap.overlapCount,
+            skillOverlapRatio: overlap.overlapRatio,
+        };
+        return {
+            ...merged,
+            isHighMatch: isHighMatchJob(merged),
+        };
+    });
+
+    const filtered = mergedJobs.filter(j => {
         if (search) {
             const q = search.toLowerCase();
             const ok = j.title?.toLowerCase().includes(q)
@@ -774,7 +898,14 @@ export default function JobRequests() {
             if (!jobSkills.includes(needle)) return false;
         }
         if (filterCity !== 'all' && j.location?.city !== filterCity) return false;
+        if (highMatchOnly && !j.isHighMatch) return false;
         return true;
+    });
+
+    const rankedFiltered = [...filtered].sort((a, b) => {
+        const aRank = (a.semanticMatch?.score || 0) + (a.skillOverlapCount || 0) * 0.08 + (a.isHighMatch ? 0.15 : 0);
+        const bRank = (b.semanticMatch?.score || 0) + (b.skillOverlapCount || 0) * 0.08 + (b.isHighMatch ? 0.15 : 0);
+        return bRank - aRank;
     });
 
     if (loading) {
@@ -871,6 +1002,17 @@ export default function JobRequests() {
                             <RefreshCw size={12} />
                             Refresh
                         </button>
+                        <button
+                            onClick={() => setHighMatchOnly(v => !v)}
+                            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 border-2 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95 ${
+                                highMatchOnly
+                                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                    : 'border-gray-200 text-gray-600 hover:border-indigo-300'
+                            }`}
+                        >
+                            <Sparkles size={12} />
+                            High Match
+                        </button>
                     </div>
 
                     <AnimatePresence>
@@ -901,7 +1043,7 @@ export default function JobRequests() {
                                 </div>
                                 {(search || filterSkill !== 'all' || filterCity !== 'all') && (
                                     <button
-                                        onClick={() => { setSearch(''); setFilterSkill('all'); setFilterCity('all'); }}
+                                        onClick={() => { setSearch(''); setFilterSkill('all'); setFilterCity('all'); setHighMatchOnly(false); }}
                                         className="mt-2 text-xs text-orange-500 font-semibold hover:underline"
                                     >
                                         Clear all filters
@@ -929,7 +1071,7 @@ export default function JobRequests() {
                         <p className="font-bold text-gray-800 text-lg sm:text-xl mb-2">No jobs posted yet</p>
                         <p className="text-gray-400 text-xs sm:text-sm px-4">Check back later for new opportunities</p>
                     </motion.div>
-                ) : filtered.length === 0 ? (
+                ) : rankedFiltered.length === 0 ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -948,7 +1090,7 @@ export default function JobRequests() {
                 ) : (
                     <div className="space-y-3 sm:space-y-4">
                         <AnimatePresence>
-                            {filtered.map(job => (
+                            {rankedFiltered.map(job => (
                                 job.isSubTask ? (
                                     <SubTaskCard
                                         key={job._id}
@@ -965,7 +1107,7 @@ export default function JobRequests() {
                                         exit={{ opacity: 0, y: -20 }}
                                         whileHover={{ y: -2 }}
                                         className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all cursor-pointer overflow-hidden"
-                                        onClick={() => setDetailId(job._id)}
+                                        onClick={() => handleOpenDetails(job)}
                                     >
                                         <div className={`h-1 ${job.urgent ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-100'}`} />
 
@@ -1012,6 +1154,56 @@ export default function JobRequests() {
                                             <p className="text-sm text-gray-500 mt-3 line-clamp-2 leading-relaxed">
                                                 {job.shortDescription || job.description}
                                             </p>
+
+                                            {job.semanticMatch ? (
+                                                <div className="mt-3 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl p-2.5 space-y-1.5">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-[11px] font-black text-indigo-700 flex items-center gap-1">
+                                                            <Sparkles size={11} /> Semantic Match
+                                                        </p>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-black text-indigo-700 bg-white border border-indigo-100 px-2 py-0.5 rounded-full">
+                                                                {job.semanticMatch.matchPercent}%
+                                                            </span>
+                                                            <span className="text-[10px] text-indigo-500">
+                                                                Sim {job.semanticMatch.semanticPercent}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    {job.semanticMatch.matchedSkills?.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {job.semanticMatch.matchedSkills.slice(0, 3).map((skill) => (
+                                                                <span key={`${job._id}-ms-${skill}`} className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 capitalize">
+                                                                    {skill}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {job.semanticMatch.reasons?.length > 0 && (
+                                                        <p className="text-[10px] text-gray-500 line-clamp-1">
+                                                            {job.semanticMatch.reasons[0]}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ) : job.skillOverlapCount > 0 ? (
+                                                <div className="mt-3 bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-2.5 space-y-1.5">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-[11px] font-black text-emerald-700 flex items-center gap-1">
+                                                            <Sparkles size={11} /> Skill Match
+                                                        </p>
+                                                        <span className="text-[10px] font-black text-emerald-700 bg-white border border-emerald-100 px-2 py-0.5 rounded-full">
+                                                            {job.skillOverlapCount} skill(s)
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(job.matchedSkillsFallback || []).slice(0, 3).map((skill) => (
+                                                            <span key={`${job._id}-smf-${skill}`} className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 capitalize">
+                                                                {skill}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ) : null}
 
                                             {/* Open slots badges */}
                                             {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
@@ -1083,7 +1275,7 @@ export default function JobRequests() {
 
                                                 <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                                                     <button
-                                                        onClick={() => setDetailId(job._id)}
+                                                        onClick={() => handleOpenDetails(job)}
                                                         className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-all active:scale-95"
                                                     >
                                                         <Eye size={12} className="inline mr-1" />
@@ -1126,6 +1318,7 @@ export default function JobRequests() {
                         jobId={detailId}
                         workerSkills={workerSkills}
                         isAvailable={isAvailable}
+                        semanticMatch={semanticMatchesByJob[detailId] || null}
                         onClose={() => setDetailId(null)}
                         onApplied={handleApplied}
                     />

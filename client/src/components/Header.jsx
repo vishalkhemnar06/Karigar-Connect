@@ -22,6 +22,19 @@ const Header = () => {
     const role  = localStorage.getItem('role');
     const user  = JSON.parse(localStorage.getItem('user') || '{}');
 
+    const toSafeText = (val, fallback = '') => {
+        if (val === null || val === undefined) return fallback;
+        if (typeof val === 'string' || typeof val === 'number') return String(val);
+        if (typeof val === 'object') {
+            if (typeof val.label === 'string') return val.label;
+            if (typeof val.value === 'string' || typeof val.value === 'number') return String(val.value);
+        }
+        return fallback;
+    };
+
+    const userName = toSafeText(user?.name, 'User');
+    const userKarigarId = toSafeText(user?.karigarId, '');
+
     const [isAvailable,    setIsAvailable]    = useState(true);
     const [dropdownOpen,   setDropdownOpen]   = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -226,7 +239,7 @@ const Header = () => {
   <img
   src={getImageUrl(
     user?.photo,
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=fb923c&color=fff&bold=true`
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'U')}&background=fb923c&color=fff&bold=true`
   )}
   alt="Profile"
   className="h-10 w-10 rounded-full object-cover border-2 border-orange-200"
@@ -252,8 +265,8 @@ const Header = () => {
                                                     className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl py-2 z-50 ring-1 ring-black ring-opacity-5 border border-gray-100"
                                                 >
                                                     <div className="px-4 py-3 border-b border-gray-100">
-                                                        <p className="font-black text-gray-800 truncate text-sm">{user?.name}</p>
-                                                        <p className="text-xs text-gray-500 font-mono mt-0.5">{user?.karigarId}</p>
+                                                        <p className="font-black text-gray-800 truncate text-sm">{userName}</p>
+                                                        <p className="text-xs text-gray-500 font-mono mt-0.5">{userKarigarId}</p>
                                                         {role === 'worker' && (
                                                             <div className="flex items-center gap-1 mt-2">
                                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -416,14 +429,14 @@ const Header = () => {
                                                 src={
                                                     user?.photo
                                                         ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
-                                                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=fb923c&color=fff&bold=true`
+                                                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'U')}&background=fb923c&color=fff&bold=true`
                                                 }
                                                 alt="Profile"
                                                 className="h-10 w-10 rounded-full object-cover border-2 border-orange-200"
                                             />
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-gray-800 text-sm truncate">{user?.name}</p>
-                                                <p className="text-xs text-gray-500 font-mono truncate">{user?.karigarId}</p>
+                                                <p className="font-bold text-gray-800 text-sm truncate">{userName}</p>
+                                                <p className="text-xs text-gray-500 font-mono truncate">{userKarigarId}</p>
                                             </div>
                                         </div>
 
@@ -502,7 +515,7 @@ const Header = () => {
             {/* Spacer to prevent content from hiding under fixed header */}
             <div className="h-[60px] md:h-[70px]" />
 
-            <style jsx>{`
+            <style>{`
                 @media (max-width: 768px) {
                     .active\\:scale-98:active {
                         transform: scale(0.98);

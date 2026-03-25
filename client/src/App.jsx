@@ -65,6 +65,7 @@ import ActiveGroupJobs      from './pages/worker/ActiveGroupJobs';
 import CompletedGroupJobs   from './pages/worker/CompletedGroupJobs';
 import WorkerProposals      from './pages/worker/WorkerProposals';
 import AcceptInvites        from './pages/worker/AcceptInvites';
+import DirectInvites        from './pages/worker/DirectInvites';
 import Groups               from './pages/worker/Groups';
 import Community            from './pages/worker/Community';
 import WorkerLiveTracking   from './pages/worker/WorkerLiveTracking';
@@ -169,6 +170,7 @@ function App() {
                         <Route path="dashboard"            element={<WorkerDashboard />} />
                         <Route path="job-requests"         element={<JobRequests />} />
                         <Route path="job-bookings"         element={<JobBookings />} />
+                        <Route path="direct-invites"       element={<DirectInvites />} />
                         <Route path="leaderboard"          element={<Leaderboard />} />
                         <Route path="feedback"             element={<Feedback />} />
                         <Route path="complaints"           element={<WorkerComplaints />} />

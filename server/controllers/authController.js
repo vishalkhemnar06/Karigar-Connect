@@ -14,6 +14,7 @@ const { sendOtpEmail } = require('../utils/emailHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
+const { upsertWorkerById } = require('../services/semanticMatchingService');
 
 // ── OTP store (in-memory; production: use Redis) ──────────────────────────────
 const otpStore = new Map(); // key: mobile/email → { otp, expiry }
@@ -196,6 +197,7 @@ exports.registerWorker = async (req, res) => {
             city, pincode, locality, fullAddress, village, latitude, longitude, overallExperience, experience,
             aadharNumber, gender, eShramNumber, idDocumentType,
             emergencyContactName, emergencyContactMobile, phoneType, skills, references,
+            expectedMinPay, expectedMaxPay, preferredJobCategories,
         } = req.body;
 
         // ── Basic validation ──────────────────────────────────────────────────
@@ -233,6 +235,9 @@ exports.registerWorker = async (req, res) => {
         let parsedRefs = [];
         try { parsedRefs = JSON.parse(references || '[]'); } catch {}
 
+        let parsedPreferredCategories = [];
+        try { parsedPreferredCategories = JSON.parse(preferredJobCategories || '[]'); } catch {}
+
         // ── Create user ───────────────────────────────────────────────────────
         const user   = await User.create({
             karigarId: generateKarigarId(),
@@ -252,11 +257,18 @@ exports.registerWorker = async (req, res) => {
             gender,    aadharNumber, eShramNumber,
             eShramCardPath: eShramFile?.path || null,
             overallExperience, experience: Number(experience) || 0,
+            expectedMinPay: Number(expectedMinPay) || 0,
+            expectedMaxPay: Number(expectedMaxPay) || 0,
+            preferredJobCategories: Array.isArray(parsedPreferredCategories) ? parsedPreferredCategories : [],
             skills: parsedSkills, references: parsedRefs,
             skillCertificates: skillCerts, portfolioPhotos: portfolio,
             emergencyContact: { name: emergencyContactName, mobile: emergencyContactMobile },
             verificationStatus: 'pending',
             faceVerificationStatus: 'pending_review',
+        });
+
+        upsertWorkerById(user._id).catch((err) => {
+            console.error('semantic upsertWorkerById(registerWorker):', err.message);
         });
 
         // ── Face verification (non-blocking) ─────────────────────────────────

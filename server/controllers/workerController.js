@@ -8,6 +8,7 @@ const { canWorkerCancelJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { sendPasswordChangeOtpSms, sendCustomSms } = require('../utils/smsHelper');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
+const { upsertWorkerById, removeWorkerById, submitFeedback } = require('../services/semanticMatchingService');
 
 const CANCEL_PENALTY = 30;
 
@@ -160,6 +161,9 @@ exports.deleteAccountPermanently = async (req, res) => {
         });
 
         await User.findByIdAndDelete(req.user.id);
+        removeWorkerById(req.user.id).catch((err) => {
+            console.error('semantic removeWorkerById(deleteAccountPermanently):', err.message);
+        });
         return res.json({ message: 'Your account has been permanently deleted.' });
     } catch (err) {
         console.error('deleteAccountPermanently:', err);
@@ -326,6 +330,15 @@ exports.applyForJob = async (req, res) => {
         newSkills.forEach(sk => job.applicants.push({ workerId: wid, skill: sk, status: 'pending' }));
         await job.save();
 
+        submitFeedback({
+            workerId: wid,
+            jobId: job._id,
+            event: 'applied',
+            source: 'worker_apply',
+        }).catch((err) => {
+            console.error('semantic submitFeedback(applyForJob):', err.message);
+        });
+
         const jobLabel = job.isSubTask ? `"${job.title}" (${job.subTaskSkill} sub-task)` : `"${job.title}"`;
         await createNotification({
             userId: job.postedBy, type: 'application', title: 'New Application 📋',
@@ -366,6 +379,14 @@ exports.applyForSubTask = async (req, res) => {
         const skill = (subTask.subTaskSkill || 'general').toLowerCase();
         subTask.applicants.push({ workerId: wid, skill, status: 'pending' });
         await subTask.save();
+        submitFeedback({
+            workerId: wid,
+            jobId: subTask._id,
+            event: 'applied',
+            source: 'worker_apply_subtask',
+        }).catch((err) => {
+            console.error('semantic submitFeedback(applyForSubTask):', err.message);
+        });
         await createNotification({
             userId: subTask.postedBy, type: 'application', title: 'Sub-task Application 📋',
             message: `${workerDoc?.name || 'A worker'} applied for the "${skill}" sub-task of "${subTask.title}".`,
@@ -525,8 +546,25 @@ exports.updateWorkerProfile = async (req, res) => {
         if (req.body.skills) {
             try { w.skills = JSON.parse(req.body.skills).filter(s => s?.name?.trim()); } catch {}
         }
+        if (req.body.preferredJobCategories) {
+            try {
+                const categories = JSON.parse(req.body.preferredJobCategories);
+                if (Array.isArray(categories)) w.preferredJobCategories = categories.filter(Boolean);
+            } catch {}
+        }
+        if (req.body.expectedMinPay !== undefined) {
+            const minPay = Number(req.body.expectedMinPay);
+            w.expectedMinPay = Number.isFinite(minPay) && minPay >= 0 ? minPay : 0;
+        }
+        if (req.body.expectedMaxPay !== undefined) {
+            const maxPay = Number(req.body.expectedMaxPay);
+            w.expectedMaxPay = Number.isFinite(maxPay) && maxPay >= 0 ? maxPay : 0;
+        }
         if (req.file) w.photo = req.file.path;
         await w.save();
+        upsertWorkerById(w._id).catch((err) => {
+            console.error('semantic upsertWorkerById(updateWorkerProfile):', err.message);
+        });
         await logAuditEvent({ userId: w._id, role: 'worker', action: 'profile_update', req, metadata: { fields: Object.keys(req.body || {}) } });
         return res.json(await User.findById(w._id).select('-password -resetPasswordToken -resetPasswordExpire'));
     } catch { return res.status(500).json({ message: 'Failed.' }); }
@@ -538,6 +576,9 @@ exports.toggleAvailability = async (req, res) => {
         if (!w) return res.status(404).json({ message: 'Not found.' });
         w.availability = typeof req.body.available === 'boolean' ? req.body.available : !w.availability;
         await w.save();
+        upsertWorkerById(w._id).catch((err) => {
+            console.error('semantic upsertWorkerById(toggleAvailability):', err.message);
+        });
         await logAuditEvent({ userId: w._id, role: 'worker', action: 'availability_toggle', req, metadata: { available: w.availability } });
         return res.json({ availability: w.availability });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
@@ -546,6 +587,9 @@ exports.toggleAvailability = async (req, res) => {
 exports.deleteAccount = async (req, res) => {
     try {
         await User.findByIdAndDelete(req.user.id);
+        removeWorkerById(req.user.id).catch((err) => {
+            console.error('semantic removeWorkerById(deleteAccount):', err.message);
+        });
         return res.json({ message: 'Deleted.' });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -648,5 +692,112 @@ exports.getNearClients = async (req, res) => {
     } catch (err) {
         console.error('getNearClients:', err);
         return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── Direct Invites — Jobs where worker has been invited ────────────────────────
+exports.getDirectInvites = async (req, res) => {
+    try {
+        const workerId = req.user.id;
+        // Find all jobs where this worker is in invitedWorkers array but hasn't applied yet
+        const jobs = await Job.find({
+            'invitedWorkers.workerId': workerId,
+            status: { $in: ['open', 'scheduled'] },
+        })
+            .populate('postedBy', 'name photo mobile address karigarId')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const invites = jobs.map(job => {
+            const invite = job.invitedWorkers.find(iw => iw.workerId?.toString() === workerId);
+            const hasApplied = job.applicants?.some(a => a.workerId?.toString() === workerId);
+            return {
+                jobId: job._id,
+                title: job.title,
+                description: job.shortDescription || job.description,
+                category: job.category,
+                skills: job.skills,
+                payment: job.payment,
+                duration: job.duration,
+                location: job.location,
+                urgent: job.urgent,
+                workersRequired: job.workersRequired,
+                postedBy: job.postedBy,
+                invitedAt: invite.invitedAt,
+                hasApplied,
+                status: job.status,
+            };
+        });
+
+        return res.json({ invites, total: invites.length });
+    } catch (err) {
+        console.error('getDirectInvites:', err);
+        return res.status(500).json({ message: 'Failed to fetch direct invites.' });
+    }
+};
+
+// ── Accept Direct Invite — Worker accepts job invitation and becomes applicant ─
+exports.acceptDirectInvite = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const workerId = req.user.id;
+
+        const job = await Job.findById(jobId);
+        if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+        // Check if worker was invited
+        const inviteIndex = job.invitedWorkers.findIndex(iw => iw.workerId?.toString() === workerId);
+        if (inviteIndex === -1) return res.status(403).json({ message: 'You were not invited to this job.' });
+
+        // Check if already applied
+        if (job.applicants?.some(a => a.workerId?.toString() === workerId)) {
+            return res.status(400).json({ message: 'You have already applied for this job.' });
+        }
+
+        // Add to applicants
+        job.applicants.push({ workerId, skill: 'general', status: 'pending' });
+        job.invitedWorkers.splice(inviteIndex, 1); // Remove from invites after accepting
+        await job.save();
+
+        await createNotification({
+            userId: job.postedBy,
+            type: 'application',
+            title: 'Invite Accepted ✅',
+            message: `A worker you invited has accepted the invite for "${job.title}".`,
+        });
+
+        await submitFeedback({
+            workerId,
+            jobId: job._id,
+            event: 'applied',
+            source: 'worker_accept_invite',
+        }).catch(() => null);
+
+        return res.json({ message: 'Invite accepted. Your application has been submitted.', job: { _id: job._id, title: job.title } });
+    } catch (err) {
+        console.error('acceptDirectInvite:', err);
+        return res.status(500).json({ message: 'Failed to accept invite.' });
+    }
+};
+
+// ── Reject Direct Invite — Worker declines job invitation ──────────────────────
+exports.rejectDirectInvite = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const workerId = req.user.id;
+
+        const job = await Job.findById(jobId);
+        if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+        const inviteIndex = job.invitedWorkers.findIndex(iw => iw.workerId?.toString() === workerId);
+        if (inviteIndex === -1) return res.status(403).json({ message: 'No invite found for this job.' });
+
+        job.invitedWorkers.splice(inviteIndex, 1);
+        await job.save();
+
+        return res.json({ message: 'Invite rejected.' });
+    } catch (err) {
+        console.error('rejectDirectInvite:', err);
+        return res.status(500).json({ message: 'Failed to reject invite.' });
     }
 };

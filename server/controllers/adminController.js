@@ -3,6 +3,7 @@
 const User = require('../models/userModel');
 const Job  = require('../models/jobModel');
 const { sendStatusUpdateSms } = require('../utils/smsHelper');
+const { upsertWorkerById, removeWorkerById } = require('../services/semanticMatchingService');
 
 const SENSITIVE_FIELDS = '-password -resetPasswordToken -resetPasswordExpire';
 
@@ -174,6 +175,10 @@ exports.updateWorkerStatus = async (req, res) => {
             }
         }
 
+        upsertWorkerById(updatedWorker._id).catch((err) => {
+            console.error('semantic upsertWorkerById(updateWorkerStatus):', err.message);
+        });
+
         return res.status(200).json({
             message: `Worker status updated to ${finalStatus}.`,
             worker: updatedWorker,
@@ -189,6 +194,11 @@ exports.deleteUser = async (req, res) => {
     try {
         const deleted = await User.findByIdAndDelete(req.params.id);
         if (!deleted) return res.status(404).json({ message: 'User not found.' });
+        if (deleted.role === 'worker') {
+            removeWorkerById(deleted._id).catch((err) => {
+                console.error('semantic removeWorkerById(deleteUser):', err.message);
+            });
+        }
         return res.json({ message: 'User deleted successfully.' });
     } catch (err) {
         console.error('deleteUser error:', err);

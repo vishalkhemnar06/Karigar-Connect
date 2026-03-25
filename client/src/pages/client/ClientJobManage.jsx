@@ -7,11 +7,11 @@ import {
     getClientJobs, deleteClientJob, cancelJob, updateJobStatus,
     uploadCompletionPhotos, startJob, toggleJobApplications,
     removeAssignedWorker, completeWorkerTask, respondToApplicant,
-    getJobSmartSuggestions, inviteWorkersToJob,
-    submitRating, toggleStarWorker, getWorkerFullProfile, getImageUrl,
+    getJobSmartSuggestions, getSemanticWorkersForJob, inviteWorkersToJob,
+    submitRating, toggleStarWorker, getWorkerFullProfile, generateWorkerProfileSummary, getImageUrl,
     repostMissingSkill, dismissMissingSkill, respondToSubTaskApplicant,
     completeSubTask,
-    initClientLocation,
+    initClientLocation, recordSemanticFeedback,
 } from '../../api/index';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -47,6 +47,31 @@ const STATUS_C = {
 const STATUS_L = {
     open: 'Open', scheduled: 'Scheduled', running: 'Running',
     completed: 'Completed', cancelled_by_client: 'Cancelled', cancelled: 'Cancelled'
+};
+
+const toPercent = (value) => Math.round(Math.max(0, Math.min(1, Number(value || 0))) * 100);
+
+const normalizeSuggestion = (row = {}) => {
+    const sourceWorker = row.worker || {};
+    const skillList = row.matchedSkills || sourceWorker.matchedSkills || [];
+    const reasons = row.reasons || [];
+    return {
+        _id: row.workerId || row._id || sourceWorker._id,
+        name: sourceWorker.name || row.name || '',
+        photo: sourceWorker.photo || row.photo || '',
+        karigarId: sourceWorker.karigarId || row.karigarId || '',
+        mobile: sourceWorker.mobile || row.mobile || '',
+        points: Number(sourceWorker.points || row.points || 0),
+        overallExperience: sourceWorker.overallExperience || row.overallExperience || '',
+        avgStars: Number(sourceWorker.avgStars || row.avgStars || 0),
+        ratingCount: Number(sourceWorker.ratingCount || row.ratingCount || 0),
+        distanceKm: row.distanceKm ?? row.worker?.distanceKm ?? null,
+        matchedSkills: Array.isArray(skillList) ? skillList : [],
+        semanticScore: Number(row.semanticScore || row.score || 0),
+        score: Number(row.score || row.semanticScore || 0),
+        reasons: Array.isArray(reasons) ? reasons : [],
+        matchPercent: toPercent(row.score || row.semanticScore || 0),
+    };
 };
 
 function SBadge({ status }) {
@@ -122,15 +147,61 @@ function useStartCountdown(job) {
 function WorkerModal({ workerId, onClose, onStar, starredIds = [] }) {
     const [w, setW] = useState(null);
     const [load, setLoad] = useState(true);
+    const [summary, setSummary] = useState(null);
+    const [summaryLoading, setSummaryLoading] = useState(false);
+    const [summaryError, setSummaryError] = useState('');
+
+    const toSummaryLine = (point) => {
+        if (typeof point === 'string' || typeof point === 'number') return String(point);
+        if (point && typeof point === 'object') {
+            const label = typeof point.label === 'string' ? point.label.trim() : '';
+            const value = point.value === null || point.value === undefined ? '' : String(point.value).trim();
+            if (label && value) return `${label}: ${value}`;
+            if (label) return label;
+            if (value) return value;
+        }
+        return '';
+    };
     useEffect(() => {
         (async () => {
             try {
                 const { data } = await getWorkerFullProfile(workerId);
                 setW(data);
+                setSummary(null);
+                setSummaryError('');
             } catch { }
             finally { setLoad(false); }
         })();
     }, [workerId]);
+
+    const handleGenerateSummary = async () => {
+        try {
+            setSummaryLoading(true);
+            setSummaryError('');
+            const { data } = await generateWorkerProfileSummary(workerId);
+            const payload = data?.summary;
+            const normalized = {
+                intro: typeof payload?.intro === 'string' ? payload.intro : '',
+                points: Array.isArray(payload?.points)
+                    ? payload.points.map(toSummaryLine).filter(Boolean)
+                    : [],
+            };
+
+            if (!normalized.intro && normalized.points.length === 0) {
+                setSummaryError('Summary could not be generated right now.');
+                setSummary(null);
+                return;
+            }
+
+            setSummary(normalized);
+        } catch (err) {
+            setSummaryError(err?.response?.data?.message || 'Failed to generate worker summary.');
+            setSummary(null);
+        } finally {
+            setSummaryLoading(false);
+        }
+    };
+
     const starred = starredIds.includes(workerId?.toString());
     return (
         <motion.div
@@ -196,6 +267,41 @@ function WorkerModal({ workerId, onClose, onStar, starredIds = [] }) {
                         </div>
 
                         <div className="px-4 sm:px-5 md:px-6 py-4 md:py-5 space-y-3 md:space-y-5">
+                            <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
+                                <button
+                                    onClick={handleGenerateSummary}
+                                    disabled={summaryLoading}
+                                    className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-lg font-bold text-xs disabled:opacity-60"
+                                >
+                                    {summaryLoading ? 'Generating Profile Summary...' : 'Generate Profile Summary'}
+                                </button>
+                                <p className="text-[10px] text-orange-700 mt-1.5">
+                                    Creates an intro paragraph and key profile points for this worker.
+                                </p>
+                            </div>
+
+                            {summaryError && (
+                                <Alert msg={summaryError} type="error" onDismiss={() => setSummaryError('')} />
+                            )}
+
+                            {summary && (
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3 space-y-3">
+                                    <p className="text-[10px] sm:text-[11px] md:text-xs font-bold text-blue-700 uppercase tracking-wider">
+                                        Worker Profile Summary
+                                    </p>
+                                    <p className="text-[11px] text-gray-700 leading-relaxed">{summary.intro}</p>
+                                    {Array.isArray(summary.points) && summary.points.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            {summary.points.map((point, idx) => (
+                                                <div key={`${idx}-${point}`} className="text-[10px] sm:text-[11px] text-gray-700 leading-relaxed">
+                                                    {point}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {w.skills?.length > 0 && (
                                 <div>
                                     <p className="text-[9px] sm:text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
@@ -1110,13 +1216,28 @@ export default function ClientJobManage() {
     const handleLoadSmartSuggestions = async (jobId) => {
         try {
             setLoadingSuggestionsByJob(p => ({ ...p, [jobId]: true }));
-            const { data } = await getJobSmartSuggestions(jobId);
-            setSmartSuggestionsByJob(p => ({ ...p, [jobId]: data?.suggestions || [] }));
+            let suggestions = [];
+            try {
+                const { data } = await getSemanticWorkersForJob(jobId, { topK: 6, minScore: 0.25 });
+                suggestions = (data?.matches || []).map(normalizeSuggestion);
+            } catch {
+                const { data } = await getJobSmartSuggestions(jobId);
+                suggestions = (data?.suggestions || []).map(normalizeSuggestion);
+            }
+            setSmartSuggestionsByJob(p => ({ ...p, [jobId]: suggestions }));
         } catch (err) {
             setAlert(jobId, err?.response?.data?.message || 'Failed to load smart suggestions.');
         } finally {
             setLoadingSuggestionsByJob(p => ({ ...p, [jobId]: false }));
         }
+    };
+
+    const handleSuggestionProfileOpen = async (jobId, workerId) => {
+        if (!workerId) return;
+        setProfileWid(workerId);
+        try {
+            await recordSemanticFeedback({ jobId, workerId, event: 'viewed', source: 'client_ui' });
+        } catch { }
     };
 
     const handleInviteWorkers = async (jobId, workerIds = []) => {
@@ -1125,6 +1246,9 @@ export default function ClientJobManage() {
             setInvitingByJob(p => ({ ...p, [jobId]: true }));
             const { data } = await inviteWorkersToJob(jobId, workerIds);
             setAlert(jobId, `${data?.invitedCount || workerIds.length} worker(s) invited successfully.`, 'success');
+            await Promise.all(workerIds.map((workerId) =>
+                recordSemanticFeedback({ jobId, workerId, event: 'invited', source: 'client_ui' }).catch(() => null)
+            ));
             await Promise.all([handleLoadSmartSuggestions(jobId), fetchJobs()]);
         } catch (err) {
             setAlert(jobId, err?.response?.data?.message || 'Failed to invite workers.');
@@ -1357,6 +1481,36 @@ export default function ClientJobManage() {
                                     const openBySkill = {};
                                     (job.workerSlots || []).filter(s => s.status === 'open').forEach(s => { openBySkill[s.skill] = (openBySkill[s.skill] || 0) + 1; });
                                     const suggestedWorkers = smartSuggestionsByJob[job._id] || [];
+                                    const invitedWorkerIds = new Set(
+                                        (job.invitedWorkers || [])
+                                            .map((iw) => String(iw?.workerId?._id || iw?.workerId || ''))
+                                            .filter(Boolean)
+                                    );
+                                    const applicantStatusByWorker = new Map();
+                                    (job.applicants || []).forEach((app) => {
+                                        const appWorkerId = String(app?.workerId?._id || app?.workerId || '');
+                                        if (!appWorkerId) return;
+                                        if (!applicantStatusByWorker.has(appWorkerId)) {
+                                            applicantStatusByWorker.set(appWorkerId, new Set());
+                                        }
+                                        applicantStatusByWorker.get(appWorkerId).add(app.status);
+                                    });
+                                    const assignedWorkerIds = new Set(
+                                        [
+                                            ...(job.assignedTo || []).map((w) => String(w?._id || w || '')),
+                                            ...(job.workerSlots || []).map((slot) => String(slot?.assignedWorker?._id || slot?.assignedWorker || '')),
+                                        ].filter(Boolean)
+                                    );
+                                    const getWorkerLifecycleState = (workerId) => {
+                                        if (!workerId) return '';
+                                        if (assignedWorkerIds.has(workerId)) return 'assigned';
+                                        const statuses = applicantStatusByWorker.get(workerId);
+                                        if (statuses?.has('accepted')) return 'accepted';
+                                        if (statuses?.has('pending')) return 'pending';
+                                        if (invitedWorkerIds.has(workerId)) return 'invited';
+                                        return '';
+                                    };
+                                    const invitableSuggestedWorkers = suggestedWorkers.filter((w) => !getWorkerLifecycleState(String(w._id || '')));
                                     const suggestionsLoading = !!loadingSuggestionsByJob[job._id];
                                     const isInviting = !!invitingByJob[job._id];
 
@@ -1486,7 +1640,7 @@ export default function ClientJobManage() {
                                                         <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-2xl p-4">
                                                             <div className="flex items-center justify-between gap-2 mb-3">
                                                                 <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-2">
-                                                                    <Sparkles size={12} /> AI Smart Suggestions
+                                                                    <Sparkles size={12} /> Semantic Smart Suggestions
                                                                 </p>
                                                                 <div className="flex items-center gap-2">
                                                                     <motion.button
@@ -1496,31 +1650,45 @@ export default function ClientJobManage() {
                                                                         disabled={suggestionsLoading || isInviting}
                                                                         className="text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-white font-bold disabled:opacity-60"
                                                                     >
-                                                                        {suggestionsLoading ? 'Loading...' : 'Load Top 3'}
+                                                                        {suggestionsLoading ? 'Loading...' : 'Load Top Matches'}
                                                                     </motion.button>
                                                                     {suggestedWorkers.length > 0 && (
                                                                         <motion.button
                                                                             whileHover={{ scale: 1.02 }}
                                                                             whileTap={{ scale: 0.98 }}
-                                                                            onClick={() => handleInviteWorkers(job._id, suggestedWorkers.map(w => w._id))}
-                                                                            disabled={suggestionsLoading || isInviting}
+                                                                            onClick={() => handleInviteWorkers(job._id, invitableSuggestedWorkers.map((w) => w._id))}
+                                                                            disabled={suggestionsLoading || isInviting || invitableSuggestedWorkers.length === 0}
                                                                             className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-bold disabled:opacity-60"
                                                                         >
-                                                                            {isInviting ? 'Inviting...' : 'Invite Top 3'}
+                                                                            {isInviting ? 'Inviting...' : invitableSuggestedWorkers.length === 0 ? 'Already Invited/Applied' : 'Invite Top Matches'}
                                                                         </motion.button>
                                                                     )}
                                                                 </div>
                                                             </div>
 
                                                             {suggestedWorkers.length === 0 ? (
-                                                                <p className="text-xs text-indigo-500">Load suggestions to see top-rated nearby workers and invite instantly.</p>
+                                                                <p className="text-xs text-indigo-500">Load suggestions to see high-confidence semantic matches with skills and reasons.</p>
                                                             ) : (
                                                                 <div className="space-y-2">
-                                                                    {suggestedWorkers.map(worker => (
-                                                                        <div key={worker._id} className="flex items-center gap-3 bg-white border border-indigo-100 rounded-xl p-2.5">
+                                                                    {suggestedWorkers.map(worker => {
+                                                                        const lifecycleState = getWorkerLifecycleState(String(worker._id || ''));
+                                                                        const isInvitable = !lifecycleState;
+                                                                        return (
+                                                                        <div key={worker._id} className="bg-white border border-indigo-100 rounded-xl p-2.5 space-y-2">
+                                                                            <div className="flex items-center justify-between gap-2">
+                                                                                <span className="text-[11px] font-black text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                                                                                    Match {worker.matchPercent || 0}%
+                                                                                </span>
+                                                                                {Number.isFinite(worker.semanticScore) && (
+                                                                                    <span className="text-[10px] text-indigo-500">
+                                                                                        Semantic {toPercent(worker.semanticScore)}%
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3">
                                                                             <motion.button
                                                                                 whileHover={{ scale: 1.02 }}
-                                                                                onClick={() => setProfileWid(worker._id)}
+                                                                                onClick={() => handleSuggestionProfileOpen(job._id, worker._id)}
                                                                                 className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                                                             >
                                                                                 <img
@@ -1537,17 +1705,43 @@ export default function ClientJobManage() {
                                                                                     </p>
                                                                                 </div>
                                                                             </motion.button>
-                                                                            <motion.button
-                                                                                whileHover={{ scale: 1.02 }}
-                                                                                whileTap={{ scale: 0.98 }}
-                                                                                onClick={() => handleInviteWorkers(job._id, [worker._id])}
-                                                                                disabled={isInviting}
-                                                                                className="text-xs px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 font-bold disabled:opacity-60 flex items-center gap-1"
-                                                                            >
-                                                                                <UserPlus size={12} /> Invite
-                                                                            </motion.button>
+                                                                            {isInvitable ? (
+                                                                                <motion.button
+                                                                                    whileHover={{ scale: 1.02 }}
+                                                                                    whileTap={{ scale: 0.98 }}
+                                                                                    onClick={() => handleInviteWorkers(job._id, [worker._id])}
+                                                                                    disabled={isInviting}
+                                                                                    className="text-xs px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 font-bold disabled:opacity-60 flex items-center gap-1"
+                                                                                >
+                                                                                    <UserPlus size={12} /> Invite
+                                                                                </motion.button>
+                                                                            ) : (
+                                                                                <span className="text-[10px] px-2 py-1 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 font-bold capitalize">
+                                                                                    {lifecycleState}
+                                                                                </span>
+                                                                            )}
+                                                                            </div>
+
+                                                                            {Array.isArray(worker.matchedSkills) && worker.matchedSkills.length > 0 && (
+                                                                                <div className="flex flex-wrap gap-1">
+                                                                                    {worker.matchedSkills.slice(0, 4).map((skill) => (
+                                                                                        <span
+                                                                                            key={`${worker._id}-${skill}`}
+                                                                                            className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 capitalize"
+                                                                                        >
+                                                                                            {skill}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+
+                                                                            {Array.isArray(worker.reasons) && worker.reasons.length > 0 && (
+                                                                                <p className="text-[11px] text-gray-500 line-clamp-2">
+                                                                                    {worker.reasons.slice(0, 2).join(' • ')}
+                                                                                </p>
+                                                                            )}
                                                                         </div>
-                                                                    ))}
+                                                                    );})}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1570,6 +1764,8 @@ export default function ClientJobManage() {
                                                                             </span>
                                                                             {openBySkill[sk] ? (
                                                                                 <span className="text-[7px] text-gray-400">{openBySkill[sk]} slot(s) open</span>
+                                                                            ) : openSlots > 0 ? (
+                                                                                <span className="text-[7px] text-amber-500">{openSlots} slot(s) open in other skill</span>
                                                                             ) : (
                                                                                 <span className="text-[7px] text-red-400">All slots filled</span>
                                                                             )}
@@ -1577,8 +1773,9 @@ export default function ClientJobManage() {
                                                                         <div className="space-y-1">
                                                                             {apps.map(app => {
                                                                                 const wId = (app.workerId?._id || app.workerId)?.toString();
+                                                                                const canAccept = (openBySkill[sk] || 0) > 0 || openSlots > 0;
                                                                                 return (
-                                                                                    <div key={app._id} className={`flex items-center gap-1.5 rounded-lg p-1.5 ${!openBySkill[sk] ? 'bg-gray-50 opacity-70' : 'bg-gray-50 border border-gray-100'}`}>
+                                                                                    <div key={app._id} className={`flex items-center gap-1.5 rounded-lg p-1.5 ${!canAccept ? 'bg-gray-50 opacity-70' : 'bg-gray-50 border border-gray-100'}`}>
                                                                                         <button
                                                                                             onClick={() => setProfileWid(wId)}
                                                                                             className="flex items-center gap-1 flex-1 min-w-0 text-left"
@@ -1592,6 +1789,8 @@ export default function ClientJobManage() {
                                                                                             <div className="min-w-0">
                                                                                                 <p className="text-[7px] font-semibold text-gray-800 truncate">{app.workerId?.name || 'Worker'}</p>
                                                                                                 <p className="text-[6px] text-gray-400 flex items-center gap-0.5">
+                                                                                                    <Star size={6} className="text-yellow-500" /> {Number(app.workerId?.avgStars || 0).toFixed(1)} ({app.workerId?.ratingCount || 0})
+                                                                                                    <span className="mx-0.5">·</span>
                                                                                                     <Award size={6} /> {app.workerId?.points || 0} pts
                                                                                                 </p>
                                                                                             </div>
@@ -1599,8 +1798,8 @@ export default function ClientJobManage() {
                                                                                         <div className="flex gap-1">
                                                                                             <button
                                                                                                 onClick={() => handleRespond(job._id, wId, 'accepted', sk)}
-                                                                                                disabled={!openBySkill[sk]}
-                                                                                                className={`text-[6px] px-1.5 py-0.5 rounded font-bold transition-all ${openBySkill[sk]
+                                                                                                disabled={!canAccept}
+                                                                                                className={`text-[6px] px-1.5 py-0.5 rounded font-bold transition-all ${canAccept
                                                                                                         ? 'bg-green-500 text-white'
                                                                                                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                                                                                     }`}

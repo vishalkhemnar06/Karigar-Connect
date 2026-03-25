@@ -64,6 +64,7 @@ const qaSchema = new mongoose.Schema({ question: String, answer: String }, { _id
 const jobSchema = new mongoose.Schema({
     postedBy:            { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title:               { type: String, required: true },
+    category:            { type: String, default: '' },
     description:         { type: String, required: true },
     shortDescription:    String,
     detailedDescription: String,
@@ -72,6 +73,7 @@ const jobSchema = new mongoose.Schema({
     negotiable:          { type: Boolean, default: false },
     minBudget:           { type: Number, default: 0, min: 0 },
     duration:            String,
+    experienceRequired:  { type: String, default: '' },
     workersRequired:     { type: Number, default: 1, min: 1 },
     urgent:              { type: Boolean, default: false },
     location:            { city: String, pincode: String, locality: String, lat: Number, lng: Number, fullAddress: String },

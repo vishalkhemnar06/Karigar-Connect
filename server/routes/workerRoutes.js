@@ -39,6 +39,9 @@ const {
     fileComplaint,
     getMyComplaints,
     getNearClients,
+    getDirectInvites,
+    acceptDirectInvite,
+    rejectDirectInvite,
     // NEW — password change OTP flow + permanent delete
     sendPasswordChangeOtp,
     verifyPasswordChangeOtp,
@@ -101,6 +104,11 @@ router.get('/leaderboard', protect, getLeaderboard);
 
 // ── Near Clients ──────────────────────────────────────────────────────────────
 router.get('/near-clients', protect, worker, getNearClients);
+
+// ── Direct Invites ──────────────────────────────────────────────────────────
+router.get('/invites/direct', protect, worker, getDirectInvites);
+router.post('/invites/:jobId/accept', protect, worker, acceptDirectInvite);
+router.post('/invites/:jobId/reject', protect, worker, rejectDirectInvite);
 
 // ── Feedback & complaints ─────────────────────────────────────────────────────
 router.get('/feedback',         protect, worker, getMyFeedback);
