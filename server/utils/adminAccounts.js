@@ -58,7 +58,18 @@ const ensureAdminAccounts = async () => {
             mobile: acc.mobile,
         });
 
-        if (existing) continue;
+        if (existing) {
+            // Update existing admin name if it has changed in .env file
+            if (existing.name !== acc.name) {
+                await User.findByIdAndUpdate(
+                    existing._id,
+                    { name: acc.name },
+                    { new: true }
+                );
+                console.log(`🔄 Admin name updated: ${existing.name} → ${acc.name}`);
+            }
+            continue;
+        }
 
         await User.create({
             karigarId: `ADMIN-${acc.mobile.slice(-4)}`,
