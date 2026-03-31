@@ -17,6 +17,11 @@ import {
     markAllWorkerNotificationsRead,
     deleteWorkerNotification,
     clearAllWorkerNotifications,
+    getAdminNotifications,
+    markAdminNotificationRead,
+    markAllAdminNotificationsRead,
+    deleteAdminNotification,
+    clearAllAdminNotifications,
 } from '../api/index';
 
 const TYPE_ICONS = {
@@ -42,13 +47,32 @@ export default function NotificationBell({ role = 'client' }) {
     const dropdownRef = useRef(null);
 
     // API functions based on role
-    const api = {
-        get:      role === 'client' ? getClientNotifications         : getWorkerNotifications,
-        markOne:  role === 'client' ? markClientNotificationRead     : markWorkerNotificationRead,
-        markAll:  role === 'client' ? markAllClientNotificationsRead : markAllWorkerNotificationsRead,
-        delOne:   role === 'client' ? deleteClientNotification       : deleteWorkerNotification,
-        clearAll: role === 'client' ? clearAllClientNotifications    : clearAllWorkerNotifications,
-    };
+    let api;
+    if (role === 'admin') {
+        api = {
+            get: getAdminNotifications,
+            markOne: markAdminNotificationRead,
+            markAll: markAllAdminNotificationsRead,
+            delOne: deleteAdminNotification,
+            clearAll: clearAllAdminNotifications,
+        };
+    } else if (role === 'worker') {
+        api = {
+            get: getWorkerNotifications,
+            markOne: markWorkerNotificationRead,
+            markAll: markAllWorkerNotificationsRead,
+            delOne: deleteWorkerNotification,
+            clearAll: clearAllWorkerNotifications,
+        };
+    } else {
+        api = {
+            get: getClientNotifications,
+            markOne: markClientNotificationRead,
+            markAll: markAllClientNotificationsRead,
+            delOne: deleteClientNotification,
+            clearAll: clearAllClientNotifications,
+        };
+    }
 
     const showStatus = (msg) => {
         setStatusMsg(msg);

@@ -39,6 +39,34 @@ const deleteFromCloudinary = async (url) => {
     }
 };
 
+// ── Helper: Delete all resources in a Cloudinary folder prefix ───────────────
+const deleteCloudinaryFolder = async (folderPrefix) => {
+    if (!folderPrefix || typeof folderPrefix !== 'string') return;
+    const normalizedPrefix = folderPrefix.replace(/^\/+/g, '').replace(/\/+$/g, '');
+    if (!normalizedPrefix) return;
+
+    try {
+        await cloudinary.api.delete_resources_by_prefix(normalizedPrefix, { resource_type: 'all' });
+        await cloudinary.api.delete_folder(normalizedPrefix);
+    } catch (err) {
+        console.error('Cloudinary delete folder error:', err.message);
+    }
+};
+
+const getUploadFolderForReq = (req, baseFolder) => {
+    const fallback = 'anonymous';
+    let owner = fallback;
+
+    if (req?.user?.mobile) owner = req.user.mobile;
+    else if (req?.body?.mobile) owner = req.body.mobile;
+    else if (req?.body?.phone) owner = req.body.phone;
+
+    const safeKey = String(owner).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || fallback;
+
+    return `${baseFolder}/${safeKey}`;
+};
+
+
 // ── Factory: Create a multer-cloudinary upload middleware ────────────────────
 // folder  — Cloudinary folder name, e.g. 'karigarconnect/photos'
 // allowed — array of allowed mime-type prefixes, e.g. ['image']
@@ -52,6 +80,8 @@ const createUploader = (folder, allowed = ['image']) => {
             if (!isAllowed) {
                 throw new Error(`File type ${file.mimetype} is not allowed`);
             }
+
+            const targetFolder = getUploadFolderForReq(req, folder);
 
             const originalExt = path.extname(file.originalname || '').replace('.', '').toLowerCase();
             const rawBaseName = path.basename(file.originalname || 'file', path.extname(file.originalname || ''));
@@ -69,7 +99,7 @@ const createUploader = (folder, allowed = ['image']) => {
             const fileExt = isPdf ? 'pdf' : (isImage ? imageFormat : originalExt || 'bin');
 
             const cloudinaryParams = {
-                folder,
+                folder: targetFolder,
                 // Keep PDFs as image resource_type so browsers can preview inline more reliably.
                 resource_type: (isImage || isPdf) ? 'image' : 'raw',
                 // Restrict supported output formats for safety and consistency

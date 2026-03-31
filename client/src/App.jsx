@@ -39,6 +39,7 @@ import ResetPassword from './pages/auth/ResetPassword';
 
 // Admin Pages
 import AdminDashboard        from './pages/admin/AdminDashboard';
+import AdminWorkerProfile    from './pages/admin/AdminWorkerProfile';
 import FraudMonitor          from './pages/admin/FraudMonitor';
 import AdminComplaints       from './pages/admin/AdminComplaints';
 import AdminWorkerComplaints from './pages/admin/AdminWorkerComplaints';
@@ -137,6 +138,9 @@ function App() {
                 } />
                 <Route path="/admin/shops" element={
                     <ProtectedRoute allowedRoles={['admin']}><AdminShops /></ProtectedRoute>
+                } />
+                <Route path="/admin/workers/:workerId" element={
+                    <ProtectedRoute allowedRoles={['admin']}><AdminWorkerProfile /></ProtectedRoute>
                 } />
 
                 {/* ── Header layout routes ── */}

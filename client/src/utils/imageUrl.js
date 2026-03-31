@@ -35,8 +35,15 @@ export const getImageUrl = (value, fallback = '/default-avatar.png') => {
 
     // Normalise Windows back-slashes and strip leading slashes
     const normalised = value.replace(/\\/g, '/').replace(/^\/+/, '');
-
     if (!normalised) return fallback;
+
+    // Cloudinary public ID style e.g. 'karigarconnect/misc/.....'
+    const cloudinaryIdPattern = /^(?:.+\/)?karigarconnect\/.+/i;
+    if (cloudinaryIdPattern.test(normalised)) {
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dykxnkbav';
+        const resourceType = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(normalised) ? 'image' : 'raw';
+        return `https://res.cloudinary.com/${cloudName}/${resourceType}/upload/${normalised}`;
+    }
 
     return `${BASE}/${normalised}`;
 };

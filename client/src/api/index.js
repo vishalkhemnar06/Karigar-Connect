@@ -47,6 +47,9 @@ export const takeFraudAction       = (d)      => API.post('/api/admin/fraud/acti
 export const dismissFraudQueueItem = (userId) => API.delete(`/api/admin/fraud/queue/${userId}`);
 export const getFraudHealth        = ()       => API.get('/api/admin/fraud/health');
 
+// Document proxy for admin profile previews (supports Cloudinary private assets)
+export const proxyDocument         = (url)    => API.get('/api/admin/document-proxy', { params: { url }, responseType: 'blob' });
+
 // ── ADMIN CLIENT-VS-WORKER COMPLAINTS ─────────────────────────────────────────
 // Route: /api/admin/complaints → adminComplaintRoutes → adminComplaintController
 // Model: ClientComplaint  (complaints filed by clients against workers)
@@ -146,12 +149,11 @@ export const getPublicWorkerProfile         = (id)            => API.get(`/api/w
 export const getAllKarigars                 = ()              => API.get('/api/worker/all');
 export const getLeaderboard                 = ()              => API.get('/api/worker/leaderboard');
 export const getMyFeedback                  = ()              => API.get('/api/worker/feedback');
+
+// Admin user profile access (generic by _id or karigarId)
+export const getAdminUserProfile            = (identifier)    => API.get(`/api/admin/users/${identifier}`);
 export const respondToGroupJob              = (d)             => API.post('/api/worker/group-job/respond',      d);
-export const getWorkerNotifications         = ()              => API.get('/api/worker/notifications');
-export const markWorkerNotificationRead     = (id)            => API.patch(`/api/worker/notifications/${id}/read`);
-export const markAllWorkerNotificationsRead = ()              => API.patch('/api/worker/notifications/mark-all-read');
-export const deleteWorkerNotification       = (id)            => API.delete(`/api/worker/notifications/${id}`);
-export const clearAllWorkerNotifications    = ()              => API.delete('/api/worker/notifications/clear-all');
+
 
 // ── WORKER SETTINGS — Password change ────────────────────────────────────────
 export const sendPasswordChangeOtp    = ()  => API.post('/api/worker/settings/password/send-otp');
@@ -214,11 +216,25 @@ export const dismissMissingSkill        = (id, slotId) => API.patch(`/api/client
 export const respondToSubTaskApplicant  = (id, d)      => API.post(`/api/client/jobs/${id}/subtask/respond`, d);
 export const applyForSubTask            = (parentJobId, subTaskId) => API.post(`/api/worker/jobs/${parentJobId}/subtask/${subTaskId}/apply`);
 
+// ── NOTIFICATIONS ───────────────────────────────────────────────────────────
 export const getClientNotifications         = ()   => API.get('/api/client/notifications');
 export const markClientNotificationRead     = (id) => API.patch(`/api/client/notifications/${id}/read`);
 export const markAllClientNotificationsRead = ()   => API.patch('/api/client/notifications/mark-all-read');
 export const deleteClientNotification       = (id) => API.delete(`/api/client/notifications/${id}`);
-export const clearAllClientNotificationsRead = ()  => API.delete('/api/client/notifications/clear-all');
+export const clearAllClientNotifications    = ()   => API.delete('/api/client/notifications/clear-all');
+
+export const getWorkerNotifications         = ()   => API.get('/api/worker/notifications');
+export const markWorkerNotificationRead     = (id) => API.patch(`/api/worker/notifications/${id}/read`);
+export const markAllWorkerNotificationsRead = ()   => API.patch('/api/worker/notifications/mark-all-read');
+export const deleteWorkerNotification       = (id) => API.delete(`/api/worker/notifications/${id}`);
+export const clearAllWorkerNotifications    = ()   => API.delete('/api/worker/notifications/clear-all');
+
+// ADMIN NOTIFICATIONS
+export const getAdminNotifications         = ()   => API.get('/api/admin/notifications');
+export const markAdminNotificationRead     = (id) => API.patch(`/api/admin/notifications/${id}/read`);
+export const markAllAdminNotificationsRead = ()   => API.patch('/api/admin/notifications/mark-all-read');
+export const deleteAdminNotification       = (id) => API.delete(`/api/admin/notifications/${id}`);
+export const clearAllAdminNotifications    = ()   => API.delete('/api/admin/notifications/clear-all');
 
 // ── CLIENT COMPLAINTS ─────────────────────────────────────────────────────────
 export const searchWorkerForComplaint = (query) => API.get('/api/client/complaints/search-worker', { params: { query } });
@@ -272,7 +288,6 @@ export const getImageUrl = (path, fallback = '/admin.png') => {
     if (path.startsWith('http')) return path;
     return `${BASE_URL}/${path}`;
 };
-export const clearAllClientNotifications = () =>
-  API.delete('/client/notifications/clear');
+
 
 export default API;

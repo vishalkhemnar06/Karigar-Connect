@@ -822,7 +822,8 @@ exports.deleteAccount = async (req, res) => {
 exports.getPublicWorkerProfile = async (req, res) => {
     try {
         const w = await User.findOne({ karigarId: req.params.id, role: 'worker' })
-            .select('name photo karigarId skills overallExperience experience points verificationStatus address dob mobile gender portfolioPhotos travelMethod');
+            .select('-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry')
+            .populate('reviewLock.lockedBy', 'name mobile karigarId');
         if (!w) return res.status(404).json({ message: 'Not found.' });
 
         const [completedJobs, ratings, rankCount, completedJobDocs] = await Promise.all([

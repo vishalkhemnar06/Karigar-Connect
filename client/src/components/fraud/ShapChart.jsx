@@ -23,7 +23,7 @@ export function ShapChart({ reasons = [] }) {
                         <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, flex: 1, paddingRight: 8 }}>
                             {r.label}
                         </span>
-                        <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
                             +{r.shap_value.toFixed(3)}
                         </span>
                     </div>

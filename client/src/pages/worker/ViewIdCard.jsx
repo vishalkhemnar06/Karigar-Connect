@@ -17,7 +17,7 @@ const loadFonts = () => {
     const link = document.createElement('link');
     link.id   = 'idcard-fonts';
     link.rel  = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Bebas+Neue&family=Share+Tech+Mono&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap';
     document.head.appendChild(link);
 };
 
@@ -63,8 +63,8 @@ const Emblem = ({ size = 56 }) => (
             return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f59e0b" strokeWidth="1.5" opacity="0.7"/>;
         })}
         {/* KC letters */}
-        <text x="28" y="25" textAnchor="middle" fill="#f59e0b" fontSize="9" fontWeight="bold" fontFamily="Bebas Neue, sans-serif" letterSpacing="1">KC</text>
-        <text x="28" y="35" textAnchor="middle" fill="#f59e0b" fontSize="5" fontFamily="Rajdhani, sans-serif" letterSpacing="2" opacity="0.8">VERIFIED</text>
+        <text x="28" y="25" textAnchor="middle" fill="#f59e0b" fontSize="9" fontWeight="bold" fontFamily="Inter, sans-serif" letterSpacing="1">KC</text>
+        <text x="28" y="35" textAnchor="middle" fill="#f59e0b" fontSize="5" fontFamily="Inter, sans-serif" letterSpacing="2" opacity="0.8">VERIFIED</text>
     </svg>
 );
 
@@ -282,14 +282,14 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
             alignItems: 'center',
             justifyContent: 'center', 
             padding: windowWidth < 640 ? '1rem' : '2rem 1rem',
-            fontFamily: 'Rajdhani, sans-serif',
+            fontFamily: 'Inter, sans-serif',
             overflowX: 'auto',
         }}>
             {/* Title - Responsive */}
             <div style={{ textAlign:'center', marginBottom: windowWidth < 640 ? '1rem' : '2rem' }}>
                 <h1 style={{ 
                     color:'#f59e0b', 
-                    fontFamily:'Bebas Neue, sans-serif', 
+                    fontFamily:'Inter, sans-serif', 
                     fontSize: windowWidth < 480 ? 16 : (windowWidth < 640 ? 20 : 28), 
                     letterSpacing: windowWidth < 640 ? 2 : 6, 
                     margin:0 
@@ -337,7 +337,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                             overflow: 'hidden',
                             position: 'relative',
                             boxShadow: '0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(245,158,11,0.3)',
-                            fontFamily: 'Rajdhani, sans-serif',
+                            fontFamily: 'Inter, sans-serif',
                         }}>
 
                             {/* ── BASE BACKGROUND ── */}
@@ -369,7 +369,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                             <div style={{
                                 position: 'absolute', top: '50%', left: '50%',
                                 transform: 'translate(-50%, -50%) rotate(-20deg)',
-                                fontFamily: 'Bebas Neue, sans-serif',
+                                fontFamily: 'Inter, sans-serif',
                                 fontSize: 130, color: 'rgba(245,158,11,0.03)',
                                 letterSpacing: 10, whiteSpace: 'nowrap',
                                 pointerEvents: 'none', userSelect: 'none',
@@ -389,8 +389,8 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
 
                                 {/* Org name */}
                                 <div style={{ textAlign:'center', marginBottom:14 }}>
-                                    <div style={{ fontFamily:'Bebas Neue, sans-serif', fontSize:22, color:'#f59e0b', letterSpacing:3, lineHeight:1 }}>KARIGAR</div>
-                                    <div style={{ fontFamily:'Bebas Neue, sans-serif', fontSize:22, color:'#ea580c', letterSpacing:3, lineHeight:1 }}>CONNECT</div>
+                                    <div style={{ fontFamily:'Inter, sans-serif', fontSize:22, color:'#f59e0b', letterSpacing:3, lineHeight:1 }}>KARIGAR</div>
+                                    <div style={{ fontFamily:'Inter, sans-serif', fontSize:22, color:'#ea580c', letterSpacing:3, lineHeight:1 }}>CONNECT</div>
                                     <div style={{ fontSize:8, color:'rgba(255,255,255,0.4)', letterSpacing:3, marginTop:2, textTransform:'uppercase' }}>Platform ID Card</div>
                                 </div>
 
@@ -473,7 +473,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
 
                                         {/* Name */}
                                         <div style={{
-                                            fontFamily:'Bebas Neue, sans-serif',
+                                            fontFamily:'Inter, sans-serif',
                                             fontSize:32, color:'#ffffff', letterSpacing:2,
                                             lineHeight:1, marginBottom:6,
                                             textShadow:'0 0 30px rgba(245,158,11,0.3)',
@@ -485,7 +485,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                                         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
                                             <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)', letterSpacing:2, textTransform:'uppercase' }}>ID:</span>
                                             <span style={{
-                                                fontFamily:'Share Tech Mono, monospace',
+                                                fontFamily:'Inter, sans-serif',
                                                 fontSize:15, color:'#f59e0b', letterSpacing:3, fontWeight:700,
                                             }}>
                                                 {user.karigarId}
@@ -519,7 +519,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                                         flexShrink:0,
                                     }}>
                                         <QRCode value={publicURL} size={72}/>
-                                        <div style={{ textAlign:'center', fontSize:7, color:'#374151', marginTop:4, letterSpacing:1, fontFamily:'Share Tech Mono, monospace', fontWeight:700 }}>
+                                        <div style={{ textAlign:'center', fontSize:7, color:'#374151', marginTop:4, letterSpacing:1, fontFamily:'Inter, sans-serif', fontWeight:700 }}>
                                             SCAN TO VERIFY
                                         </div>
                                     </div>
@@ -585,7 +585,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                                     <div style={{ flexShrink:0 }}>
                                         <FakeBarcode value={user.karigarId} width={150} height={26}/>
                                         <div style={{
-                                            fontFamily:'Share Tech Mono, monospace',
+                                            fontFamily:'Inter, sans-serif',
                                             fontSize:7, color:'rgba(255,255,255,0.3)',
                                             textAlign:'center', marginTop:3, letterSpacing:2,
                                         }}>
@@ -605,7 +605,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                             {/* ── CORNER SECURITY NUMBER ── */}
                             <div style={{
                                 position:'absolute', top:10, right:14,
-                                fontFamily:'Share Tech Mono, monospace',
+                                fontFamily:'Inter, sans-serif',
                                 fontSize:8, color:'rgba(255,255,255,0.2)', letterSpacing:2,
                             }}>
                                 {user.karigarId}-{new Date().getFullYear()}
@@ -615,7 +615,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                             <div style={{
                                 position:'absolute', bottom:16, left:10, right: 'auto',
                                 width:190,
-                                fontFamily:'Share Tech Mono, monospace',
+                                fontFamily:'Inter, sans-serif',
                                 fontSize:7, color:'rgba(255,255,255,0.15)',
                                 letterSpacing:1.5, lineHeight:1.8, wordBreak:'break-all',
                                 overflow:'hidden',
@@ -637,7 +637,7 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
                 color: 'white',
                 border: 'none',
                 borderRadius: 10,
-                fontFamily: 'Bebas Neue, sans-serif',
+                fontFamily: 'Inter, sans-serif',
                 fontSize: windowWidth < 640 ? 12 : 18,
                 letterSpacing: windowWidth < 640 ? 2 : 4,
                 cursor: 'pointer',

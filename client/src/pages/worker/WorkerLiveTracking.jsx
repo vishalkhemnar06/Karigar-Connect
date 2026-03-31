@@ -85,7 +85,7 @@ export default function WorkerLiveTracking() {
         : null;
 
     return (
-        <div style={{ maxWidth: 780, margin: '0 auto', padding: '24px 16px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        <div style={{ maxWidth: 780, margin: '0 auto', padding: '24px 16px', fontFamily: 'Inter, sans-serif' }}>
             <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');`}</style>
 
             {/* ── Header ── */}

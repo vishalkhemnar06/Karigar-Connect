@@ -6,6 +6,9 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Force Transformers/SentenceTransformers to use PyTorch only for this service.
+os.environ.setdefault("USE_TF", "0")
+
 import faiss
 import numpy as np
 import uvicorn

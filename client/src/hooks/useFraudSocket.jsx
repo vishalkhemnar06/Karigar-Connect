@@ -64,7 +64,7 @@ function showFraudToast(alert) {
             minWidth:     320,
             maxWidth:     380,
             boxShadow:    `0 4px 24px ${color}33`,
-            fontFamily:   'DM Sans, Inter, sans-serif',
+            fontFamily:   'Inter, sans-serif',
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                 <div style={{ flex: 1 }}>

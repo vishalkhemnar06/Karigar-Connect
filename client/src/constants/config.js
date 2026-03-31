@@ -19,8 +19,16 @@ export const getImageUrl = (path, fallback = '/default-avatar.png') => {
     // Absolute or Cloudinary URL
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
 
-    // Normalise any Windows-style backslashes to URL slashes
-    let normalised = path.replace(/\\/g, '/');
+    let normalised = String(path).replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normalised) return fallback;
+
+    // If path is a Cloudinary public id style, return a Cloudinary hosted URL.
+    const cloudinaryIdPattern = /^(?:.+\/)?karigarconnect\/.+/i;
+    if (cloudinaryIdPattern.test(normalised)) {
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dykxnkbav';
+        const resourceType = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(normalised) ? 'image' : 'raw';
+        return `https://res.cloudinary.com/${cloudName}/${resourceType}/upload/${normalised}`;
+    }
 
     // If a full local disk path was stored (e.g. C:/.../uploads/photos/abc.jpg),
     // strip everything before the uploads/ segment so the server static route
@@ -30,7 +38,6 @@ export const getImageUrl = (path, fallback = '/default-avatar.png') => {
         normalised = normalised.slice(idx);
     }
 
-    // Ensure no leading slash duplication when joining with BASE_URL
     normalised = normalised.replace(/^\/+/, '');
 
     return `${BASE_URL}/${normalised}`;

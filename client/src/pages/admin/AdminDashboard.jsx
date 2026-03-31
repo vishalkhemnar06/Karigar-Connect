@@ -10,7 +10,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
-import logo from '../../assets/logo.jpg';
+import Header from '../../components/Header';
 import {
     Check, X, ShieldX, Trash2, Eye, Users, UserCheck,
     UserX, Clock, ShieldCheck, Search, Download,
@@ -18,8 +18,12 @@ import {
     FileText, Image, Briefcase, AlertCircle,
     LogOut, Menu, X as CloseIcon, Calendar, Smartphone,
     MapPin as MapPinIcon, FileText as FileTextIcon,
-    Camera, Award as AwardIcon, Star
+    Camera, Award as AwardIcon, Star, PhoneCall, Store, Gift, Wrench, TrendingUp, BarChart3
 } from 'lucide-react';
+import {
+    PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -397,40 +401,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
     );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Header
-// ─────────────────────────────────────────────────────────────────────────────
-const DashboardHeader = ({ onLogout, onMenuToggle, isSidebarOpen }) => (
-    <header className="bg-gradient-to-r from-orange-600 to-orange-300 shadow-lg sticky top-0 z-40">
-        <div className="flex items-center justify-between p-3 sm:p-4">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-                {/* Hamburger — mobile only */}
-                <button
-                    onClick={onMenuToggle}
-                    className="lg:hidden p-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-                >
-                    {isSidebarOpen ? <CloseIcon size={18} /> : <Menu size={18} />}
-                </button>
-                <div className="flex items-center space-x-2 sm:space-x-3">
-                    <img src={logo} alt="KarigarConnect Logo" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white/50" />
-                    <div className="hidden sm:block">
-                        <h1 className="text-lg sm:text-xl font-bold text-white">KarigarConnect</h1>
-                    </div>
-                </div>
-            </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
-                <span className="text-white font-medium hidden sm:block">Welcome, Admin</span>
-                <button
-                    onClick={onLogout}
-                    className="group flex items-center space-x-1 sm:space-x-2 bg-white/20 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-lg hover:bg-white/30 transition-all duration-200 ease-in-out hover:shadow-lg text-sm sm:text-base"
-                >
-                    <LogOut size={16} className="sm:mr-1" />
-                    <span className="hidden sm:inline">Logout</span>
-                </button>
-            </div>
-        </div>
-    </header>
-);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mobile User Card
@@ -541,6 +512,13 @@ const AdminDashboard = () => {
     const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
     const [isLoggedIn,     setIsLoggedIn]     = useState(true);
     const [currentSection, setCurrentSection] = useState('dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops'
+    const [viewMode, setViewMode] = useState('stats'); // 'stats' or 'records'
+    const [dashboardStats, setDashboardStats] = useState({
+        ivrStats: {},
+        shops: 0,
+        couponsGenerated: 0,
+        topSkills: []
+    });
 
     const navigate = useNavigate();
     // const baseURL  = 'http://localhost:5000/';
@@ -577,7 +555,20 @@ const AdminDashboard = () => {
             if (!silent) setLoading(false);
         }
     };
-    useEffect(() => { fetchData(); }, []);
+
+    const fetchDashboardStats = async () => {
+        try {
+            const statsRes = await api.getAdminStats();
+            setDashboardStats(statsRes.data);
+        } catch (err) {
+            console.error('Error fetching dashboard stats:', err);
+        }
+    };
+
+    useEffect(() => { 
+        fetchData();
+        fetchDashboardStats();
+    }, []);
 
     useEffect(() => {
         if (activeFilter !== 'pending') return;
@@ -714,15 +705,10 @@ const AdminDashboard = () => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white">
             {/* Modals */}
-            <UserDetailsModal user={selectedUser} onClose={() => setSelectedUser(null)} baseURL={baseURL} />
             <VerificationModal worker={userToVerify} onClose={() => setUserToVerify(null)} onConfirm={handleStatusUpdate} />
 
             {/* Header */}
-            <DashboardHeader
-                onLogout={handleLogout}
-                onMenuToggle={() => setIsSidebarOpen(prev => !prev)}
-                isSidebarOpen={isSidebarOpen}
-            />
+            <Header />
 
             {/* Body: sidebar + main */}
             <div className="flex">
@@ -735,59 +721,278 @@ const AdminDashboard = () => {
                     currentSection={currentSection}
                     onSectionChange={setCurrentSection}
                     stats={stats}
+                    dashboardStats={dashboardStats}
+                    onViewModeChange={setViewMode}
                 />
 
                 {/* ── Main content ── */}
                 {/* pb-20 on mobile to clear the bottom nav bar */}
                 <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0 overflow-auto">
-                    {currentSection === 'dashboard' && (
+                    {currentSection === 'dashboard' && viewMode === 'stats' && (
                         <>
-                            {/* Dashboard Section */}
-                            {/* Page title + action buttons */}
-                            <div className="flex flex-col lg:flex-row justify-between mb-8 space-y-4 lg:space-y-0">
+                            {/* Dashboard Section - Stats Only */}
+                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
                                 <div>
-                                    <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Admin Control Desk</h1>
-                                    <p className="text-gray-500 text-sm">Manage, verify and rank professionals</p>
+                                    <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">📊 Dashboard</h1>
+                                    <p className="text-gray-500 text-sm">Overview of platform metrics and statistics</p>
                                 </div>
-                                <div className="flex items-center">
-                                    <div className="relative">
-                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-9 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 w-56 lg:w-72 text-sm"
-                                        />
+                            </div>
+
+                            {/* IVR & Call Center Metrics */}
+                            <div className="mb-8">
+                                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <PhoneCall size={20} className="text-blue-500" />
+                                    IVR & Call Center Metrics
+                                </h2>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                                    <StatCard title="Total Calls" value={dashboardStats.ivrStats?.totalCalls || 0} icon={PhoneCall} color="border-blue-500" gradient="bg-blue-500" />
+                                    <StatCard title="Daily Calls" value={dashboardStats.ivrStats?.dailyCalls || 0} icon={TrendingUp} color="border-cyan-500" gradient="bg-cyan-500" />
+                                    <StatCard title="Weekly Calls" value={dashboardStats.ivrStats?.weeklyCalls || 0} icon={BarChart3} color="border-indigo-500" gradient="bg-indigo-500" />
+                                    <StatCard title="Monthly Calls" value={dashboardStats.ivrStats?.monthlyCalls || 0} icon={Calendar} color="border-purple-500" gradient="bg-purple-500" />
+                                </div>
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-5 rounded-xl shadow-sm border border-green-100 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 opacity-10 bg-green-500 rounded-full -m-4 group-hover:scale-110 transition-transform"></div>
+                                        <div className="relative z-10">
+                                            <p className="text-xs font-medium text-gray-500 mb-1">Avg Call Duration</p>
+                                            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{dashboardStats.ivrStats?.avgCallDurationSeconds || 0}s</p>
+                                            <p className="text-xs text-gray-400 mt-1">seconds per call</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-rose-50 to-pink-50 p-5 rounded-xl shadow-sm border border-rose-100 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 opacity-10 bg-rose-500 rounded-full -m-4 group-hover:scale-110 transition-transform"></div>
+                                        <div className="relative z-10">
+                                            <p className="text-xs font-medium text-gray-500 mb-1">Total Shops</p>
+                                            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{dashboardStats.shops || 0}</p>
+                                            <p className="text-xs text-gray-400 mt-1">registered partners</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-amber-50 to-yellow-50 p-5 rounded-xl shadow-sm border border-amber-100 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 opacity-10 bg-amber-500 rounded-full -m-4 group-hover:scale-110 transition-transform"></div>
+                                        <div className="relative z-10">
+                                            <p className="text-xs font-medium text-gray-500 mb-1">Coupons Generated</p>
+                                            <p className="text-2xl lg:text-3xl font-bold text-gray-900">{dashboardStats.couponsGenerated || 0}</p>
+                                            <p className="text-xs text-gray-400 mt-1">active promotions</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Stat Cards */}
-                            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
-                                <StatCard title="Total"    value={stats.totalWorkers} icon={Users}     color="border-orange-500" gradient="bg-orange-500" />
-                                <StatCard title="Pending"  value={stats.pending}      icon={Clock}     color="border-yellow-500" gradient="bg-yellow-500" />
-                                <StatCard title="Approved" value={stats.approved}     icon={UserCheck} color="border-green-500"  gradient="bg-green-500" />
-                                <StatCard title="Rejected" value={stats.rejected}     icon={UserX}     color="border-red-500"    gradient="bg-red-500" />
-                                <StatCard title="Blocked"  value={stats.blocked}      icon={ShieldX}   color="border-gray-500"   gradient="bg-gray-500" />
-                                <StatCard title="Clients"  value={stats.totalClients} icon={Users}     color="border-amber-500"  gradient="bg-amber-500" />
+                            {/* Most Popular Skills */}
+                            {dashboardStats.topSkills && dashboardStats.topSkills.length > 0 && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <Wrench size={20} className="text-orange-500" />
+                                        Most Posted Skills
+                                    </h2>
+                                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                                        {dashboardStats.topSkills.map((skill, idx) => (
+                                            <div key={idx} className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-xl shadow-sm border border-orange-100 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <Wrench size={20} className="text-orange-500" />
+                                                    <span className="bg-orange-200 text-orange-800 text-xs font-bold px-2 py-1 rounded-full">{skill.count}</span>
+                                                </div>
+                                                <p className="font-semibold text-gray-800 text-sm capitalize">{skill.skill}</p>
+                                                <p className="text-xs text-gray-500 mt-1">jobs posted</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* User Statistics */}
+                            <div className="mb-8">
+                                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <Users size={20} className="text-orange-500" />
+                                    User Management Overview
+                                </h2>
+                                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                                    <StatCard title="Total Workers" value={stats.totalWorkers} icon={Users} color="border-orange-500" gradient="bg-orange-500" />
+                                    <StatCard title="Pending" value={stats.pending} icon={Clock} color="border-yellow-500" gradient="bg-yellow-500" />
+                                    <StatCard title="Approved" value={stats.approved} icon={UserCheck} color="border-green-500" gradient="bg-green-500" />
+                                    <StatCard title="Rejected" value={stats.rejected} icon={UserX} color="border-red-500" gradient="bg-red-500" />
+                                    <StatCard title="Blocked" value={stats.blocked} icon={ShieldX} color="border-gray-500" gradient="bg-gray-500" />
+                                    <StatCard title="Total Clients" value={stats.totalClients} icon={Users} color="border-amber-500" gradient="bg-amber-500" />
+                                </div>
                             </div>
 
+                            {/* Worker Status Distribution - Pie Chart */}
+                            {dashboardStats.workerStatusBreakdown && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <BarChart3 size={20} className="text-teal-500" />
+                                        Worker Status Distribution
+                                    </h2>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={[
+                                                        { name: 'Pending', value: dashboardStats.workerStatusBreakdown.pending, fill: '#eab308' },
+                                                        { name: 'Approved', value: dashboardStats.workerStatusBreakdown.approved, fill: '#22c55e' },
+                                                        { name: 'Rejected', value: dashboardStats.workerStatusBreakdown.rejected, fill: '#ef4444' },
+                                                        { name: 'Blocked', value: dashboardStats.workerStatusBreakdown.blocked, fill: '#6b7280' }
+                                                    ]}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    labelLine={false}
+                                                    label={(entry) => `${entry.name}: ${entry.value}`}
+                                                    outerRadius={80}
+                                                    fill="#8884d8"
+                                                    dataKey="value"
+                                                >
+                                                    <Cell fill="#eab308" />
+                                                    <Cell fill="#22c55e" />
+                                                    <Cell fill="#ef4444" />
+                                                    <Cell fill="#6b7280" />
+                                                </Pie>
+                                                <Tooltip formatter={(value) => value} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Job Status Distribution - Bar Chart */}
+                            {dashboardStats.jobStatusBreakdown && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <Briefcase size={20} className="text-blue-500" />
+                                        Job Status Distribution
+                                    </h2>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <BarChart
+                                                data={[
+                                                    { name: 'Open', count: dashboardStats.jobStatusBreakdown.open },
+                                                    { name: 'Running', count: dashboardStats.jobStatusBreakdown.running },
+                                                    { name: 'Completed', count: dashboardStats.jobStatusBreakdown.completed },
+                                                    { name: 'Cancelled', count: dashboardStats.jobStatusBreakdown.cancelled }
+                                                ]}
+                                            >
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="name" />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* IVR Calls Trend - Line Chart */}
+                            {dashboardStats.weeklyIVRTrend && dashboardStats.weeklyIVRTrend.length > 0 && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <PhoneCall size={20} className="text-blue-600" />
+                                        IVR Calls Trend (Last 4 Weeks)
+                                    </h2>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <LineChart data={dashboardStats.weeklyIVRTrend}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis 
+                                                    dataKey="_id" 
+                                                    angle={-45}
+                                                    textAnchor="end"
+                                                    height={80}
+                                                />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Legend />
+                                                <Line 
+                                                    type="monotone" 
+                                                    dataKey="count" 
+                                                    stroke="#3b82f6" 
+                                                    dot={{ fill: '#3b82f6', r: 5 }}
+                                                    activeDot={{ r: 7 }}
+                                                    name="Calls"
+                                                    isAnimationActive={true}
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Daily Worker Registrations - Area Chart */}
+                            {dashboardStats.dailyWorkerRegistrations && dashboardStats.dailyWorkerRegistrations.length > 0 && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <TrendingUp size={20} className="text-green-500" />
+                                        Daily Worker Registrations (Last 7 Days)
+                                    </h2>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <AreaChart data={dashboardStats.dailyWorkerRegistrations}>
+                                                <defs>
+                                                    <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="_id" />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Area 
+                                                    type="monotone" 
+                                                    dataKey="count" 
+                                                    stroke="#10b981" 
+                                                    fillOpacity={1} 
+                                                    fill="url(#colorCount)"
+                                                    name="Registrations"
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {currentSection === 'dashboard' && viewMode === 'records' && (
+                        <>
                             {/* Table */}
                             <div className="bg-white rounded-xl shadow-sm border">
-                                <div className="p-6 border-b flex justify-between items-center">
-                                    <h3 className="text-lg font-bold capitalize">{activeFilter} Records ({filteredData.length})</h3>
-                                    {activeFilter === 'approved' && (
-                                        <div className="relative group">
-                                            <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
-                                                <Download size={14} className="mr-2" /> Export
-                                            </button>
-                                            <div className="absolute right-0 mt-1 w-40 bg-white shadow-xl border rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                                                <button onClick={() => exportApprovedWorkers('excel')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">Excel Format</button>
-                                                <button onClick={() => exportApprovedWorkers('pdf')}   className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">PDF Format</button>
+                                <div className="p-6 border-b space-y-4">
+                                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                                        <h3 className="text-lg font-bold capitalize">{activeFilter} Records ({filteredData.length})</h3>
+                                        {activeFilter === 'approved' && (
+                                            <div className="relative group">
+                                                <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                                                    <Download size={14} className="mr-2" /> Export
+                                                </button>
+                                                <div className="absolute right-0 mt-1 w-40 bg-white shadow-xl border rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                                    <button onClick={() => exportApprovedWorkers('excel')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">Excel Format</button>
+                                                    <button onClick={() => exportApprovedWorkers('pdf')}   className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">PDF Format</button>
+                                                </div>
                                             </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Search and Filter Bar */}
+                                    <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+                                        <div className="relative flex-1">
+                                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder={`Search by name, mobile, or ${activeFilter !== 'clients' ? 'Karigar ID' : 'email'}...`}
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm transition-all"
+                                            />
                                         </div>
-                                    )}
+                                        {searchTerm && (
+                                            <button
+                                                onClick={() => setSearchTerm('')}
+                                                className="px-3 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors"
+                                            >
+                                                Clear Search
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="p-4">
@@ -797,115 +1002,176 @@ const AdminDashboard = () => {
                                         </div>
                                     ) : filteredData.length > 0 ? (
                                         <>
-                                            {/* Mobile cards */}
-                                            <div className="lg:hidden space-y-3">
-                                                {filteredData.map(user => (
-                                                    <MobileUserCard
-                                                        key={user._id}
-                                                        user={user}
-                                                        baseURL={baseURL}
-                                                        currentAdminId={currentAdminId}
-                                                        onViewDetails={setSelectedUser}
-                                                        onVerifyOpen={setUserToVerify}
-                                                        onClaimWorker={handleClaimWorker}
-                                                        onStatusUpdate={handleStatusUpdate}
-                                                        onDelete={handleDelete}
-                                                    />
-                                                ))}
-                                            </div>
+                                            {/* Card Grid - Show on all devices */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                                {filteredData.map(user => {
+                                                    const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
+                                                    const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
+                                                    const claimedByOther = lockOwnerId && !claimedByMe;
 
-                                            {/* Desktop table */}
-                                            <div className="hidden lg:block overflow-x-auto">
-                                                <table className="w-full">
-                                                    <thead>
-                                                        <tr className="border-b">
-                                                            <th className="pb-3 text-left"><SortHeader label="Name"    sortKey="name"      /></th>
-                                                            <th className="pb-3 text-left"><SortHeader label="ID"      sortKey="karigarId" /></th>
-                                                            <th className="pb-3 text-left">Contact</th>
-                                                            <th className="pb-3 text-left">{activeFilter === 'clients' ? 'Email' : 'Score / Skills'}</th>
-                                                            {activeFilter !== 'clients' && <th className="pb-3 text-left">Status</th>}
-                                                            <th className="pb-3 text-right">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {filteredData.map(user => (
-                                                            <tr key={user._id} className="border-b hover:bg-orange-50/50 transition-colors">
-                                                                <td className="py-4">
-                                                                    <div className="flex items-center">
-                                                                        <img
-                                                                            src={getImageUrl(user.photo)}
-                                                                            className="w-10 h-10 rounded-full object-cover mr-3 border-2 border-orange-100"
-                                                                            onError={(e) => { e.target.src = '/default-avatar.png'; }}
-                                                                        />
-                                                                        <div>
-                                                                            <p className="font-bold text-gray-800">{user.name}</p>
-                                                                            <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                                                    return (
+                                                        <div key={user._id} className="bg-white rounded-xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300">
+                                                            {/* Minimal Header Bar */}
+                                                            <div className="h-10 bg-gradient-to-r from-orange-300 via-orange-200 to-amber-200"></div>
+
+                                                            {/* Avatar */}
+                                                            <div className="-mt-8 flex justify-center">
+                                                                <img
+                                                                    src={getImageUrl(user.photo)}
+                                                                    alt={user.name}
+                                                                    className="w-16 h-16 rounded-full border-2 border-white object-cover object-center shadow"
+                                                                    onError={(e) => { e.target.src = '/default-avatar.png'; }}
+                                                                />
+                                                            </div>
+
+                                                            {/* Card Body - Compact */}
+                                                            <div className="p-3 pt-1 space-y-2 relative">
+                                                                {/* Status Badge - Top Right */}
+                                                                {user.role === 'worker' && (
+                                                                    <div className={`absolute top-3 right-3 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm ${
+                                                                        user.verificationStatus === 'approved' ? 'bg-green-500' :
+                                                                        user.verificationStatus === 'pending' ? 'bg-yellow-500' :
+                                                                        user.verificationStatus === 'blocked' ? 'bg-red-500' :
+                                                                        'bg-gray-500'
+                                                                    }`}>
+                                                                        {user.verificationStatus?.charAt(0).toUpperCase() + user.verificationStatus?.slice(1)}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Name and Role */}
+                                                                <div>
+                                                                    <h3 className="font-bold text-sm text-gray-900 truncate">{user.name}</h3>
+                                                                    <p className="text-[10px] text-gray-500 capitalize">{user.role}</p>
+                                                                </div>
+
+                                                                {/* Karigar ID */}
+                                                                {user.karigarId && (
+                                                                    <p className="text-[10px] text-gray-400 font-mono font-semibold bg-gray-50 p-1.5 rounded border border-gray-200">{user.karigarId}</p>
+                                                                )}
+
+                                                                {/* Contact */}
+                                                                <div className="flex items-center gap-1 text-[10px] text-gray-600 bg-blue-50 p-1.5 rounded border border-blue-200">
+                                                                    <Phone size={12} className="text-blue-500 flex-shrink-0" />
+                                                                    <span className="font-mono">{user.mobile}</span>
+                                                                </div>
+
+                                                                {/* Score / Email */}
+                                                                {user.role === 'worker' ? (
+                                                                    <div className="flex gap-1">
+                                                                        <div className="flex-1 bg-orange-50 p-1.5 rounded border border-orange-200 text-center">
+                                                                            <p className="text-[9px] text-orange-600 font-semibold">SCORE</p>
+                                                                            <p className="text-sm font-black text-orange-700">{user.points || 0}</p>
+                                                                        </div>
+                                                                        <div className="flex-1 bg-purple-50 p-1.5 rounded border border-purple-200 text-center">
+                                                                            <p className="text-[9px] text-purple-600 font-semibold">EXP</p>
+                                                                            <p className="text-sm font-black text-purple-700">{user.experience}y</p>
                                                                         </div>
                                                                     </div>
-                                                                </td>
-                                                                <td className="py-4 font-mono text-xs">{user.karigarId}</td>
-                                                                <td className="py-4 text-sm">{user.mobile}</td>
-                                                                <td className="py-4">
-                                                                    {user.role === 'worker' ? (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-[10px] font-black">SCORE: {user.points || 0}</span>
-                                                                            <span className="text-xs text-gray-400">Exp: {user.experience}y</span>
-                                                                        </div>
-                                                                    ) : <span className="text-sm">{user.email}</span>}
-                                                                </td>
-                                                                {activeFilter !== 'clients' && (
-                                                                    <td className="py-4">
-                                                                        {renderStatusBadge(user.verificationStatus)}
-                                                                        {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
-                                                                            <p className="text-[10px] text-gray-500 mt-1">
-                                                                                Locked by: {user.reviewLock.lockedBy.name || 'Admin'}
-                                                                            </p>
-                                                                        )}
-                                                                    </td>
+                                                                ) : (
+                                                                    <div className="text-[10px] text-gray-700 break-all bg-blue-50 p-1.5 rounded border border-blue-200">
+                                                                        <p className="font-semibold text-blue-700 text-[9px] mb-0.5">Email</p>
+                                                                        <p className="font-mono text-[9px] truncate">{user.email}</p>
+                                                                    </div>
                                                                 )}
-                                                                <td className="py-4">
-                                                                    <div className="flex justify-end space-x-2">
-                                                                        <button onClick={() => setSelectedUser(user)} className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Eye size={16} /></button>
-                                                                        {user.role === 'worker' && user.verificationStatus === 'pending' && (() => {
-                                                                            const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
-                                                                            const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
-                                                                            const claimedByOther = lockOwnerId && !claimedByMe;
 
+                                                                {/* Lock Info */}
+                                                                {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
+                                                                    <div className="text-[9px] bg-yellow-50 p-1.5 rounded border border-yellow-200 flex items-center gap-1">
+                                                                        <span className="text-sm">🔒</span>
+                                                                        <span className="font-semibold text-yellow-700 truncate">{user.reviewLock.lockedBy.name || 'Admin'}</span>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Action Buttons - Compact */}
+                                                                <div className="space-y-1">
+                                                                    {/* View Button */}
+                                                                    <button 
+                                                                        onClick={() => navigate(`/admin/workers/${user.karigarId || user._id}`)} 
+                                                                        className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                    >
+                                                                        <Eye size={12} /> View
+                                                                    </button>
+
+                                                                    {/* Worker Specific Actions */}
+                                                                    {user.role === 'worker' && user.verificationStatus === 'pending' && (
+                                                                        (() => {
                                                                             if (!lockOwnerId) {
-                                                                                return <button onClick={() => handleClaimWorker(user._id)} className="p-2 bg-blue-100 text-blue-700 rounded-lg" title="Claim Worker"><ShieldCheck size={16} /></button>;
+                                                                                return (
+                                                                                    <button 
+                                                                                        onClick={() => handleClaimWorker(user._id)} 
+                                                                                        className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-blue-500 to-cyan-500 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                                    >
+                                                                                        <ShieldCheck size={12} /> Claim
+                                                                                    </button>
+                                                                                );
                                                                             }
 
                                                                             if (claimedByMe) {
                                                                                 return (
-                                                                                    <>
-                                                                                        <button onClick={() => setUserToVerify(user)} className="p-2 bg-green-100 text-green-600 rounded-lg" title="Verify & Assign Points"><Check size={16} /></button>
-                                                                                        <button onClick={() => {
-                                                                                            const reason = window.prompt('Enter rejection reason for worker application:') || '';
-                                                                                            handleStatusUpdate(user._id, 'rejected', 0, reason);
-                                                                                        }} className="p-2 bg-red-100 text-red-600 rounded-lg"><X size={16} /></button>
-                                                                                    </>
+                                                                                    <div className="flex gap-1">
+                                                                                        <button 
+                                                                                            onClick={() => setUserToVerify(user)} 
+                                                                                            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-md text-white py-1.5 rounded-lg text-[9px] font-bold transition-all active:scale-95"
+                                                                                        >
+                                                                                            <Check size={11} /> ✓
+                                                                                        </button>
+                                                                                        <button 
+                                                                                            onClick={() => {
+                                                                                                const reason = window.prompt('Enter rejection reason:') || '';
+                                                                                                handleStatusUpdate(user._id, 'rejected', 0, reason);
+                                                                                            }}
+                                                                                            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-md text-white py-1.5 rounded-lg text-[9px] font-bold transition-all active:scale-95"
+                                                                                        >
+                                                                                            <X size={11} /> ✗
+                                                                                        </button>
+                                                                                    </div>
                                                                                 );
                                                                             }
 
                                                                             if (claimedByOther) {
-                                                                                return <span className="px-2 py-1 text-[10px] font-semibold rounded bg-gray-100 text-gray-600">Locked</span>;
+                                                                                return (
+                                                                                    <div className="w-full bg-gray-200 text-gray-700 py-1.5 rounded-lg text-[10px] font-bold text-center">
+                                                                                        🔒 Locked
+                                                                                    </div>
+                                                                                );
                                                                             }
 
                                                                             return null;
-                                                                        })()}
-                                                                        {user.role === 'worker' && user.verificationStatus === 'approved' && (
-                                                                            <button onClick={() => handleStatusUpdate(user._id, 'blocked')} className="p-2 bg-gray-100 text-gray-600 rounded-lg"><ShieldX size={16} /></button>
-                                                                        )}
-                                                                        {user.role === 'worker' && user.verificationStatus === 'blocked' && (
-                                                                            <button onClick={() => handleStatusUpdate(user._id, 'unblocked')} className="p-2 bg-green-100 text-green-600 rounded-lg"><ShieldCheck size={16} /></button>
-                                                                        )}
-                                                                        <button onClick={() => handleDelete(user._id, user.name, user.role)} className="p-2 bg-red-50 text-red-600 rounded-lg"><Trash2 size={16} /></button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
+                                                                        })()
+                                                                    )}
+
+                                                                    {/* Approved Status Actions */}
+                                                                    {user.role === 'worker' && user.verificationStatus === 'approved' && (
+                                                                        <button 
+                                                                            onClick={() => handleStatusUpdate(user._id, 'blocked')}
+                                                                            className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-gray-500 to-gray-600 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                        >
+                                                                            <ShieldX size={12} /> Block
+                                                                        </button>
+                                                                    )}
+
+                                                                    {/* Blocked Status Actions */}
+                                                                    {user.role === 'worker' && user.verificationStatus === 'blocked' && (
+                                                                        <button 
+                                                                            onClick={() => handleStatusUpdate(user._id, 'unblocked')}
+                                                                            className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                        >
+                                                                            <ShieldCheck size={12} /> Unblock
+                                                                        </button>
+                                                                    )}
+
+                                                                    {/* Delete - Always Available */}
+                                                                    <button 
+                                                                        onClick={() => handleDelete(user._id, user.name, user.role)}
+                                                                        className="w-full flex items-center justify-center gap-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                    >
+                                                                        <Trash2 size={12} /> Delete
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </>
                                     ) : (

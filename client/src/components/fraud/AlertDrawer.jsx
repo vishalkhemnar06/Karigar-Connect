@@ -78,7 +78,7 @@ export function AlertDrawer() {
                                             borderRadius: 5, transition: 'width 0.5s ease',
                                         }}/>
                                     </div>
-                                    <span style={{ fontSize: 22, fontWeight: 800, fontFamily: 'monospace', minWidth: 52,
+                                    <span style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Inter, sans-serif', minWidth: 52,
                                         color: selectedAlert.risk_level==='HIGH'?'#dc2626':selectedAlert.risk_level==='MEDIUM'?'#d97706':'#ca8a04' }}>
                                         {Math.round((selectedAlert.fraud_probability||0)*100)}%
                                     </span>

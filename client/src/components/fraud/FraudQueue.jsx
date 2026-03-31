@@ -170,7 +170,7 @@ export function FraudQueue() {
                                                 <div style={{ width: 48, height: 6, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
                                                     <div style={{ height: '100%', width: `${prob}%`, background: probColor, borderRadius: 3 }} />
                                                 </div>
-                                                <span style={{ fontWeight: 700, color: probColor, fontSize: 13, fontFamily: 'monospace' }}>{prob}%</span>
+                                                <span style={{ fontWeight: 700, color: probColor, fontSize: 13, fontFamily: 'Inter, sans-serif' }}>{prob}%</span>
                                             </div>
                                         </td>
                                         <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', maxWidth: 220 }}>

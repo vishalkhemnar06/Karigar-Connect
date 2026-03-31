@@ -174,6 +174,7 @@ const Header = () => {
     let dashboardLink = '/';
     if (role === 'worker') dashboardLink = '/worker/dashboard';
     else if (role === 'client') dashboardLink = '/client/dashboard';
+    else if (role === 'admin') dashboardLink = '/admin/dashboard';
 
     const handleLogout = () => {
         localStorage.clear();
@@ -230,52 +231,40 @@ const Header = () => {
                     ? 'bg-white/95 backdrop-blur-xl shadow-2xl border-b border-orange-100/50'
                     : 'bg-white shadow-lg'
             }`}
+            style={{ fontFamily: 'Inter, sans-serif', letterSpacing: 0.1 }}
         >
             {/* Animated Gradient Bar */}
             <motion.div 
-                className="h-0.5 bg-gradient-to-r from-orange-400 via-amber-500 to-red-500"
+                className="h-1 bg-gradient-to-r from-orange-400 via-amber-500 to-red-500 opacity-90"
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: 1 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
             />
-            
-            <div className="max-w-7xl mx-auto px-3 sm:px-6">
-                <div className="flex items-center justify-between h-16 sm:h-20 gap-2">
 
-                    {/* Enhanced Logo Section - Mobile Optimized */}
-                    <Link to="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 group flex-shrink-0">
+            <div className="w-full px-5">
+                <div className="flex items-center justify-between h-20 gap-2">
+                    {/* Logo & Brand */}
+                    <Link to="/" className="flex items-center gap-3 group flex-shrink-0" style={{marginLeft: 0}} aria-label="Home">
                         <motion.div
-                            whileHover={{ scale: 1.1, rotate: 5 }}
-                            whileTap={{ scale: 0.95 }}
+                            whileHover={{ scale: 1.08, rotate: 2 }}
+                            whileTap={{ scale: 0.97 }}
                             className="relative"
                         >
-                            <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full blur-md opacity-50 group-hover:opacity-100 transition-opacity" />
+                            <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-amber-500 rounded-full blur-md opacity-40 group-hover:opacity-80 transition-opacity" />
                             <img
                                 src={logo}
-                                alt="KarigarConnect"
-                                className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-14 rounded-full object-cover border-2 border-orange-300 shadow-lg"
-                            />
-                            <motion.div
-                                animate={{ scale: [1, 1.2, 1] }}
-                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-                                className="absolute -top-1 -right-1 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full border-2 border-white shadow-md"
+                                alt="KarigarConnect Logo"
+                                className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-orange-300 shadow-xl"
+                                style={{ background: '#fff' }}
                             />
                         </motion.div>
-                        
-                        <div className="flex flex-col">
-                            <motion.span 
-                                whileHover={{ scale: 1.02 }}
-                                className="text-base sm:text-xl md:text-2xl lg:text-3xl font-black bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 bg-clip-text text-transparent tracking-tight"
-                            >
-                                <span className="hidden xs:inline">KarigarConnect</span>
-                                
-                            </motion.span>
-                            <div className="hidden sm:flex items-center gap-1 mt-0.5">
-                                <Sparkles size={10} className="text-orange-400" />
-                                <span className="text-[9px] sm:text-[10px] font-medium text-gray-400 whitespace-nowrap">
-                                    India's Trusted Platform
-                                </span>
-                            </div>
+                        <div className="flex flex-col justify-center">
+                            <span className="text-xl sm:text-2xl md:text-3xl font-extrabold bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 bg-clip-text text-transparent tracking-tight drop-shadow-sm">
+                                KarigarConnect
+                            </span>
+                            <span className="hidden sm:block text-xs font-medium text-gray-400 tracking-wide mt-0.5 pl-0.5">
+                                India’s Trusted Platform
+                            </span>
                         </div>
                     </Link>
 
@@ -293,6 +282,28 @@ const Header = () => {
                                 <span>Home</span>
                             </div>
                         </Link>
+
+                        {!token && (
+                            <>
+                                {/* About Us Link - Only for non-logged in users */}
+                                <a href="#about-us" className={navLinkClass('')}>
+                                    <motion.span
+                                        initial={false}
+                                        className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
+                                    />
+                                    <span>About Us</span>
+                                </a>
+
+                                {/* Contact Link - Only for non-logged in users */}
+                                <a href="#contact" className={navLinkClass('')}>
+                                    <motion.span
+                                        initial={false}
+                                        className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
+                                    />
+                                    <span>Contact</span>
+                                </a>
+                            </>
+                        )}
 
                         {token ? (
                             <>
@@ -359,7 +370,7 @@ const Header = () => {
                                 )}
 
                                 {/* Enhanced Notification Bell */}
-                                {(role === 'worker' || role === 'client') && (
+                                {(role === 'worker' || role === 'client' || role === 'admin') && (
                                     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                                         <NotificationBell role={role} />
                                     </motion.div>
@@ -551,7 +562,7 @@ const Header = () => {
 
                     {/* Mobile Controls - Only visible on mobile/tablet */}
                     <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
-                        {token && (role === 'worker' || role === 'client') && (
+                        {token && (role === 'worker' || role === 'client' || role === 'admin') && (
                             <NotificationBell role={role} />
                         )}
                         <LanguageSwitcher />
@@ -583,6 +594,28 @@ const Header = () => {
                                 to="/" 
                                 onClick={() => setMobileMenuOpen(false)} 
                             />
+
+                            {!token && (
+                                <>
+                                    <a 
+                                        href="#about-us"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 rounded-xl transition-all group min-h-[48px]"
+                                    >
+                                        <div className="text-orange-500">ℹ️</div>
+                                        <span className="font-medium text-base">About Us</span>
+                                    </a>
+                                    
+                                    <a 
+                                        href="#contact"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 rounded-xl transition-all group min-h-[48px]"
+                                    >
+                                        <div className="text-orange-500">📞</div>
+                                        <span className="font-medium text-base">Contact</span>
+                                    </a>
+                                </>
+                            )}
 
                             {token ? (
                                 <>

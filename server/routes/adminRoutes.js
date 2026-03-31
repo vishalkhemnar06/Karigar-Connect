@@ -13,6 +13,8 @@ const {
     deleteUser,
     getAdminStats,
     getAllJobs,
+    getUserByIdOrKarigarId,
+    proxyDocument,
 } = require('../controllers/adminController');
 const { fraudNotify } = require('../controllers/adminFraudController');
 
@@ -23,12 +25,24 @@ router.get('/workers',                  protect, admin, getAllWorkers);
 router.get('/clients',                  protect, admin, getAllClients);
 router.post('/workers/:workerId/claim', protect, admin, claimWorkerForReview);
 router.put('/workers/status',           protect, admin, updateWorkerStatus);
-router.delete('/user/:id',    protect, admin, deleteUser);
+router.get('/users/:id',                protect, admin, getUserByIdOrKarigarId);
+router.delete('/user/:id',              protect, admin, deleteUser);
 
 // Dashboard/supporting endpoints used by frontend admin panel
 router.get('/stats', protect, admin, getAdminStats);
 router.get('/jobs',  protect, admin, getAllJobs);
 router.post('/fraud-notify', fraudNotify);
+
+// Notifications controller
+const { getAdminNotifications, clearAllAdminNotifications, deleteAdminNotification } = require('../controllers/notificationController');
+
+// Admin notifications route
+router.get('/notifications', protect, admin, getAdminNotifications);
+router.delete('/notifications/clear-all', protect, admin, clearAllAdminNotifications);
+router.delete('/notifications/:id', protect, admin, deleteAdminNotification);
+
+// Document proxy for preview
+router.get('/document-proxy', protect, admin, proxyDocument);
 
 // NOTE: The following sub-routers are mounted in server.js (not here):
 //   /api/admin/shops      → adminShopRoutes

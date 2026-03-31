@@ -1,6 +1,5 @@
 // client/src/pages/client/ClientAIAssist.jsx
-// AI Advisor v2 — Mobile Optimized
-// Features: Two-tab layout, Budget input, Questions, Opinions, Report with collapsible sections, History
+// Professional AI Advisor with Complete Report - Orange Theme
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -11,693 +10,1574 @@ import {
 } from '../../api/index';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+    ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
+    DollarSign, Clock, MapPin, Briefcase, User, Users,
+    AlertCircle, CheckCircle, FileText, Image, Camera,
+    Settings, TrendingUp, Award, Calendar, Download, Save,
+    Trash2, Edit2, Plus, X, Loader2, Sparkles, Target,
+    Layers, HardHat, Palette, Wrench, Truck, PenTool
+} from 'lucide-react';
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-const fmtINR = n => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
-const fmtDate = d => new Date(d).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
-const sanitizeNonNegativeInput = (value) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants & Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PHASES = ['describe', 'questions', 'budget', 'preferences', 'image', 'loading', 'report'];
+const PHASE_LABELS = {
+    describe: 'Project Details',
+    questions: 'Requirements',
+    budget: 'Budget',
+    preferences: 'Preferences',
+    image: 'Visual Reference',
+    loading: 'Analysis',
+    report: 'Report'
+};
+
+const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return '—';
+    return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0
+    }).format(amount);
+};
+
+const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    });
+};
+
+const sanitizeNumber = (value) => {
     if (value === '') return '';
-    const normalized = String(value).replace(/[^\d.]/g, '');
-    if (!normalized) return '';
-    const [whole, ...rest] = normalized.split('.');
-    return rest.length ? `${whole}.${rest.join('')}` : whole;
-};
-const preventNegativeKey = (e) => {
-    if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
+    const sanitized = String(value).replace(/[^\d.]/g, '');
+    const parts = sanitized.split('.');
+    return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized;
 };
 
-const SKILL_ICONS = { painter:'🎨', plumber:'🔧', electrician:'⚡', carpenter:'🪚', mason:'🧱', tiler:'🏠', welder:'⚒️', cleaner:'🧹', handyman:'🔨', gardener:'🌿', ac_technician:'❄️', pest_control:'🐛' };
-const si = s => SKILL_ICONS[s?.toLowerCase()] || '👷';
+// ─────────────────────────────────────────────────────────────────────────────
+// Components
+// ─────────────────────────────────────────────────────────────────────────────
 
-const buildHistoryReport = (item) => {
-    if (item?.report) {
-        return {
-            ...item.report,
-            _notes: item.notes || '',
-        };
+const PhaseIndicator = ({ currentPhase }) => {
+    const currentIndex = PHASES.indexOf(currentPhase);
+    const visiblePhases = PHASES.slice(0, 6);
+
+    return (
+        <div className="mb-8">
+            <div className="flex items-center justify-between">
+                {visiblePhases.map((phase, index) => (
+                    <div key={phase} className="flex-1 relative">
+                        <div className="flex flex-col items-center">
+                            <div className={`
+                                w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold
+                                transition-all duration-300
+                                ${index < currentIndex 
+                                    ? 'bg-orange-500 text-white' 
+                                    : index === currentIndex 
+                                        ? 'bg-orange-500 text-white ring-4 ring-orange-100' 
+                                        : 'bg-gray-100 text-gray-400'
+                                }
+                            `}>
+                                {index < currentIndex ? (
+                                    <CheckCircle size={14} />
+                                ) : (
+                                    <span>{index + 1}</span>
+                                )}
+                            </div>
+                            <span className={`
+                                text-xs mt-2 font-medium text-center
+                                ${index <= currentIndex ? 'text-gray-700' : 'text-gray-400'}
+                            `}>
+                                {PHASE_LABELS[phase]}
+                            </span>
+                        </div>
+                        {index < visiblePhases.length - 1 && (
+                            <div className={`
+                                absolute top-4 left-1/2 w-full h-0.5 -translate-y-1/2
+                                ${index < currentIndex ? 'bg-orange-400' : 'bg-gray-200'}
+                            `} />
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const QuestionField = ({ question, value, onChange }) => {
+    if (question.type === 'select') {
+        return (
+            <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                    {question.question}
+                </label>
+                <div className="flex flex-wrap gap-2">
+                    {question.options.map(option => (
+                        <button
+                            key={option}
+                            type="button"
+                            onClick={() => onChange(question.id, option)}
+                            className={`
+                                px-4 py-2 rounded-lg text-sm font-medium transition-all
+                                ${value === option
+                                    ? 'bg-orange-500 text-white shadow-sm'
+                                    : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-orange-300 hover:bg-orange-50'
+                                }
+                            `}
+                        >
+                            {option}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
     }
 
-    return {
-        jobTitle: item?.title || item?.workDescription?.slice(0, 60) || 'Saved Analysis',
-        problemSummary: item?.workDescription || '',
-        durationDays: item?.durationDays || 1,
-        budgetBreakdown: item?.budgetBreakdown || null,
-        recommendation: item?.recommendation || '',
-        clientBudget: item?.clientBudget || 0,
-        grandTotal: item?.budgetBreakdown?.totalEstimated || 0,
-        topWorkers: [],
-        skillBlocks: [],
-        materialsBreakdown: [],
-        equipmentBreakdown: [],
-        materialsTotal: 0,
-        equipmentTotal: 0,
-        workPlan: [],
-        timeEstimate: {},
-        expectedOutcome: item?.recommendation ? [item.recommendation] : [],
-        colourAndStyleAdvice: '',
-        designSuggestions: [],
-        improvementIdeas: [],
-        imageFindings: [],
-        warnings: ['This is an older saved analysis. Full advisor detail was not stored at the time it was created.'],
-        visualizationDescription: '',
-        budgetAdvice: '',
-        _notes: item?.notes || '',
-    };
+    return (
+        <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+                {question.question}
+            </label>
+            {question.type === 'number' ? (
+                <input
+                    type="number"
+                    min={0}
+                    value={value || ''}
+                    onChange={(e) => onChange(question.id, sanitizeNumber(e.target.value))}
+                    placeholder="Enter a number..."
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                />
+            ) : (
+                <input
+                    type="text"
+                    value={value || ''}
+                    onChange={(e) => onChange(question.id, e.target.value)}
+                    placeholder="Your answer..."
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                />
+            )}
+        </div>
+    );
 };
 
-// ── Phase Indicator (Mobile Optimized) ────────────────────────────────────────────
-const PHASES = ['describe','questions','budget','opinions','image','loading','report'];
-const PHASE_LABELS = { describe:'Describe', questions:'Questions', budget:'Budget', opinions:'Prefs', image:'Photo', loading:'...', report:'Report' };
+// ─────────────────────────────────────────────────────────────────────────────
+// Enhanced Report Components
+// ─────────────────────────────────────────────────────────────────────────────
 
-function PhaseBar({ phase }) {
-    const active = PHASES.indexOf(phase);
-    const visible = ['describe','questions','budget','opinions','image'];
+const ReportSection = ({ title, icon: Icon, children, defaultOpen = true, badge }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+
     return (
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
-            {visible.map((p,i) => (
-                <div key={p} className="flex items-center gap-1 flex-shrink-0">
-                    <div className={`flex items-center gap-0.5 px-2 py-1 rounded-full text-[10px] font-bold border ${
-                        active > i ? 'border-green-400 bg-green-50 text-green-700' :
-                        active === i ? 'border-orange-400 bg-orange-50 text-orange-700' :
-                        'border-gray-200 bg-white text-gray-400'
-                    }`}>
-                        {active > i ? '✓' : i+1} {PHASE_LABELS[p]}
+        <div className="bg-white border border-orange-100 rounded-xl overflow-hidden shadow-sm">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-orange-50/50 transition-colors"
+            >
+                <div className="flex items-center gap-3">
+                    {Icon && <Icon size={20} className="text-orange-500" />}
+                    <span className="font-semibold text-gray-900">{title}</span>
+                    {badge && (
+                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full">
+                            {badge}
+                        </span>
+                    )}
+                </div>
+                {isOpen ? <ChevronUp size={18} className="text-orange-400" /> : <ChevronDown size={18} className="text-orange-400" />}
+            </button>
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="border-t border-orange-100"
+                    >
+                        <div className="px-5 py-4 bg-orange-50/30">
+                            {children}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+
+const CostBreakdownTable = ({ breakdown, clientBudget, grandTotal }) => {
+    if (!breakdown?.breakdown?.length) return null;
+
+    return (
+        <div className="space-y-4">
+            {/* Labour Costs */}
+            <div>
+                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <HardHat size={16} className="text-orange-500" />
+                    Labour Costs
+                </h4>
+                <div className="space-y-2">
+                    {breakdown.breakdown.map((item, index) => (
+                        <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-900 capitalize">
+                                        {item.skill}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                        {item.count} worker{item.count > 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-0.5">
+                                    <span className="text-xs text-gray-400">{item.hours} hours</span>
+                                    <span className="text-xs text-gray-400 capitalize">{item.complexity} complexity</span>
+                                    <span className="text-xs text-gray-400">₹{item.rate}/hr</span>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-sm font-semibold text-gray-900">
+                                    {formatCurrency(item.subtotal)}
+                                </span>
+                                {item.count > 1 && (
+                                    <p className="text-xs text-gray-400">₹{Math.round(item.subtotal / item.count)}/worker</p>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Materials Breakdown */}
+            {breakdown.materialsBreakdown?.length > 0 && (
+                <div>
+                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <Palette size={16} className="text-orange-500" />
+                        Materials
+                    </h4>
+                    <div className="space-y-2">
+                        {breakdown.materialsBreakdown.map((item, index) => (
+                            <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                <div>
+                                    <span className="text-sm font-medium text-gray-900 capitalize">
+                                        {item.item}
+                                    </span>
+                                    {item.quantity && (
+                                        <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>
+                                    )}
+                                    {item.note && (
+                                        <p className="text-xs text-orange-600 mt-0.5">{item.note}</p>
+                                    )}
+                                </div>
+                                <span className="text-sm font-semibold text-gray-900">
+                                    {formatCurrency(item.estimatedCost)}
+                                </span>
+                            </div>
+                        ))}
                     </div>
-                    {i < visible.length-1 && <div className={`w-2 h-0.5 rounded ${active > i ? 'bg-green-400' : 'bg-gray-200'}`}/>}
+                </div>
+            )}
+
+            {/* Equipment & Tools */}
+            {breakdown.equipmentBreakdown?.length > 0 && (
+                <div>
+                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <Wrench size={16} className="text-orange-500" />
+                        Equipment & Tools
+                    </h4>
+                    <div className="space-y-2">
+                        {breakdown.equipmentBreakdown.map((item, index) => (
+                            <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                <div>
+                                    <span className="text-sm font-medium text-gray-900 capitalize">
+                                        {item.item}
+                                    </span>
+                                    {item.quantity && (
+                                        <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>
+                                    )}
+                                </div>
+                                <span className="text-sm font-semibold text-gray-900">
+                                    {formatCurrency(item.estimatedCost)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Additional Costs */}
+            {breakdown.additionalCosts?.length > 0 && (
+                <div>
+                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <Truck size={16} className="text-orange-500" />
+                        Additional Costs
+                    </h4>
+                    <div className="space-y-2">
+                        {breakdown.additionalCosts.map((item, index) => (
+                            <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                <span className="text-sm font-medium text-gray-900 capitalize">
+                                    {item.description || item.item}
+                                </span>
+                                <span className="text-sm font-semibold text-gray-900">
+                                    {formatCurrency(item.cost)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Urgency Surcharge */}
+            {breakdown.urgent && (
+                <div className="flex items-center justify-between py-2 border-t border-orange-200 mt-3 pt-3">
+                    <div>
+                        <span className="text-sm font-medium text-orange-700">Urgency Surcharge</span>
+                        <p className="text-xs text-orange-600 mt-0.5">+{Math.round((breakdown.urgencyMult - 1) * 100)}% for urgent completion</p>
+                    </div>
+                    <span className="text-sm font-semibold text-orange-700">
+                        +{formatCurrency(breakdown.totalEstimated - (breakdown.subtotal + (breakdown.materialsTotal || 0) + (breakdown.equipmentTotal || 0)))}
+                    </span>
+                </div>
+            )}
+
+            {/* Total */}
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-4 mt-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <span className="text-white font-semibold text-lg">Total Estimated Cost</span>
+                        {clientBudget > 0 && (
+                            <p className="text-orange-100 text-sm mt-1">
+                                Your budget: {formatCurrency(clientBudget)}
+                            </p>
+                        )}
+                    </div>
+                    <div className="text-right">
+                        <span className="text-white font-bold text-2xl">
+                            {formatCurrency(grandTotal || breakdown.totalEstimated)}
+                        </span>
+                        {clientBudget > 0 && grandTotal > clientBudget && (
+                            <p className="text-orange-200 text-xs mt-1">
+                                Over budget by {formatCurrency(grandTotal - clientBudget)}
+                            </p>
+                        )}
+                    </div>
+                </div>
+                {clientBudget > 0 && grandTotal < clientBudget && (
+                    <div className="mt-2 pt-2 border-t border-orange-400">
+                        <p className="text-orange-100 text-sm">
+                            ✓ Within budget. You have {formatCurrency(clientBudget - grandTotal)} remaining.
+                        </p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const WorkPlanTimeline = ({ plan, timeEstimate }) => {
+    if (!plan?.length) return null;
+
+    return (
+        <div className="space-y-4">
+            {/* Timeline Overview */}
+            {timeEstimate?.totalHours && (
+                <div className="bg-orange-50 rounded-lg p-3 mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Estimated Timeline</span>
+                        <span className="text-sm font-bold text-orange-600">{timeEstimate.totalHours} hours total</span>
+                    </div>
+                    <div className="h-2 bg-orange-200 rounded-full overflow-hidden">
+                        {timeEstimate.phases?.map((phase, idx) => {
+                            const percentage = (phase.hours / timeEstimate.totalHours) * 100;
+                            return (
+                                <div
+                                    key={idx}
+                                    className="h-full bg-orange-500 float-left"
+                                    style={{ width: `${percentage}%` }}
+                                    title={`${phase.phase}: ${phase.hours}h`}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Detailed Steps */}
+            <div className="relative">
+                {plan.map((step, index) => (
+                    <div key={index} className="relative pl-8 pb-6 last:pb-0">
+                        {/* Timeline connector */}
+                        {index < plan.length - 1 && (
+                            <div className="absolute left-3 top-6 bottom-0 w-0.5 bg-orange-200" />
+                        )}
+                        {/* Step number */}
+                        <div className="absolute left-0 top-0 w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold">
+                            {step.step || index + 1}
+                        </div>
+                        {/* Step content */}
+                        <div>
+                            <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                                <h4 className="font-semibold text-gray-900">{step.title}</h4>
+                                {step.estimatedTime && (
+                                    <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
+                                        {step.estimatedTime}
+                                    </span>
+                                )}
+                            </div>
+                            {step.description && (
+                                <p className="text-sm text-gray-600 mt-1">{step.description}</p>
+                            )}
+                            {step.subtasks?.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                    {step.subtasks.map((task, idx) => (
+                                        <div key={idx} className="flex items-start gap-2 text-xs text-gray-500">
+                                            <span className="text-orange-400">•</span>
+                                            <span>{task}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const MaterialSpecification = ({ materials }) => {
+    if (!materials?.length) return null;
+
+    return (
+        <div className="space-y-3">
+            {materials.map((material, index) => (
+                <div key={index} className="border border-orange-100 rounded-lg p-3">
+                    <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                            <h4 className="font-medium text-gray-900">{material.item}</h4>
+                            <div className="flex flex-wrap gap-3 mt-1">
+                                {material.quantity && (
+                                    <span className="text-xs text-gray-500">Quantity: {material.quantity}</span>
+                                )}
+                                {material.specifications && (
+                                    <span className="text-xs text-gray-500">Specs: {material.specifications}</span>
+                                )}
+                                {material.brand && (
+                                    <span className="text-xs text-gray-500">Brand: {material.brand}</span>
+                                )}
+                            </div>
+                            {material.note && (
+                                <p className="text-xs text-orange-600 mt-2">{material.note}</p>
+                            )}
+                        </div>
+                        <div className="text-right">
+                            <span className="text-sm font-semibold text-gray-900">
+                                {formatCurrency(material.estimatedCost)}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             ))}
         </div>
     );
-}
+};
 
-// ── Question Widget (Mobile Optimized) ────────────────────────────────────────────
-function QWidget({ q, value, onChange }) {
-    if (q.type === 'select') return (
-        <div className="mb-3">
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5">{q.question}</label>
-            <div className="flex flex-wrap gap-1.5">
-                {(q.options||[]).map(opt => (
-                    <button key={opt} type="button" onClick={() => onChange(q.id, opt)}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${value===opt?'bg-orange-500 text-white border-orange-500':'bg-white text-gray-700 border-gray-200'}`}>
-                        {opt}
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-    if (q.type === 'color') return (
-        <div className="mb-3">
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5">{q.question}</label>
-            <input value={value||''} onChange={e=>onChange(q.id,e.target.value)}
-                placeholder="E.g., Light beige, off-white…"
-                className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"/>
-            <div className="flex flex-wrap gap-1 mt-1.5">
-                {['White','Beige','Light grey','Sky blue','Mint','Terracotta'].slice(0,4).map(c=>(
-                    <button key={c} type="button" onClick={()=>onChange(q.id,c)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-medium border ${value===c?'border-orange-400 bg-orange-50 text-orange-700':'border-gray-200 text-gray-500'}`}>{c}</button>
-                ))}
-            </div>
-        </div>
-    );
+const DesignRecommendations = ({ colourAdvice, designSuggestions, improvementIdeas }) => {
     return (
-        <div className="mb-3">
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5">{q.question}</label>
-            <input type={q.type==='number'?'number':'text'} min={0} value={value||''}
-                onKeyDown={q.type === 'number' ? preventNegativeKey : undefined}
-                onChange={e=>onChange(q.id, q.type === 'number' ? sanitizeNonNegativeInput(e.target.value) : e.target.value)}
-                placeholder="Your answer…"
-                className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"/>
-        </div>
-    );
-}
-
-// ── Accordion Section (Mobile Optimized) ─────────────────────────────────────────
-function Accordion({ icon, title, badge, defaultOpen=false, accent='orange', children }) {
-    const [open, setOpen] = useState(defaultOpen);
-    const accents = {
-        orange:'border-orange-200', blue:'border-blue-200', green:'border-green-200',
-        purple:'border-purple-200', amber:'border-amber-200', teal:'border-teal-200', red:'border-red-200',
-    };
-    const bg = {
-        orange:'bg-orange-50', blue:'bg-blue-50', green:'bg-green-50',
-        purple:'bg-purple-50', amber:'bg-amber-50', teal:'bg-teal-50', red:'bg-red-50',
-    };
-    return (
-        <div className={`bg-white rounded-xl border overflow-hidden ${accents[accent]||'border-gray-200'}`}>
-            <button onClick={() => setOpen(o=>!o)} className={`w-full flex items-center gap-2 px-3 py-2.5 text-left ${bg[accent]||'bg-gray-50'}`}>
-                <span className="text-base flex-shrink-0">{icon}</span>
-                <span className="font-bold text-gray-800 flex-1 text-xs">{title}</span>
-                {badge && <span className="text-[9px] bg-white/80 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">{badge}</span>}
-                <span className={`text-gray-400 text-[10px] transition-transform ${open?'rotate-180':''}`}>▼</span>
-            </button>
-            {open && <div className="px-3 py-2.5">{children}</div>}
-        </div>
-    );
-}
-
-// ── Report View (Mobile Optimized) ───────────────────────────────────────────────
-function AdvisorReport({ report, onReset, onSaveNote, onPatchReport }) {
-    const {
-        jobTitle, problemSummary, skillBlocks=[],
-        budgetBreakdown, materialsBreakdown=[], equipmentBreakdown=[],
-        materialsTotal=0, equipmentTotal=0, grandTotal=0,
-        clientBudget=0, isOverBudget, budgetGap=0, budgetAdvice='',
-        workPlan=[], timeEstimate={}, expectedOutcome=[],
-        colourAndStyleAdvice='', designSuggestions=[], improvementIdeas=[],
-        imageFindings=[], imageUploaded, warnings=[],
-        visualizationDescription='', topWorkers=[],
-        confidence=null,
-    } = report;
-
-    const [notes, setNotes] = useState(report._notes || '');
-    const [editingNotes, setEditingNotes] = useState(false);
-
-    const handlePrint = useCallback(() => {
-        window.print();
-    }, []);
-
-    return (
-        <div className="space-y-2 pb-8 print:space-y-4" id="advisor-report">
-            {/* Report Header */}
-            <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl p-3 text-white">
-                <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                        <p className="text-[8px] font-bold opacity-70 uppercase mb-0.5">AI Advisory Report</p>
-                        <h2 className="text-sm font-black leading-tight">{jobTitle}</h2>
-                        {problemSummary && <p className="text-[10px] opacity-90 mt-1 leading-relaxed line-clamp-2">{problemSummary}</p>}
+        <div className="space-y-4">
+            {/* Colour & Style */}
+            {colourAdvice && (
+                <div className="bg-orange-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Palette size={18} className="text-orange-500" />
+                        <h4 className="font-semibold text-gray-900">Colour & Style Recommendations</h4>
                     </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">
-                            ~{report.durationDays || 1}d
-                        </span>
-                        {confidence?.score && (
-                            <span className="text-[8px] bg-black/20 px-1.5 py-0.5 rounded-full">{confidence.score}%</span>
-                        )}
-                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed">{colourAdvice}</p>
                 </div>
-                {skillBlocks.length>0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                        {skillBlocks.slice(0,4).map((b,i)=>(
-                            <span key={i} className="flex items-center gap-0.5 bg-white/20 text-white px-1.5 py-0.5 rounded-full text-[9px] font-bold">
-                                {si(b.skill)} {b.skill} ×{b.count}
-                            </span>
-                        ))}
-                    </div>
-                )}
-                <p className="text-[7px] opacity-60 mt-1.5">⚠️ AI estimate only — not final quote</p>
-            </div>
-
-            {/* Budget Alert */}
-            {isOverBudget && clientBudget > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
-                    <p className="font-bold text-amber-800 text-[10px] mb-0.5">⚠️ Over budget</p>
-                    <p className="text-[9px] text-amber-700">Budget: {fmtINR(clientBudget)} · Est: {fmtINR(grandTotal)}</p>
-                    {budgetAdvice && <p className="text-[8px] text-amber-600 mt-1">{budgetAdvice}</p>}
-                </div>
-            )}
-
-            {/* Cost Estimate */}
-            <Accordion icon="💰" title="Cost Estimate" badge={fmtINR(grandTotal)} defaultOpen accent="green">
-                <div className="space-y-2">
-                    {budgetBreakdown?.breakdown?.slice(0,3).map((b,i)=>(
-                        <div key={i} className="flex items-center justify-between text-[10px] py-1 border-b border-gray-100">
-                            <div className="flex items-center gap-1">
-                                <span>{si(b.skill)}</span>
-                                <span className="font-semibold capitalize">{b.skill} ×{b.count}</span>
-                            </div>
-                            <span className="font-bold">{fmtINR(b.subtotal)}</span>
-                        </div>
-                    ))}
-                    <div className="flex justify-between pt-1 border-t border-gray-200">
-                        <span className="text-[10px] font-bold">Total</span>
-                        <span className="text-xs font-bold text-orange-600">{fmtINR(grandTotal)}</span>
-                    </div>
-                </div>
-            </Accordion>
-
-            {/* Work Plan */}
-            {workPlan.length>0 && (
-                <Accordion icon="🛠️" title="Work Plan" badge={`${workPlan.length} steps`} accent="blue">
-                    <div className="space-y-2">
-                        {workPlan.slice(0,3).map((step,i)=>(
-                            <div key={i} className="flex gap-2">
-                                <div className="w-5 h-5 rounded-full bg-orange-500 text-white text-[9px] font-black flex items-center justify-center flex-shrink-0">{step.step||i+1}</div>
-                                <div className="flex-1">
-                                    <p className="text-[10px] font-bold text-gray-800">{step.title}</p>
-                                    {step.description && <p className="text-[8px] text-gray-500">{step.description}</p>}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </Accordion>
-            )}
-
-            {/* Expected Outcome */}
-            {expectedOutcome.length>0 && (
-                <Accordion icon="🎯" title="Expected Outcome" accent="green">
-                    <div className="space-y-1">{expectedOutcome.slice(0,2).map((o,i)=><p key={i} className="text-[9px] text-gray-700">✓ {o}</p>)}</div>
-                </Accordion>
             )}
 
             {/* Design Suggestions */}
-            {designSuggestions.length>0 && (
-                <Accordion icon="✨" title="Design Ideas" accent="purple">
-                    <div className="space-y-1">{designSuggestions.slice(0,2).map((s,i)=><p key={i} className="text-[9px] text-gray-700">• {s}</p>)}</div>
-                </Accordion>
+            {designSuggestions?.length > 0 && (
+                <div>
+                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <PenTool size={16} className="text-orange-500" />
+                        Design Suggestions
+                    </h4>
+                    <div className="space-y-2">
+                        {designSuggestions.map((suggestion, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                <CheckCircle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                                <span>{suggestion}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             )}
 
-            {/* Nearby Workers */}
-            {topWorkers.length>0 && (
-                <Accordion icon="👷" title="Nearby Workers" badge={`${topWorkers.length}`} accent="blue">
-                    <div className="space-y-1.5">
-                        {topWorkers.slice(0,3).map((w,i)=>(
-                            <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                                <img src={getImageUrl(w.photo)} alt={w.name} className="w-7 h-7 rounded-full object-cover border border-white flex-shrink-0" onError={e=>{e.target.src='/admin.png'}}/>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[10px] font-bold text-gray-800 truncate">{w.name}</p>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                        {w.skills.slice(0,2).map((sk,si2)=><span key={si2} className="text-[7px] bg-orange-100 text-orange-700 px-1 py-0.5 rounded-full">{sk}</span>)}
+            {/* Improvement Ideas */}
+            {improvementIdeas?.length > 0 && (
+                <div>
+                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <TrendingUp size={16} className="text-orange-500" />
+                        Optional Upgrades
+                    </h4>
+                    <div className="space-y-2">
+                        {improvementIdeas.map((idea, idx) => (
+                            <div key={idx} className="border border-orange-100 rounded-lg p-3 bg-white">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium text-gray-900">{idea.idea}</p>
+                                        {idea.benefit && (
+                                            <p className="text-xs text-gray-600 mt-1">{idea.benefit}</p>
+                                        )}
                                     </div>
+                                    {idea.estimatedExtraCost > 0 && (
+                                        <span className="text-sm font-semibold text-orange-600 ml-3">
+                                            +{formatCurrency(idea.estimatedExtraCost)}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         ))}
                     </div>
-                </Accordion>
-            )}
-
-            {/* Notes */}
-            <div className="bg-white rounded-xl border border-gray-200 p-2.5">
-                <div className="flex items-center justify-between mb-1">
-                    <p className="text-[10px] font-bold text-gray-700">📝 My Notes</p>
-                    <button onClick={() => setEditingNotes(e=>!e)} className="text-[9px] text-orange-500 font-semibold">{editingNotes?'Done':'Edit'}</button>
                 </div>
-                {editingNotes
-                    ? <textarea rows={2} value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNote(notes)} placeholder="Add notes…" className="w-full border border-gray-200 rounded-lg p-2 text-[10px] focus:outline-none focus:border-orange-400 resize-none"/>
-                    : <p className="text-[9px] text-gray-500 min-h-[30px]">{notes||'No notes yet.'}</p>
-                }
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2 pt-1 print:hidden">
-                <button onClick={onReset} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg font-bold text-[10px]">← New Analysis</button>
-                <button onClick={handlePrint} className="px-3 py-2 bg-orange-500 text-white rounded-lg font-bold text-[10px] flex items-center gap-1">🖨️ PDF</button>
-            </div>
-
-            <style>{`@media print { .print\\:hidden { display: none; } body { font-size: 10px; } }`}</style>
+            )}
         </div>
     );
-}
+};
 
-// ── History Panel (Mobile Optimized) ──────────────────────────────────────────────
-function HistoryPanel({ onLoad, activeId }) {
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [editId, setEditId] = useState(null);
-    const [editTitle, setEditTitle] = useState('');
-    const [confirmClear, setConfirmClear] = useState(false);
-
-    const fetchList = async () => {
-        try {
-            const { data } = await getClientAIHistory();
-            setItems(Array.isArray(data)?data:[]);
-        } catch {} finally { setLoading(false); }
-    };
-    useEffect(() => { fetchList(); }, []);
-
-    const handleLoad = async (id) => {
-        try {
-            const { data } = await getAIHistoryItem(id);
-            onLoad(data);
-        } catch { toast.error('Failed to load.'); }
-    };
-
-    const handleDelete = async (id, e) => {
-        e.stopPropagation();
-        if (!confirm('Delete this analysis?')) return;
-        try {
-            await deleteAIHistoryItem(id);
-            setItems(p=>p.filter(i=>i._id!==id));
-            toast.success('Deleted.');
-        } catch { toast.error('Failed.'); }
-    };
-
-    const handleEditSave = async (id) => {
-        try {
-            await updateAIHistoryItem(id, { title: editTitle });
-            setItems(p=>p.map(i=>i._id===id?{...i,title:editTitle}:i));
-            setEditId(null);
-        } catch { toast.error('Failed.'); }
-    };
-
-    const handleClearAll = async () => {
-        try {
-            await clearClientAIHistory();
-            setItems([]);
-            setConfirmClear(false);
-            toast.success('All cleared.');
-        } catch { toast.error('Failed.'); }
-    };
-
-    if (loading) return <div className="flex justify-center py-6"><div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"/></div>;
+const VisualPreview = ({ description, imageUrl }) => {
+    if (!description) return null;
 
     return (
-        <div className="space-y-2">
-            <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold text-gray-700">History <span className="text-gray-400">({items.length})</span></p>
-                {items.length>0 && (
-                    confirmClear
-                        ? <div className="flex gap-1"><button onClick={handleClearAll} className="text-[9px] text-red-500 font-bold px-1.5 py-0.5">Confirm</button><button onClick={()=>setConfirmClear(false)} className="text-[9px] text-gray-400">No</button></div>
-                        : <button onClick={()=>setConfirmClear(true)} className="text-[9px] text-red-400">Clear all</button>
-                )}
-            </div>
-
-            {items.length===0 ? (
-                <div className="text-center py-6 text-gray-400">
-                    <div className="text-2xl mb-1">📭</div>
-                    <p className="text-[10px] font-semibold">No history yet</p>
+        <div className="space-y-4">
+            {imageUrl && (
+                <div className="rounded-lg overflow-hidden border border-orange-200">
+                    <img src={imageUrl} alt="After completion preview" className="w-full" />
                 </div>
-            ) : (
-                items.map(item => (
-                    <div key={item._id}
-                        onClick={() => handleLoad(item._id)}
-                        className={`bg-white border rounded-lg p-2 cursor-pointer transition-all ${activeId===item._id?'border-orange-400 bg-orange-50':'border-gray-100'}`}>
-                        <div className="flex items-start gap-1.5">
-                            <div className="flex-1 min-w-0">
-                                {editId===item._id ? (
-                                    <input value={editTitle} onChange={e=>setEditTitle(e.target.value)}
-                                        onKeyDown={e=>{if(e.key==='Enter')handleEditSave(item._id);if(e.key==='Escape')setEditId(null);}}
-                                        onClick={e=>e.stopPropagation()}
-                                        autoFocus
-                                        className="w-full border border-orange-300 rounded px-1.5 py-0.5 text-[10px] font-semibold mb-0.5"/>
-                                ) : (
-                                    <p className="text-[10px] font-bold text-gray-800 line-clamp-1">
-                                        {item.title || item.report?.jobTitle || item.workDescription?.slice(0,40) || 'Analysis'}
-                                    </p>
-                                )}
-                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                    {item.clientBudget>0 && <span className="text-[8px] text-green-600">💰 {fmtINR(item.clientBudget)}</span>}
-                                    {item.report?.grandTotal>0 && <span className="text-[8px] text-orange-600">🧾 {fmtINR(item.report.grandTotal)}</span>}
-                                    <span className="text-[8px] text-gray-400">{fmtDate(item.createdAt)}</span>
-                                </div>
-                            </div>
-                            <div className="flex gap-0.5 flex-shrink-0" onClick={e=>e.stopPropagation()}>
-                                <button onClick={e=>{setEditId(item._id);setEditTitle(item.title||'');}}
-                                    className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center text-[9px]">✏️</button>
-                                <button onClick={e=>handleDelete(item._id,e)}
-                                    className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center text-[9px]">🗑</button>
-                            </div>
-                        </div>
-                        {editId===item._id && (
-                            <div className="flex gap-1 mt-1" onClick={e=>e.stopPropagation()}>
-                                <button onClick={()=>handleEditSave(item._id)} className="text-[8px] px-2 py-0.5 bg-orange-500 text-white rounded">Save</button>
-                                <button onClick={()=>setEditId(null)} className="text-[8px] px-2 py-0.5 border border-gray-200 text-gray-500 rounded">Cancel</button>
-                            </div>
-                        )}
+            )}
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                    <Target size={18} className="text-orange-500" />
+                    <h4 className="font-semibold text-gray-900">After Completion Preview</h4>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">{description}</p>
+            </div>
+        </div>
+    );
+};
+
+const QualityAssurance = ({ assurance }) => {
+    if (!assurance) return null;
+
+    return (
+        <div className="space-y-3">
+            {assurance.warranty && (
+                <div className="flex items-start gap-2">
+                    <CheckCircle size={16} className="text-green-500 mt-0.5" />
+                    <div>
+                        <span className="text-sm font-medium text-gray-900">Warranty</span>
+                        <p className="text-sm text-gray-600">{assurance.warranty}</p>
                     </div>
-                ))
+                </div>
+            )}
+            {assurance.qualityCheck && (
+                <div className="flex items-start gap-2">
+                    <CheckCircle size={16} className="text-green-500 mt-0.5" />
+                    <div>
+                        <span className="text-sm font-medium text-gray-900">Quality Assurance</span>
+                        <p className="text-sm text-gray-600">{assurance.qualityCheck}</p>
+                    </div>
+                </div>
+            )}
+            {assurance.materialSource && (
+                <div className="flex items-start gap-2">
+                    <CheckCircle size={16} className="text-green-500 mt-0.5" />
+                    <div>
+                        <span className="text-sm font-medium text-gray-900">Material Sourcing</span>
+                        <p className="text-sm text-gray-600">{assurance.materialSource}</p>
+                    </div>
+                </div>
             )}
         </div>
     );
-}
+};
+
+const WorkerRecommendations = ({ workers, projectSkills }) => {
+    if (!workers?.length) return null;
+
+    return (
+        <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+                Based on your project requirements ({projectSkills?.join(', ') || 'various skills'}), 
+                here are experienced professionals in your area:
+            </p>
+            <div className="space-y-2">
+                {workers.map((worker, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
+                        <img
+                            src={getImageUrl(worker.photo)}
+                            alt={worker.name}
+                            className="w-12 h-12 rounded-full object-cover border-2 border-orange-200"
+                            onError={(e) => { e.target.src = '/admin.png'; }}
+                        />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900">{worker.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                {worker.skills?.slice(0, 3).map((skill, idx) => (
+                                    <span key={idx} className="text-xs text-orange-600 bg-white px-2 py-0.5 rounded-full">
+                                        {skill}
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                                {worker.experience && (
+                                    <span className="text-xs text-gray-500">{worker.experience} years exp</span>
+                                )}
+                                {worker.rating && (
+                                    <span className="text-xs text-amber-500">★ {worker.rating}</span>
+                                )}
+                                {worker.completedJobs && (
+                                    <span className="text-xs text-gray-500">{worker.completedJobs} jobs</span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-sm font-bold text-orange-600">
+                                {formatCurrency(worker.rate)}/day
+                            </div>
+                            <button className="mt-1 text-xs text-orange-600 hover:text-orange-700 font-medium">
+                                View Profile
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-orange-100">
+                <p className="text-xs text-gray-500">
+                    💡 Tip: Contact multiple workers to compare quotes and availability before making a decision.
+                </p>
+            </div>
+        </div>
+    );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAIN (Mobile Optimized)
+// Main Component
 // ─────────────────────────────────────────────────────────────────────────────
+
 export default function ClientAIAssist() {
-    const [activeTab,   setActiveTab]  = useState('advisor');
-    const [phase,       setPhase]      = useState('describe');
-    const [description, setDescription]= useState('');
-    const [city,        setCity]       = useState('');
-    const [urgent,      setUrgent]     = useState(false);
-    const [clientBudget,setClientBudget]=useState('');
-    const [questions,   setQuestions]  = useState([]);
-    const [opinionQs,   setOpinionQs]  = useState([]);
-    const [answers,     setAnswers]    = useState({});
-    const [opinions,    setOpinions]   = useState({});
-    const [imageFile,   setImageFile]  = useState(null);
-    const [imagePreview,setImagePreview]=useState(null);
-    const [report,      setReport]     = useState(null);
-    const [savedId,     setSavedId]    = useState(null);
-    const [loadingQ,    setLoadingQ]   = useState(false);
-    const [loadingR,    setLoadingR]   = useState(false);
-    const imageRef = useRef();
+    const [activeTab, setActiveTab] = useState('advisor');
+    const [phase, setPhase] = useState('describe');
+    const [isLoading, setIsLoading] = useState({ questions: false, report: false });
+    
+    // Form data
+    const [description, setDescription] = useState('');
+    const [city, setCity] = useState('');
+    const [urgent, setUrgent] = useState(false);
+    const [clientBudget, setClientBudget] = useState('');
+    const [questions, setQuestions] = useState([]);
+    const [preferenceQuestions, setPreferenceQuestions] = useState([]);
+    const [answers, setAnswers] = useState({});
+    const [preferences, setPreferences] = useState({});
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
+    const [report, setReport] = useState(null);
+    const [savedId, setSavedId] = useState(null);
+    const [historyItems, setHistoryItems] = useState([]);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+    
+    const imageInputRef = useRef(null);
 
-    const setAnswer  = (id, val) => setAnswers(p=>({...p,[id]:val}));
-    const setOpinion = (id, val) => setOpinions(p=>({...p,[id]:val}));
+    // Load history
+    const loadHistory = useCallback(async () => {
+        setIsHistoryLoading(true);
+        try {
+            const { data } = await getClientAIHistory();
+            setHistoryItems(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error('Failed to load history:', error);
+        } finally {
+            setIsHistoryLoading(false);
+        }
+    }, []);
 
-    const handleImageChange = e => {
-        const f = e.target.files?.[0]; if (!f) return;
-        setImageFile(f); setImagePreview(URL.createObjectURL(f));
+    useEffect(() => {
+        if (activeTab === 'history') {
+            loadHistory();
+        }
+    }, [activeTab, loadHistory]);
+
+    const handleAnswerChange = (id, value) => {
+        setAnswers(prev => ({ ...prev, [id]: value }));
     };
 
-    const handleDescribe = async () => {
-        if (!description.trim()) { toast.error('Please describe the work.'); return; }
+    const handlePreferenceChange = (id, value) => {
+        setPreferences(prev => ({ ...prev, [id]: value }));
+    };
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    const handleGenerateQuestions = async () => {
+        if (!description.trim()) {
+            toast.error('Please describe your project');
+            return;
+        }
+
+        setIsLoading(prev => ({ ...prev, questions: true }));
         try {
-            setLoadingQ(true);
-            const { data } = await aiGenerateQuestions({ workDescription: description, city });
-            setQuestions(data.questions||[]);
-            setOpinionQs(data.opinionQuestions||[]);
+            const { data } = await aiGenerateQuestions({
+                workDescription: description,
+                city: city
+            });
+            setQuestions(data.questions || []);
+            setPreferenceQuestions(data.opinionQuestions || []);
             setPhase('questions');
-        } catch {
-            toast.error('Could not load questions.');
+        } catch (error) {
+            console.error('Failed to generate questions:', error);
+            toast.error('Unable to generate questions. You can proceed without them.');
             setPhase('budget');
-        } finally { setLoadingQ(false); }
+        } finally {
+            setIsLoading(prev => ({ ...prev, questions: false }));
+        }
     };
 
-    const handleQuestionsDone = () => setPhase('budget');
-    const handleBudgetDone = () => setPhase(opinionQs.length>0 ? 'opinions' : 'image');
-    const handleOpinionsDone = () => setPhase('image');
+    const handleGenerateReport = async () => {
+        setIsLoading(prev => ({ ...prev, report: true }));
+        setPhase('loading');
 
-    const handleGenerate = async () => {
         try {
-            setLoadingR(true); setPhase('loading');
-
             const answersMap = {};
-            questions.forEach(q=>{ if(answers[q.id]) answersMap[q.question]=answers[q.id]; });
-            const opinionsMap = {};
-            opinionQs.forEach(q=>{ if(opinions[q.id]) opinionsMap[q.question]=opinions[q.id]; });
+            questions.forEach(q => {
+                if (answers[q.id]) answersMap[q.question] = answers[q.id];
+            });
 
-            const fd = new FormData();
-            fd.append('workDescription', description);
-            fd.append('answers',  JSON.stringify(answersMap));
-            fd.append('opinions', JSON.stringify(opinionsMap));
-            fd.append('city',    city);
-            fd.append('urgent',  String(urgent));
-            if (clientBudget && Number(clientBudget)>0) fd.append('clientBudget', clientBudget);
-            if (imageFile) fd.append('workImage', imageFile);
+            const preferencesMap = {};
+            preferenceQuestions.forEach(q => {
+                if (preferences[q.id]) preferencesMap[q.question] = preferences[q.id];
+            });
 
-            const { data } = await getAIAdvisorReport(fd);
+            const formData = new FormData();
+            formData.append('workDescription', description);
+            formData.append('answers', JSON.stringify(answersMap));
+            formData.append('opinions', JSON.stringify(preferencesMap));
+            formData.append('city', city);
+            formData.append('urgent', String(urgent));
+            if (clientBudget && Number(clientBudget) > 0) {
+                formData.append('clientBudget', clientBudget);
+            }
+            if (imageFile) {
+                formData.append('workImage', imageFile);
+            }
 
+            const { data } = await getAIAdvisorReport(formData);
+            setReport(data);
+
+            // Auto-save to history
             try {
                 const { data: saved } = await saveAIAnalysis({
-                    workDescription: description, city, urgent,
+                    workDescription: description,
+                    city,
+                    urgent,
                     clientBudget: clientBudget ? Number(clientBudget) : undefined,
-                    answers: answersMap, opinions: opinionsMap, report: data,
+                    answers: answersMap,
+                    opinions: preferencesMap,
+                    report: data,
                 });
                 setSavedId(saved._id);
-            } catch (e) { console.warn('Auto-save failed'); }
+            } catch (error) {
+                console.warn('Auto-save failed:', error);
+            }
 
-            setReport(data); setPhase('report');
-        } catch (err) {
-            toast.error(err?.response?.data?.message || 'Analysis failed.');
+            setPhase('report');
+        } catch (error) {
+            console.error('Report generation failed:', error);
+            toast.error(error?.response?.data?.message || 'Analysis failed. Please try again.');
             setPhase('image');
-        } finally { setLoadingR(false); }
+        } finally {
+            setIsLoading(prev => ({ ...prev, report: false }));
+        }
     };
 
     const handleSaveNote = async (notes) => {
         if (!savedId) return;
-        try { await updateAIHistoryItem(savedId, { notes }); }
-        catch { /* silent */ }
+        try {
+            await updateAIHistoryItem(savedId, { notes });
+        } catch (error) {
+            console.error('Failed to save note:', error);
+        }
+    };
+
+    const handleLoadHistory = async (id) => {
+        try {
+            const { data } = await getAIHistoryItem(id);
+            setReport(data.report);
+            setSavedId(data._id);
+            setDescription(data.workDescription || '');
+            setCity(data.city || '');
+            setUrgent(!!data.urgent);
+            setClientBudget(data.clientBudget ? String(data.clientBudget) : '');
+            setPhase('report');
+            setActiveTab('advisor');
+            toast.success('Analysis loaded');
+        } catch (error) {
+            console.error('Failed to load history:', error);
+            toast.error('Unable to load analysis');
+        }
+    };
+
+    const handleEditHistory = async (id, title) => {
+        try {
+            await updateAIHistoryItem(id, { title });
+            setHistoryItems(prev => prev.map(item =>
+                item._id === id ? { ...item, title } : item
+            ));
+            toast.success('Title updated');
+        } catch (error) {
+            console.error('Failed to update title:', error);
+            toast.error('Unable to update title');
+        }
+    };
+
+    const handleDeleteHistory = async (id) => {
+        if (!window.confirm('Delete this analysis? This action cannot be undone.')) return;
+        
+        try {
+            await deleteAIHistoryItem(id);
+            setHistoryItems(prev => prev.filter(item => item._id !== id));
+            if (savedId === id) {
+                setSavedId(null);
+            }
+            toast.success('Analysis deleted');
+        } catch (error) {
+            console.error('Failed to delete:', error);
+            toast.error('Unable to delete');
+        }
+    };
+
+    const handleClearAllHistory = async () => {
+        if (!window.confirm('Delete all analyses? This action cannot be undone.')) return;
+        
+        try {
+            await clearClientAIHistory();
+            setHistoryItems([]);
+            toast.success('All analyses cleared');
+        } catch (error) {
+            console.error('Failed to clear history:', error);
+            toast.error('Unable to clear history');
+        }
     };
 
     const handleReset = () => {
-        setPhase('describe'); setDescription(''); setCity(''); setUrgent(false); setClientBudget('');
-        setQuestions([]); setOpinionQs([]); setAnswers({}); setOpinions({});
-        setImageFile(null); setImagePreview(null); setReport(null); setSavedId(null);
+        setPhase('describe');
+        setDescription('');
+        setCity('');
+        setUrgent(false);
+        setClientBudget('');
+        setQuestions([]);
+        setPreferenceQuestions([]);
+        setAnswers({});
+        setPreferences({});
+        setImageFile(null);
+        setImagePreview(null);
+        setReport(null);
+        setSavedId(null);
     };
 
-    const handleLoadHistory = (item) => {
-        const loadedReport = buildHistoryReport(item);
-        setReport(loadedReport);
-        setSavedId(item._id);
-        setDescription(item.workDescription || '');
-        setCity(item.city || '');
-        setUrgent(!!item.urgent);
-        setClientBudget(item.clientBudget ? String(item.clientBudget) : '');
-        setPhase('report');
-        setActiveTab('advisor');
+    const handlePrint = () => {
+        window.print();
     };
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Render
+    // ─────────────────────────────────────────────────────────────────────────
     return (
-        <div className="max-w-3xl mx-auto px-3 pt-3 pb-20">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl p-3 mb-3 text-white">
-                <div className="flex items-center gap-2">
-                    <span className="text-xl">🤖</span>
-                    <div>
-                        <h1 className="text-sm font-bold">AI Advisor</h1>
-                        <p className="text-[8px] opacity-80">Cost, time, materials, design, workers</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex gap-2 mb-3">
-                {['advisor','history'].map(t=>(
-                    <button key={t} onClick={()=>setActiveTab(t)}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab===t?'bg-orange-500 text-white shadow-sm':'bg-white border border-gray-200 text-gray-600'}`}>
-                        {t==='advisor'?'🤖 Advisor':'📂 History'}
-                    </button>
-                ))}
-            </div>
-
-            {/* Advisor Content */}
-            {activeTab === 'advisor' && (
-                <div className="space-y-3">
-                    {phase !== 'report' && phase !== 'loading' && <PhaseBar phase={phase}/>}
-
-                    {/* DESCRIBE */}
-                    {phase==='describe' && (
-                        <div className="space-y-3">
-                            <div className="bg-orange-50 border border-orange-100 rounded-lg p-2.5 text-[10px] text-orange-700 flex gap-2">
-                                <span className="text-sm">💡</span>
-                                <p className="flex-1">Describe your home repair or renovation need in detail.</p>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold text-gray-700 mb-1">Describe the Work <span className="text-red-500">*</span></label>
-                                <textarea rows={4} value={description} onChange={e=>setDescription(e.target.value)}
-                                    placeholder="Example: I want to repaint my living room walls. The paint is old and there are small cracks near the window..."
-                                    className="w-full border-2 border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-orange-400 resize-none"/>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="block text-[10px] font-semibold text-gray-700 mb-1">City</label>
-                                    <input value={city} onChange={e=>setCity(e.target.value)} placeholder="Pune, Mumbai…" className="w-full border-2 border-gray-200 rounded-lg px-2 py-1.5 text-xs"/>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-semibold text-gray-700 mb-1">Priority</label>
-                                    <button onClick={()=>setUrgent(u=>!u)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold border ${urgent?'border-orange-400 bg-orange-50 text-orange-700':'border-gray-200 bg-white text-gray-500'}`}>
-                                        {urgent?'⚡ Urgent':'🕐 Normal'}
-                                    </button>
-                                </div>
-                            </div>
-                            <button onClick={handleDescribe} disabled={loadingQ||!description.trim()}
-                                className="w-full py-2.5 bg-orange-500 text-white font-bold rounded-lg text-xs disabled:opacity-60 flex items-center justify-center gap-1">
-                                {loadingQ ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/> Loading...</> : '🤖 Get Expert Advice →'}
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* Header */}
+                <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 mb-8">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">AI Advisor</h1>
+                            <p className="text-orange-600 mt-1">Get professional analysis for your renovation or repair project</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setActiveTab('advisor')}
+                                className={`
+                                    px-4 py-2 rounded-lg font-medium transition-all
+                                    ${activeTab === 'advisor'
+                                        ? 'bg-orange-500 text-white shadow-sm'
+                                        : 'text-gray-600 hover:bg-orange-50'
+                                    }
+                                `}
+                            >
+                                New Analysis
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('history')}
+                                className={`
+                                    px-4 py-2 rounded-lg font-medium transition-all
+                                    ${activeTab === 'history'
+                                        ? 'bg-orange-500 text-white shadow-sm'
+                                        : 'text-gray-600 hover:bg-orange-50'
+                                    }
+                                `}
+                            >
+                                History
                             </button>
                         </div>
-                    )}
+                    </div>
+                </div>
 
-                    {/* QUESTIONS */}
-                    {phase==='questions' && (
-                        <div className="space-y-3">
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-2.5">
-                                <p className="text-xs font-bold text-blue-800">🤔 Clarifying Questions</p>
-                                <p className="text-[9px] text-blue-500">Answers make the analysis more accurate</p>
-                            </div>
-                            {questions.length===0 ? <p className="text-xs text-gray-400 text-center py-3">No clarifications needed.</p>
-                                : <div className="space-y-2">{questions.map(q=><QWidget key={q.id} q={q} value={answers[q.id]} onChange={setAnswer}/>)}</div>}
-                            <div className="flex gap-2">
-                                <button onClick={()=>setPhase('describe')} className="px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-xs font-semibold">← Back</button>
-                                <button onClick={handleQuestionsDone} className="flex-1 py-2 bg-orange-500 text-white font-bold rounded-lg text-xs">Next →</button>
-                            </div>
-                        </div>
-                    )}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Main Content */}
+                    <div className="lg:col-span-2">
+                        {activeTab === 'advisor' ? (
+                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                                {phase !== 'report' && phase !== 'loading' && (
+                                    <PhaseIndicator currentPhase={phase} />
+                                )}
 
-                    {/* BUDGET */}
-                    {phase==='budget' && (
-                        <div className="space-y-3">
-                            <div className="bg-green-50 border border-green-100 rounded-lg p-2.5">
-                                <p className="text-xs font-bold text-green-800">💰 Your Budget</p>
-                                <p className="text-[9px] text-green-600">AI will give honest advice based on your budget</p>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold text-gray-700 mb-1">Budget (₹) <span className="text-gray-400">(optional)</span></label>
-                                <input type="number" min={0} value={clientBudget}
-                                    onKeyDown={preventNegativeKey}
-                                    onChange={e=>setClientBudget(sanitizeNonNegativeInput(e.target.value))}
-                                    placeholder="e.g., 10000"
-                                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400"/>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={()=>setPhase('questions')} className="px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-xs">← Back</button>
-                                <button onClick={handleBudgetDone} className="flex-1 py-2 bg-orange-500 text-white font-bold rounded-lg text-xs">Next →</button>
-                            </div>
-                        </div>
-                    )}
+                                {/* Describe Phase */}
+                                {phase === 'describe' && (
+                                    <div className="space-y-6">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Project Description <span className="text-red-500">*</span>
+                                            </label>
+                                            <textarea
+                                                rows={6}
+                                                value={description}
+                                                onChange={(e) => setDescription(e.target.value)}
+                                                placeholder="Describe your project in detail. Include dimensions, materials, and any specific requirements..."
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all resize-none"
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {description.length} characters
+                                            </p>
+                                        </div>
 
-                    {/* OPINIONS */}
-                    {phase==='opinions' && (
-                        <div className="space-y-3">
-                            <div className="bg-purple-50 border border-purple-100 rounded-lg p-2.5">
-                                <p className="text-xs font-bold text-purple-800">🎨 Your Preferences</p>
-                                <p className="text-[9px] text-purple-500">Help AI make better design suggestions</p>
-                            </div>
-                            <div className="space-y-2">
-                                {opinionQs.map(q=><QWidget key={q.id} q={q} value={opinions[q.id]} onChange={setOpinion}/>)}
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={()=>setPhase('budget')} className="px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-xs">← Back</button>
-                                <button onClick={handleOpinionsDone} className="flex-1 py-2 bg-orange-500 text-white font-bold rounded-lg text-xs">Next →</button>
-                            </div>
-                        </div>
-                    )}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    City
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={city}
+                                                    onChange={(e) => setCity(e.target.value)}
+                                                    placeholder="Enter your city"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Priority
+                                                </label>
+                                                <button
+                                                    onClick={() => setUrgent(!urgent)}
+                                                    className={`
+                                                        w-full px-4 py-2 rounded-lg font-medium border transition-all
+                                                        ${urgent
+                                                            ? 'bg-orange-50 border-orange-300 text-orange-700'
+                                                            : 'bg-white border-gray-300 text-gray-700 hover:border-orange-300'
+                                                        }
+                                                    `}
+                                                >
+                                                    {urgent ? 'Urgent Priority' : 'Standard Timeline'}
+                                                </button>
+                                            </div>
+                                        </div>
 
-                    {/* IMAGE */}
-                    {phase==='image' && (
-                        <div className="space-y-3">
-                            <div className="bg-purple-50 border border-purple-100 rounded-lg p-2.5">
-                                <p className="text-xs font-bold text-purple-800">📷 Upload Photo</p>
-                                <p className="text-[9px] text-purple-500">Optional — helps detect visible issues</p>
+                                        <button
+                                            onClick={handleGenerateQuestions}
+                                            disabled={isLoading.questions || !description.trim()}
+                                            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                        >
+                                            {isLoading.questions ? (
+                                                <>
+                                                    <Loader2 size={18} className="animate-spin" />
+                                                    Analyzing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles size={18} />
+                                                    Continue
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Questions Phase */}
+                                {phase === 'questions' && (
+                                    <div className="space-y-6">
+                                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                            <p className="text-sm text-orange-800">
+                                                Please answer these questions to help us provide a more accurate analysis.
+                                            </p>
+                                        </div>
+
+                                        {questions.length === 0 ? (
+                                            <p className="text-center text-gray-500 py-8">No additional questions needed.</p>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {questions.map(q => (
+                                                    <QuestionField
+                                                        key={q.id}
+                                                        question={q}
+                                                        value={answers[q.id]}
+                                                        onChange={handleAnswerChange}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setPhase('describe')}
+                                                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                                            >
+                                                Back
+                                            </button>
+                                            <button
+                                                onClick={() => setPhase('budget')}
+                                                className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg"
+                                            >
+                                                Continue
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Budget Phase */}
+                                {phase === 'budget' && (
+                                    <div className="space-y-6">
+                                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                            <p className="text-sm text-orange-800">
+                                                Provide your estimated budget to get personalized advice.
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Estimated Budget <span className="text-gray-400">(Optional)</span>
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={clientBudget}
+                                                    onChange={(e) => setClientBudget(sanitizeNumber(e.target.value))}
+                                                    placeholder="Enter your budget"
+                                                    className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2 mt-3">
+                                                {[5000, 10000, 20000, 50000, 100000].map(amount => (
+                                                    <button
+                                                        key={amount}
+                                                        onClick={() => setClientBudget(String(amount))}
+                                                        className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                                                    >
+                                                        ₹{amount.toLocaleString()}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setPhase('questions')}
+                                                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                                            >
+                                                Back
+                                            </button>
+                                            <button
+                                                onClick={() => setPhase(preferenceQuestions.length > 0 ? 'preferences' : 'image')}
+                                                className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg"
+                                            >
+                                                Continue
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Preferences Phase */}
+                                {phase === 'preferences' && (
+                                    <div className="space-y-6">
+                                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                            <p className="text-sm text-orange-800">
+                                                Share your preferences for better design and material recommendations.
+                                            </p>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {preferenceQuestions.map(q => (
+                                                <QuestionField
+                                                    key={q.id}
+                                                    question={q}
+                                                    value={preferences[q.id]}
+                                                    onChange={handlePreferenceChange}
+                                                />
+                                            ))}
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setPhase('budget')}
+                                                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                                            >
+                                                Back
+                                            </button>
+                                            <button
+                                                onClick={() => setPhase('image')}
+                                                className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg"
+                                            >
+                                                Continue
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Image Phase */}
+                                {phase === 'image' && (
+                                    <div className="space-y-6">
+                                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                            <p className="text-sm text-orange-800">
+                                                Upload photos of the work area for visual analysis (optional).
+                                            </p>
+                                        </div>
+
+                                        <input
+                                            ref={imageInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleImageUpload}
+                                        />
+
+                                        {imagePreview ? (
+                                            <div className="relative">
+                                                <img
+                                                    src={imagePreview}
+                                                    alt="Work area"
+                                                    className="w-full rounded-lg object-cover max-h-64 border border-orange-200"
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        setImageFile(null);
+                                                        setImagePreview(null);
+                                                    }}
+                                                    className="absolute top-2 right-2 p-1 bg-white rounded-full shadow-md hover:bg-gray-100"
+                                                >
+                                                    <X size={16} className="text-gray-500" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => imageInputRef.current?.click()}
+                                                className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-all"
+                                            >
+                                                <Camera size={32} className="mx-auto text-gray-400 mb-2" />
+                                                <p className="text-sm text-gray-500">Click to upload a photo</p>
+                                                <p className="text-xs text-gray-400 mt-1">JPG, PNG - Max 10MB</p>
+                                            </button>
+                                        )}
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setPhase(preferenceQuestions.length > 0 ? 'preferences' : 'budget')}
+                                                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                                            >
+                                                Back
+                                            </button>
+                                            <button
+                                                onClick={handleGenerateReport}
+                                                disabled={isLoading.report}
+                                                className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                            >
+                                                {isLoading.report ? (
+                                                    <>
+                                                        <Loader2 size={18} className="animate-spin" />
+                                                        Analyzing...
+                                                    </>
+                                                ) : (
+                                                    'Generate Analysis'
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Loading Phase */}
+                                {phase === 'loading' && (
+                                    <div className="py-16 text-center">
+                                        <div className="relative w-16 h-16 mx-auto">
+                                            <div className="absolute inset-0 border-4 border-orange-100 rounded-full"></div>
+                                            <div className="absolute inset-0 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-gray-900 mt-6">
+                                            Analyzing your project
+                                        </h3>
+                                        <p className="text-orange-600 mt-2">
+                                            This may take a few moments
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Report Phase - Complete with all sections */}
+                                {phase === 'report' && report && (
+                                    <div className="space-y-4" id="advisor-report">
+                                        {/* Report Header */}
+                                        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-6 text-white">
+                                            <p className="text-xs font-medium opacity-80 mb-2">AI ANALYSIS REPORT</p>
+                                            <h2 className="text-xl font-bold">{report.jobTitle || 'Project Analysis'}</h2>
+                                            {report.problemSummary && (
+                                                <p className="text-sm opacity-90 mt-2">{report.problemSummary}</p>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-3 mt-4">
+                                                {report.durationDays && (
+                                                    <span className="text-xs bg-white/20 px-3 py-1 rounded-full">
+                                                        {report.durationDays} day{report.durationDays > 1 ? 's' : ''}
+                                                    </span>
+                                                )}
+                                                {report.skillBlocks?.slice(0, 4).map((skill, idx) => (
+                                                    <span key={idx} className="text-xs bg-white/20 px-3 py-1 rounded-full capitalize">
+                                                        {skill.skill}
+                                                    </span>
+                                                ))}
+                                                {report.confidence?.score && (
+                                                    <span className="text-xs bg-white/20 px-3 py-1 rounded-full">
+                                                        Confidence: {report.confidence.score}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Warnings Section */}
+                                        {report.warnings?.length > 0 && (
+                                            <ReportSection title="Important Warnings" icon={AlertCircle} defaultOpen>
+                                                <div className="space-y-2">
+                                                    {report.warnings.map((warning, idx) => (
+                                                        <div key={idx} className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 p-3 rounded-lg">
+                                                            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                                                            <span>{warning}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Cost Estimate Section */}
+                                        <ReportSection title="Cost Estimate" icon={DollarSign} defaultOpen badge="Detailed">
+                                            <CostBreakdownTable 
+                                                breakdown={report.budgetBreakdown} 
+                                                clientBudget={report.clientBudget}
+                                                grandTotal={report.grandTotal}
+                                            />
+                                        </ReportSection>
+
+                                        {/* Work Plan Section */}
+                                        {report.workPlan?.length > 0 && (
+                                            <ReportSection title="Work Plan" icon={TrendingUp} defaultOpen badge={`${report.workPlan.length} steps`}>
+                                                <WorkPlanTimeline plan={report.workPlan} timeEstimate={report.timeEstimate} />
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Time Estimate Section */}
+                                        {report.timeEstimate && (
+                                            <ReportSection title="Time Estimate" icon={Clock} defaultOpen>
+                                                <div className="space-y-3">
+                                                    {report.timeEstimate.phases?.map((phase, idx) => (
+                                                        <div key={idx}>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="text-sm font-medium text-gray-700">{phase.phase}</span>
+                                                                <span className="text-sm text-orange-600">{phase.hours} hours</span>
+                                                            </div>
+                                                            <div className="h-2 bg-orange-100 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-orange-500 rounded-full" style={{ width: `${(phase.hours / report.timeEstimate.totalHours) * 100}%` }} />
+                                                            </div>
+                                                            {phase.description && (
+                                                                <p className="text-xs text-gray-500 mt-1">{phase.description}</p>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    <div className="mt-3 pt-3 border-t border-orange-100">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-semibold text-gray-900">Total Estimated Time</span>
+                                                            <span className="font-bold text-orange-600">{report.timeEstimate.totalHours} hours</span>
+                                                        </div>
+                                                        {report.durationDays && (
+                                                            <p className="text-sm text-gray-600 mt-1">
+                                                                ≈ {report.durationDays} day{report.durationDays > 1 ? 's' : ''} of work
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Expected Outcome Section */}
+                                        {report.expectedOutcome?.length > 0 && (
+                                            <ReportSection title="Expected Outcome" icon={Target} defaultOpen>
+                                                <div className="space-y-2">
+                                                    {report.expectedOutcome.map((outcome, idx) => (
+                                                        <div key={idx} className="flex items-start gap-2">
+                                                            <CheckCircle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                                                            <span className="text-sm text-gray-700">{outcome}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Materials & Specifications */}
+                                        {report.materialsBreakdown?.length > 0 && (
+                                            <ReportSection title="Materials & Specifications" icon={Layers} defaultOpen badge={`${report.materialsBreakdown.length} items`}>
+                                                <MaterialSpecification materials={report.materialsBreakdown} />
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Design Recommendations */}
+                                        {(report.colourAndStyleAdvice || report.designSuggestions?.length > 0 || report.improvementIdeas?.length > 0) && (
+                                            <ReportSection title="Design Recommendations" icon={Palette} defaultOpen>
+                                                <DesignRecommendations 
+                                                    colourAdvice={report.colourAndStyleAdvice}
+                                                    designSuggestions={report.designSuggestions}
+                                                    improvementIdeas={report.improvementIdeas}
+                                                />
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Visual Preview */}
+                                        {report.visualizationDescription && (
+                                            <ReportSection title="After Completion Preview" icon={Image} defaultOpen>
+                                                <VisualPreview 
+                                                    description={report.visualizationDescription}
+                                                    imageUrl={report.visualizationImage}
+                                                />
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Quality Assurance */}
+                                        {report.qualityAssurance && (
+                                            <ReportSection title="Quality Assurance" icon={CheckCircle} defaultOpen>
+                                                <QualityAssurance assurance={report.qualityAssurance} />
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Worker Recommendations */}
+                                        {report.topWorkers?.length > 0 && (
+                                            <ReportSection title="Nearby Professionals" icon={Users} defaultOpen badge={`${report.topWorkers.length} available`}>
+                                                <WorkerRecommendations 
+                                                    workers={report.topWorkers}
+                                                    projectSkills={report.skillBlocks?.map(s => s.skill)}
+                                                />
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Notes Section */}
+                                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                                    <Edit2 size={14} className="text-orange-500" />
+                                                    My Notes
+                                                </label>
+                                                <button
+                                                    onClick={() => {
+                                                        const notes = prompt('Add your notes:', report._notes || '');
+                                                        if (notes !== null) {
+                                                            handleSaveNote(notes);
+                                                            setReport(prev => ({ ...prev, _notes: notes }));
+                                                        }
+                                                    }}
+                                                    className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+                                                >
+                                                    Edit
+                                                </button>
+                                            </div>
+                                            <p className="text-sm text-gray-600 min-h-[60px]">
+                                                {report._notes || 'No notes added yet. Click Edit to add your thoughts.'}
+                                            </p>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-3 pt-4">
+                                            <button
+                                                onClick={handleReset}
+                                                className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium"
+                                            >
+                                                New Analysis
+                                            </button>
+                                            <button
+                                                onClick={handlePrint}
+                                                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                                            >
+                                                <Download size={18} />
+                                                Export Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <input ref={imageRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange}/>
-                            {imagePreview ? (
-                                <div className="relative">
-                                    <img src={imagePreview} alt="Work area" className="w-full rounded-lg object-cover max-h-48 border border-orange-200"/>
-                                    <button onClick={()=>{setImageFile(null);setImagePreview(null);}} className="absolute top-1 right-1 w-6 h-6 bg-white rounded-full shadow flex items-center justify-center text-sm">×</button>
+                        ) : (
+                            // History Tab
+                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-lg font-semibold text-gray-900">Analysis History</h2>
+                                    {historyItems.length > 0 && (
+                                        <button
+                                            onClick={handleClearAllHistory}
+                                            className="text-sm text-red-600 hover:text-red-700"
+                                        >
+                                            Clear All
+                                        </button>
+                                    )}
                                 </div>
-                            ) : (
-                                <div onClick={()=>imageRef.current?.click()} className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center cursor-pointer">
-                                    <div className="text-2xl mb-1">🖼️</div>
-                                    <p className="text-[10px] font-bold text-gray-500">Tap to upload photo</p>
+
+                                {isHistoryLoading ? (
+                                    <div className="flex justify-center py-12">
+                                        <Loader2 size={32} className="animate-spin text-orange-400" />
+                                    </div>
+                                ) : historyItems.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <FileText size={48} className="mx-auto text-gray-300 mb-3" />
+                                        <p className="text-gray-500">No saved analyses yet</p>
+                                        <p className="text-sm text-gray-400 mt-1">Your reports will appear here</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {historyItems.map(item => (
+                                            <div
+                                                key={item._id}
+                                                onClick={() => handleLoadHistory(item._id)}
+                                                className={`
+                                                    bg-white border rounded-xl p-4 cursor-pointer transition-all
+                                                    ${savedId === item._id ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200 hover:bg-orange-50/30'}
+                                                `}
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-medium text-gray-900 truncate">
+                                                            {item.title || item.report?.jobTitle || 'Untitled Analysis'}
+                                                        </h4>
+                                                        <div className="flex items-center gap-3 mt-1">
+                                                            {item.city && (
+                                                                <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                                    <MapPin size={10} />
+                                                                    {item.city}
+                                                                </span>
+                                                            )}
+                                                            {item.clientBudget > 0 && (
+                                                                <span className="text-xs text-gray-500">
+                                                                    Budget: {formatCurrency(item.clientBudget)}
+                                                                </span>
+                                                            )}
+                                                            <span className="text-xs text-gray-400">
+                                                                {formatDate(item.createdAt)}
+                                                            </span>
+                                                        </div>
+                                                        {item.notes && (
+                                                            <p className="text-xs text-gray-400 mt-2 line-clamp-1">
+                                                                {item.notes}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            onClick={async () => {
+                                                                const newTitle = prompt('Edit title:', item.title || '');
+                                                                if (newTitle) {
+                                                                    await handleEditHistory(item._id, newTitle);
+                                                                }
+                                                            }}
+                                                            className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                                        >
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteHistory(item._id)}
+                                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Sidebar - Tips */}
+                    {activeTab === 'advisor' && phase !== 'report' && phase !== 'loading' && (
+                        <div className="lg:col-span-1">
+                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 sticky top-8">
+                                <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Sparkles size={18} className="text-orange-500" />
+                                    Tips for Better Results
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex gap-3">
+                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-semibold">1</div>
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-800">Be Specific</p>
+                                            <p className="text-xs text-gray-500">Include dimensions, materials, and current issues</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-semibold">2</div>
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-800">Add Photos</p>
+                                            <p className="text-xs text-gray-500">Visual references help identify potential issues</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-semibold">3</div>
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-800">Set Realistic Budget</p>
+                                            <p className="text-xs text-gray-500">Helps provide accurate cost advice</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-semibold">4</div>
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-800">Share Preferences</p>
+                                            <p className="text-xs text-gray-500">Colour, style, material choices improve recommendations</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
-                            <div className="flex gap-2">
-                                <button onClick={()=>setPhase(opinionQs.length>0?'opinions':'budget')} className="px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-xs">← Back</button>
-                                <button onClick={handleGenerate} className="flex-1 py-2 bg-orange-500 text-white font-bold rounded-lg text-xs">
-                                    {imageFile?'🔍 Analyze →':'🔍 Generate →'}
-                                </button>
                             </div>
                         </div>
-                    )}
-
-                    {/* LOADING */}
-                    {phase==='loading' && (
-                        <div className="flex flex-col items-center justify-center py-12 space-y-3">
-                            <div className="relative w-12 h-12">
-                                <div className="w-12 h-12 border-3 border-orange-100 rounded-full"/>
-                                <div className="absolute inset-0 w-12 h-12 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"/>
-                                <div className="absolute inset-0 flex items-center justify-center text-sm">🤖</div>
-                            </div>
-                            <p className="text-xs font-bold text-gray-900">Analyzing your request...</p>
-                        </div>
-                    )}
-
-                    {/* REPORT */}
-                    {phase==='report' && report && (
-                        <AdvisorReport report={report} onReset={handleReset} onSaveNote={handleSaveNote} onPatchReport={()=>{}}/>
                     )}
                 </div>
-            )}
+            </div>
 
-            {/* History Tab */}
-            {activeTab === 'history' && (
-                <HistoryPanel onLoad={handleLoadHistory} activeId={savedId}/>
-            )}
-
+            {/* Print styles */}
             <style>{`
-                .no-scrollbar::-webkit-scrollbar { display: none; }
-                .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+                @media print {
+                    .print\\:hidden {
+                        display: none !important;
+                    }
+                    body {
+                        background: white;
+                    }
+                    .bg-orange-50, .bg-orange-100 {
+                        background-color: #fef3c7 !important;
+                    }
+                }
             `}</style>
         </div>
     );

@@ -106,7 +106,7 @@ function JobSharingCard({ trackingJob }) {
                         style={{
                             background: sharing ? '#ef4444' : '#22c55e',
                             color: '#fff', border: 'none', borderRadius: 8,
-                            padding: '6px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                            padding: '6px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
                         }}>
                         {sharing ? '⏹ Stop' : '▶ Share'}
                     </button>

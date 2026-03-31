@@ -110,7 +110,7 @@ export function ActionModal({ alert, action, onClose }) {
                             width: '100%', padding: '10px 12px',
                             border: '1px solid #d1d5db', borderRadius: 8,
                             fontSize: 13, color: '#111827', lineHeight: 1.6,
-                            resize: 'vertical', outline: 'none', fontFamily: 'inherit',
+                            resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif',
                             boxSizing: 'border-box', background: '#fff',
                         }}
                         onFocus={e => e.target.style.borderColor = '#6366f1'}
@@ -122,7 +122,7 @@ export function ActionModal({ alert, action, onClose }) {
                 {isDelete && (
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                            Type <span style={{ fontFamily: 'monospace', background: '#fef2f2', color: '#dc2626', padding: '1px 5px', borderRadius: 3 }}>DELETE</span> to confirm
+                            Type <span style={{ fontFamily: 'Inter, sans-serif', background: '#fef2f2', color: '#dc2626', padding: '1px 5px', borderRadius: 3 }}>DELETE</span> to confirm
                         </label>
                         <input
                             ref={inputRef}
@@ -133,7 +133,7 @@ export function ActionModal({ alert, action, onClose }) {
                                 width: '100%', padding: '9px 12px',
                                 border: `1px solid ${confirmed === 'DELETE' ? '#16a34a' : '#d1d5db'}`,
                                 borderRadius: 8, fontSize: 13, outline: 'none',
-                                fontFamily: 'monospace', boxSizing: 'border-box',
+                                fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
                                 color: '#111827', background: '#fff',
                             }}
                         />

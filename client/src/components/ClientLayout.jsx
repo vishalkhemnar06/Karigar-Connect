@@ -58,23 +58,23 @@ export default function ClientLayout() {
                         to={to}
                         onClick={onNavClick}
                         className={({ isActive }) =>
-                            `group flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 relative
+                            `group flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium transition-all duration-200 relative
                             ${isActive
-                                ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
-                                : 'text-gray-600 hover:bg-orange-50 hover:text-orange-600'
+                                ? 'bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow-md shadow-orange-200'
+                                : 'text-gray-700 hover:bg-orange-100 hover:text-orange-700'
                             }`
                         }
                     >
                         {({ isActive }) => (
                             <>
                                 <div className={`p-1.5 rounded-lg flex-shrink-0 transition-all ${isActive ? 'bg-white/20' : 'bg-orange-100 group-hover:bg-orange-200'}`}>
-                                    <Icon size={16} className={isActive ? 'text-white' : 'text-orange-600'} />
+                                    <Icon size={20} className={isActive ? 'text-white' : 'text-orange-600'} />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-sm leading-tight">{label}</p>
-                                    <p className={`text-xs leading-tight mt-0.5 ${isActive ? 'text-orange-100' : 'text-gray-400'}`}>{desc}</p>
+                                    <p className="font-bold text-base leading-tight">{label}</p>
+                                    <p className={`text-sm leading-tight mt-0.5 ${isActive ? 'text-orange-100' : 'text-gray-500'}`}>{desc}</p>
                                 </div>
-                                <ChevronRight size={14} className={`flex-shrink-0 transition-transform ${isActive ? 'text-white/80 translate-x-0.5' : 'text-gray-300 group-hover:text-orange-400 group-hover:translate-x-0.5'}`} />
+                                <ChevronRight size={16} className={`flex-shrink-0 transition-transform ${isActive ? 'text-white/80 translate-x-0.5' : 'text-gray-300 group-hover:text-orange-400 group-hover:translate-x-0.5'}`} />
                             </>
                         )}
                     </NavLink>
@@ -82,15 +82,15 @@ export default function ClientLayout() {
             </nav>
 
             {/* Logout */}
-            <div className="px-3 pb-4 pt-2 border-t border-gray-100">
+            <div className="px-3 pb-4 pt-2 border-t border-orange-100">
                 <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-all duration-200 group"
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-red-500 hover:bg-red-50 transition-all duration-200 group"
                 >
                     <div className="p-1.5 bg-red-100 rounded-lg group-hover:bg-red-200 transition-all">
-                        <LogOut size={16} className="text-red-500" />
+                        <LogOut size={20} className="text-red-500" />
                     </div>
-                    <span className="font-bold">Logout</span>
+                    <span className="font-bold text-base">Logout</span>
                 </button>
             </div>
         </div>
@@ -99,7 +99,7 @@ export default function ClientLayout() {
     return (
         <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30">
             {/* Desktop Sidebar */}
-            <aside className="hidden md:flex flex-col w-64 bg-white border-r border-orange-100 shadow-sm fixed top-20 left-0 h-[calc(100vh-5rem)] z-20">
+            <aside className="hidden md:flex flex-col w-72 bg-gradient-to-b from-orange-50 via-white to-white border-r border-orange-100 shadow-sm fixed top-20 left-0 h-[calc(100vh-5rem)] z-30">
                 <SidebarContent onNavClick={undefined} />
             </aside>
 
@@ -119,7 +119,7 @@ export default function ClientLayout() {
             </aside>
 
             {/* Page Content with Proper Spacing for Mobile */}
-            <main className="flex-1 md:ml-64 min-h-screen">
+            <main className="flex-1 md:ml-72 min-h-screen">
                 {/* Mobile Top Bar Spacer - Prevents content from hiding behind fixed header */}
                 <div className="md:hidden h-14" />
                 
@@ -179,8 +179,8 @@ export default function ClientLayout() {
                                         }`
                                     }
                                 >
-                                    <Icon size={20} className={isActive ? 'text-orange-500' : ''} />
-                                    <span className={`text-[10px] font-semibold whitespace-nowrap ${isActive ? 'text-orange-600' : 'text-gray-500'}`}>
+                                    <Icon size={22} className={isActive ? 'text-orange-500' : ''} />
+                                    <span className={`text-xs font-semibold whitespace-nowrap ${isActive ? 'text-orange-600' : 'text-gray-500'}`}>
                                         {label}
                                     </span>
                                     {isActive && (

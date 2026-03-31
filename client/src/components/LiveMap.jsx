@@ -144,7 +144,7 @@ export default function LiveMap({
             );
 
             const popupContent = `
-                <div style="font-family:sans-serif;min-width:150px;">
+                <div style="font-family:Inter, sans-serif;min-width:150px;">
                     <div style="font-weight:800;color:#111827;margin-bottom:4px;">${w.name || 'Worker'}</div>
                     <div style="font-size:11px;color:#6b7280;">
                         ${w.sharingActive
@@ -207,7 +207,7 @@ export default function LiveMap({
         if (!clientRef.current) {
             const icon = makeIcon(L, CLIENT_COLOUR, '🏠', 'Client', 36);
             const popup = `
-                <div style="font-family:sans-serif;min-width:140px;">
+                <div style="font-family:Inter, sans-serif;min-width:140px;">
                     <div style="font-weight:800;color:#1d4ed8;margin-bottom:3px;">📍 Client Location</div>
                     <div style="font-size:11px;color:#6b7280;">${clientMarker.address || 'Job site'}</div>
                     <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Static — captured at booking</div>
