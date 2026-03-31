@@ -859,12 +859,12 @@ const WorkerRegister = () => {
 
                                 {/* Terms */}
                                 <div className="pt-2 border-t border-orange-200">
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="h-5 w-5 rounded border-orange-300 text-orange-600"/>
-                                        <span className="text-sm text-gray-700">I agree to the <Link to="/terms-and-conditions" target="_blank" className="text-orange-600 underline font-medium">Terms and Conditions</Link></span>
+                                    <label className="flex items-start gap-3 cursor-pointer">
+                                        <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"/>
+                                        <span className="text-sm text-gray-700">I agree to the <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Terms and Conditions</a> and <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Privacy Policy</a></span>
                                     </label>
-                                    <label className="flex items-center gap-3 cursor-pointer mt-3">
-                                        <input type="checkbox" checked={ageConsent} onChange={e => setAgeConsent(e.target.checked)} className="h-5 w-5 rounded border-orange-300 text-orange-600"/>
+                                    <label className="flex items-start gap-3 cursor-pointer mt-3">
+                                        <input type="checkbox" checked={ageConsent} onChange={e => setAgeConsent(e.target.checked)} className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"/>
                                         <span className="text-sm text-gray-700">I confirm I am above 18 years old and provide consent for registration verification.</span>
                                     </label>
                                 </div>

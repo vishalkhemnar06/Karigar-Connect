@@ -23,6 +23,7 @@ import AppErrorBoundary from './components/AppErrorBoundary';
 // General
 import Splash from './components/splash';
 import TermsAndConditions from './components/TermsAndConditions';
+import PrivacyPolicy from './components/PrivacyPolicy';
 
 // General Pages
 import Home from './pages/Home';
@@ -34,6 +35,7 @@ import Register from './pages/auth/Register';
 import WorkerRegister from './pages/auth/WorkerRegister';
 import ClientRegister from './pages/auth/ClientRegister';
 import Login from './pages/auth/Login';
+import CheckStatus from './pages/auth/CheckStatus';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
 
@@ -47,8 +49,8 @@ import AdminCommunity        from './pages/admin/AdminCommunity';
 import AdminShops            from './pages/admin/AdminShops';
 
 // Shop Pages
-import ShopRegister  from './pages/shop/ShopRegister';
-import ShopDashboard from './pages/shop/ShopDashboard';
+import ShopRegister         from './pages/shop/ShopRegister';
+import ShopDashboard        from './pages/shop/ShopDashboard';
 
 // Worker Pages
 import WorkerDashboard      from './pages/worker/WorkerDashboard';
@@ -110,6 +112,7 @@ function App() {
                 <Route path="/"                       element={<Splash />} />
                 <Route path="/notification"           element={<Notification />} />
                 <Route path="/terms-and-conditions"   element={<TermsAndConditions />} />
+                <Route path="/privacy-policy"         element={<PrivacyPolicy />} />
                 <Route path="/reset-password/:token"  element={<ResetPassword />} />
                 <Route path="/profile/public/:workerId" element={<PublicProfile />} />
 
@@ -147,6 +150,7 @@ function App() {
                 <Route element={<MainLayout />}>
                     <Route path="/home"             element={<Home />} />
                     <Route path="/login"            element={<Login />} />
+                    <Route path="/check-status"     element={<CheckStatus />} />
                     <Route path="/register"         element={<Register />} />
                     <Route path="/register/worker"  element={<WorkerRegister />} />
                     <Route path="/register/client"  element={<ClientRegister />} />

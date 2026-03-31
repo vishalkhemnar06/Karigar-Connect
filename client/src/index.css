@@ -1,6 +1,7 @@
-@import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 /* Hide Google Translate bar */
 .goog-te-banner-frame,
@@ -26,7 +27,6 @@
   opacity: 0 !important;
   pointer-events: none !important;
 }
-
 
 html, body {
   font-family: 'Inter', sans-serif !important;

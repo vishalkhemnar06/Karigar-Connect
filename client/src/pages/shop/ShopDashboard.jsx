@@ -1,24 +1,23 @@
 // client/src/pages/shop/ShopDashboard.jsx
 // UPDATED:
-//   - Mobile-first design with bottom navigation bar
-//   - Removed notifications bell
-//   - Removed dark mode toggle
+//   - Integrated ShopHeader and ShopSidebar
+//   - Professional dashboard design
+//   - Mobile-first responsive layout
 //   - Touch-friendly tap targets (min 44px)
-//   - Optimized layouts for small screens
-//   - Sticky bottom nav for mobile
-//   - Improved mobile modals (full-screen on mobile)
-//   - Better mobile forms and inputs
-//   - Swipe-friendly product cards
 
 import React, { useEffect, useState, useCallback, memo, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import * as api from '../../api';
 import { getImageUrl, imgError } from '../../utils/imageUrl';
 import toast from 'react-hot-toast';
+import ShopHeader from '../../components/ShopHeader';
+import ShopSidebar from '../../components/ShopSidebar';
+import ShopSettings from './ShopSettings';
+import ShopProfileUnified from './ShopProfileUnified';
 import {
     Store, Tag, Package, History, BarChart3, Settings,
     LogOut, Menu, X, QrCode, CheckCircle, Plus, Edit2,
-    Trash2, Camera, Upload, TrendingUp, Users, DollarSign,
+    Trash2, Camera, Upload, TrendingUp, Users,
     ShoppingBag, Search, ArrowUp, ArrowDown, Calendar,
     Eye, RefreshCw, AlertCircle, ChevronRight,
     Download, Check, Clock, Percent, Shield, Sparkles,
@@ -101,6 +100,7 @@ const DonutChart = memo(({ segments, size = 120, thickness = 22, centerText }) =
 DonutChart.displayName = 'DonutChart';
 
 // ── ENHANCED STAT CARD ────────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
 const StatCard = memo(({ title, value, sub, icon: Icon, color, trend, trendVal, loading }) => (
     <div className={`bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 ${loading ? 'animate-pulse' : ''}`}>
         <div className="flex items-start justify-between mb-3">
@@ -333,7 +333,7 @@ const AnalyticsPage = memo(() => {
 
             {/* KPI Cards - 2 columns on mobile */}
             <div className="grid grid-cols-2 gap-3">
-                <StatCard title="Total Revenue" value={`₹${data.totalSales?.toLocaleString()}`} sub={`Avg ₹${avgTxn}/txn`} icon={DollarSign} color="bg-gradient-to-br from-orange-500 to-orange-600" trend="up" trendVal="12" loading={loading} />
+                <StatCard title="Total Revenue" value={`₹${data.totalSales?.toLocaleString()}`} sub={`Avg ₹${avgTxn}/txn`} icon={TrendingUp} color="bg-gradient-to-br from-orange-500 to-orange-600" trend="up" trendVal="12" loading={loading} />
                 <StatCard title="Total Discounts" value={`₹${data.totalDiscounts?.toLocaleString()}`} sub={`Avg ₹${avgDiscount}/txn`} icon={Tag} color="bg-gradient-to-br from-amber-500 to-orange-500" trend="down" trendVal="5" loading={loading} />
                 <StatCard title="Workers" value={data.totalWorkers} sub="Unique customers" icon={Users} color="bg-gradient-to-br from-blue-500 to-blue-600" trend="up" trendVal="8" loading={loading} />
                 <StatCard title="Transactions" value={data.totalTxns} sub={`${conversionRate}% conversion`} icon={ShoppingBag} color="bg-gradient-to-br from-purple-500 to-purple-600" trend="up" trendVal="15" loading={loading} />
@@ -806,7 +806,7 @@ const ProductsPage = memo(() => {
         } catch (e) {
             toast.error(e.response?.data?.message || 'Failed to save.');
         } finally { setLoading(false); }
-    }, [fName, fDesc, fPrice, fStock, fImg, editing, resetForm, load]);
+    }, [fName, fDesc, fPrice, fStock,  fImg, editing, resetForm, load]);
 
     const del = useCallback(async (id) => {
         if (!window.confirm('Delete this product?')) return;
@@ -1159,7 +1159,7 @@ const TransactionsPage = memo(() => {
             {txns.length > 0 && (
                 <div className="grid grid-cols-2 gap-2.5">
                     {[
-                        { label: 'Total Revenue', value: `₹${txns.reduce((s, t) => s + t.finalPrice, 0).toLocaleString()}`, icon: DollarSign },
+                        { label: 'Total Revenue', value: `₹${txns.reduce((s, t) => s + t.finalPrice, 0).toLocaleString()}`, icon: TrendingUp },
                         { label: 'Total Discount', value: `₹${txns.reduce((s, t) => s + t.discountAmount, 0).toLocaleString()}`, icon: Percent },
                         { label: 'Avg Discount', value: `${Math.round(txns.reduce((s, t) => s + t.discountPct, 0) / txns.length)}%`, icon: Tag },
                         { label: 'Avg Transaction', value: `₹${Math.round(txns.reduce((s, t) => s + t.finalPrice, 0) / txns.length)}`, icon: ShoppingBag },
@@ -1193,153 +1193,11 @@ const TransactionsPage = memo(() => {
 TransactionsPage.displayName = 'TransactionsPage';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE: PROFILE
-// ─────────────────────────────────────────────────────────────────────────────
-const ProfilePage = memo(({ shop, onUpdate }) => {
-    const [fShopName, setFShopName] = useState(shop?.shopName || '');
-    const [fOwnerName, setFOwnerName] = useState(shop?.ownerName || '');
-    const [fAddress, setFAddress] = useState(shop?.address || '');
-    const [fCity, setFCity] = useState(shop?.city || '');
-    const [fPincode, setFPincode] = useState(shop?.pincode || '');
-    const [fLocality, setFLocality] = useState(shop?.locality || '');
-    const [fGst, setFGst] = useState(shop?.gstNumber || '');
-    const [fCategory, setFCategory] = useState(shop?.category || '');
-    const [fLogo, setFLogo] = useState(null);
-    const [fLogoPreview, setFLogoPreview] = useState(null);
-    const [fPhoto, setFPhoto] = useState(null);
-    const [fPhotoPreview, setFPhotoPreview] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [saved, setSaved] = useState(false);
-
-    useEffect(() => {
-        if (saved) {
-            const timer = setTimeout(() => setSaved(false), 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [saved]);
-
-    const onLogo = useCallback(e => {
-        const f = e.target.files[0];
-        if (!f) return;
-        setFLogo(f);
-        setFLogoPreview(URL.createObjectURL(f));
-    }, []);
-
-    const onPhoto = useCallback(e => {
-        const f = e.target.files[0];
-        if (!f) return;
-        setFPhoto(f);
-        setFPhotoPreview(URL.createObjectURL(f));
-    }, []);
-
-    const save = useCallback(async () => {
-        setLoading(true);
-        try {
-            const fd = new FormData();
-            const fields = { shopName: fShopName, ownerName: fOwnerName, address: fAddress, city: fCity, pincode: fPincode, locality: fLocality, gstNumber: fGst, category: fCategory };
-            Object.entries(fields).forEach(([k, v]) => fd.append(k, v || ''));
-            if (fLogo) fd.append('shopLogo', fLogo);
-            if (fPhoto) fd.append('ownerPhoto', fPhoto);
-            await api.updateShopProfile(fd);
-            toast.success('Profile updated!');
-            setSaved(true);
-            onUpdate();
-        } catch { toast.error('Update failed.'); }
-        finally { setLoading(false); }
-    }, [fShopName, fOwnerName, fAddress, fCity, fPincode, fLocality, fGst, fCategory, fLogo, fPhoto, onUpdate]);
-
-    const inputCls = "w-full border-2 border-gray-200 rounded-xl py-3.5 px-4 text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-50 focus:outline-none transition-all";
-    const labelCls = "block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5";
-
-    return (
-        <div className="space-y-4">
-            <div>
-                <h2 className="text-lg font-black text-gray-900">Shop Profile</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Manage shop info and branding</p>
-            </div>
-
-            {/* Shop banner */}
-            <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 flex items-center gap-4">
-                {(fLogoPreview || getImageUrl(shop?.shopLogo, null)) ? (
-                    <img src={fLogoPreview || getImageUrl(shop.shopLogo)} onError={imgError()} className="w-16 h-16 rounded-xl object-cover border-2 border-white/30 shadow-lg flex-shrink-0" alt="" />
-                ) : (
-                    <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Store size={28} className="text-white" />
-                    </div>
-                )}
-                <div className="text-white min-w-0">
-                    <p className="text-lg font-black truncate">{shop?.shopName}</p>
-                    <p className="text-orange-100 text-xs">{shop?.category} · {shop?.city}</p>
-                    <p className="text-orange-200 text-[10px] mt-0.5">{shop?.ownerName}</p>
-                </div>
-            </div>
-
-            {/* Form */}
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {[
-                        ['Shop Name', fShopName, setFShopName],
-                        ['Owner Name', fOwnerName, setFOwnerName],
-                        ['City', fCity, setFCity],
-                        ['Pincode', fPincode, setFPincode],
-                        ['Category', fCategory, setFCategory],
-                        ['GST Number', fGst, setFGst],
-                    ].map(([label, val, setter]) => (
-                        <div key={label}>
-                            <label className={labelCls}>{label}</label>
-                            <input value={val} onChange={e => setter(e.target.value)} className={inputCls} />
-                        </div>
-                    ))}
-                    <div className="sm:col-span-2">
-                        <label className={labelCls}>Full Address</label>
-                        <input value={fAddress} onChange={e => setFAddress(e.target.value)} className={inputCls} />
-                    </div>
-                    <div className="sm:col-span-2">
-                        <label className={labelCls}>Locality</label>
-                        <input value={fLocality} onChange={e => setFLocality(e.target.value)} className={inputCls} />
-                    </div>
-                </div>
-
-                {/* Photo uploads */}
-                <div className="grid grid-cols-2 gap-3">
-                    {[
-                        ['Shop Logo', fLogo, fLogoPreview, onLogo],
-                        ['Owner Photo', fPhoto, fPhotoPreview, onPhoto],
-                    ].map(([label, file, preview, handler]) => (
-                        <div key={label}>
-                            <label className={labelCls}>{label}</label>
-                            <label className="flex flex-col items-center gap-2 cursor-pointer border-2 border-dashed border-gray-200 rounded-xl p-3 active:bg-orange-50 transition-all text-center">
-                                {preview
-                                    ? <img src={preview} className="w-14 h-14 rounded-lg object-cover border-2 border-orange-200" alt="" />
-                                    : <div className="w-14 h-14 bg-orange-50 rounded-lg flex items-center justify-center"><Upload size={18} className="text-orange-400" /></div>
-                                }
-                                <p className="text-[10px] font-medium text-gray-600">{file ? 'Change' : 'Upload'}</p>
-                                <input type="file" accept="image/*" className="hidden" onChange={handler} />
-                            </label>
-                        </div>
-                    ))}
-                </div>
-
-                <button onClick={save} disabled={loading}
-                    className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-black active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md">
-                    {loading
-                        ? <><span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>
-                        : saved
-                            ? <><Check size={18} /> Saved!</>
-                            : <><Shield size={18} /> Save Changes</>
-                    }
-                </button>
-            </div>
-        </div>
-    );
-});
-ProfilePage.displayName = 'ProfilePage';
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 const ShopDashboard = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [page, setPage] = useState('analytics');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [shop, setShop] = useState(null);
@@ -1349,6 +1207,15 @@ const ShopDashboard = () => {
             .then(r => setShop(r.data))
             .catch(() => navigate('/login'));
     }, [navigate]);
+
+    // Auto-open settings if navigated from header
+    useEffect(() => {
+        if (location.state?.openSettings) {
+            setPage('settings');
+            // Clear the state
+            window.history.replaceState({}, document.title);
+        }
+    }, [location.state?.openSettings]);
 
     useEffect(() => { loadShop(); }, [loadShop]);
 
@@ -1369,123 +1236,20 @@ const ShopDashboard = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
-                <div className="flex items-center justify-between px-4 py-3">
-                    <div className="flex items-center gap-3">
-                        {/* Mobile hamburger for sidebar (desktop only, hidden on mobile since we use bottom nav) */}
-                        <button
-                            onClick={() => setSidebarOpen(!sidebarOpen)}
-                            className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 transition-all"
-                        >
-                            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
-                        </button>
-                        <div className="flex items-center gap-2.5">
-                            {getImageUrl(shop?.shopLogo, null) ? (
-                                <img
-                                    src={getImageUrl(shop.shopLogo)}
-                                    onError={imgError()}
-                                    className="w-9 h-9 rounded-xl object-cover border border-orange-100"
-                                    alt=""
-                                />
-                            ) : (
-                                <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center">
-                                    <Store size={18} className="text-white" />
-                                </div>
-                            )}
-                            <div>
-                                <p className="font-black text-gray-900 text-sm leading-tight">
-                                    {shop?.shopName || 'Shop Dashboard'}
-                                </p>
-                                <p className="text-gray-400 text-[10px]">{shop?.category} · {shop?.city}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <button
-                        onClick={logout}
-                        className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-red-600 font-semibold px-3 py-2 rounded-lg hover:bg-red-50 active:bg-red-100 transition-all"
-                    >
-                        <LogOut size={15} />
-                        <span className="hidden sm:inline text-xs">Logout</span>
-                    </button>
-                </div>
-            </header>
-
-            <div className="flex flex-1">
-                {/* Desktop Sidebar */}
-                <aside className={`
-                    hidden lg:block w-56 bg-white border-r border-gray-200 shadow-sm flex-shrink-0
-                    sticky top-[57px] h-[calc(100vh-57px)] overflow-y-auto
-                `}>
-                    <nav className="p-3 space-y-1">
-                        {NAV.map(({ key, label, icon: Icon }) => (
-                            <button
-                                key={key}
-                                onClick={() => setPageCb(key)}
-                                className={[
-                                    'flex items-center gap-3 w-full px-3 py-3 rounded-xl text-sm font-semibold transition-all',
-                                    page === key
-                                        ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md'
-                                        : 'text-gray-600 hover:bg-orange-50 hover:text-orange-700',
-                                ].join(' ')}
-                            >
-                                <Icon size={17} className={page === key ? 'text-white' : 'text-gray-400'} />
-                                {label}
-                            </button>
-                        ))}
-                        <div className="pt-4 mt-4 border-t border-gray-100">
-                            <button
-                                onClick={logout}
-                                className="flex items-center gap-3 w-full px-3 py-3 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition-all"
-                            >
-                                <LogOut size={17} className="text-red-400" />
-                                Logout
-                            </button>
-                        </div>
-                    </nav>
-                </aside>
-
-                {/* Main Content — add bottom padding for mobile nav */}
-                <main className="flex-1 p-4 lg:p-7 min-w-0 overflow-auto pb-24 lg:pb-7">
+        <>
+            <ShopHeader />
+            <div className="lg:flex min-h-screen">
+                <ShopSidebar page={page} onPageChange={setPageCb} onLogout={logout} />
+                <main className="flex-1 bg-gray-50 p-4 lg:p-6 pb-24 lg:pb-6 overflow-auto">
                     {page === 'analytics' && <AnalyticsPage />}
                     {page === 'coupon' && <CouponPage />}
                     {page === 'products' && <ProductsPage />}
                     {page === 'history' && <TransactionsPage />}
-                    {page === 'profile' && <ProfilePage shop={shop} onUpdate={loadShop} />}
+                    {page === 'profile' && <ShopProfileUnified shop={shop} onUpdate={loadShop} isDashboard={true} />}
+                    {page === 'settings' && <ShopSettings />}
                 </main>
             </div>
-
-            {/* ── MOBILE BOTTOM NAVIGATION ─────────────────────────────────── */}
-            <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40 safe-area-bottom">
-                <div className="flex items-stretch">
-                    {NAV.map(({ key, label, icon: Icon }) => {
-                        const isActive = page === key;
-                        return (
-                            <button
-                                key={key}
-                                onClick={() => setPageCb(key)}
-                                className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[60px] transition-all active:scale-95 relative ${
-                                    isActive ? 'text-orange-600' : 'text-gray-400'
-                                }`}
-                            >
-                                {isActive && (
-                                    <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-orange-500 rounded-full" />
-                                )}
-                                <div className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-orange-50' : ''}`}>
-                                    <Icon size={20} className={isActive ? 'text-orange-600' : 'text-gray-400'} />
-                                </div>
-                                <span className={`text-[10px] font-bold leading-none ${isActive ? 'text-orange-600' : 'text-gray-400'}`}>
-                                    {label}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-                {/* Safe area spacer for iPhones */}
-                <div className="h-safe-area-inset-bottom bg-white" />
-            </nav>
-        </div>
+        </>
     );
 };
 

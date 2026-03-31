@@ -6,7 +6,7 @@ const Splash = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       window.location.href = '/home';
-    }, 3000);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, []);

@@ -47,14 +47,22 @@ def _utcnow():
 def _notify_node(payload: dict):
     """Fire-and-forget call to Node.js to send SMS + in-app notification."""
     try:
-        requests.post(
+        print(f'[notify_node] Calling {NODE_BASE_URL}/api/admin/fraud-notify with payload:')
+        print(f'  - userId: {payload.get("userId")}')
+        print(f'  - action: {payload.get("action")}')
+        print(f'  - mobile: {payload.get("mobile")}')
+        
+        response = requests.post(
             f'{NODE_BASE_URL}/api/admin/fraud-notify',
             json=payload,
             headers={'x-internal-secret': INTERNAL_SECRET},
             timeout=5,
         )
+        print(f'[notify_node] ✅ Response from Node: {response.status_code}')
+        if response.status_code != 200:
+            print(f'[notify_node] ⚠️  Response body: {response.text}')
     except Exception as e:
-        print(f'[WARN] Node notification failed: {e}')
+        print(f'[notify_node] ❌ Failed: {e}')
 
 
 # ── CORE FIX ──────────────────────────────────────────────────────────────────

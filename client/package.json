@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.9.0",
-    "@tailwindcss/vite": "^4.1.13",
+    "@tailwindcss/vite": "^4.2.2",
     "axios": "^1.12.2",
     "dom-to-image-more": "^3.7.1",
     "framer-motion": "^12.38.0",
@@ -35,7 +35,6 @@
     "react-toastify": "^11.0.5",
     "recharts": "^3.8.1",
     "socket.io-client": "^4.8.1",
-    "tailwindcss": "^4.1.13",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -43,11 +42,14 @@
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
+    "autoprefixer": "^10.4.27",
     "baseline-browser-mapping": "^2.9.17",
     "eslint": "^9.35.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.4.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
     "vite": "^7.1.6"
   }
 }

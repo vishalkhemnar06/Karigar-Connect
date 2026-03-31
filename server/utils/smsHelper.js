@@ -16,19 +16,27 @@ const client = hasTwilioConfig
 
 // ── BASE FUNCTION ─────────────────────────────────────────────────────────────
 const sendSms = async (to, body) => {
-    if (!to || !body) return;
+    if (!to || !body) {
+        console.warn('[SMS] Missing phone or message, skipping SMS');
+        return { success: false, reason: 'missing_params' };
+    }
     if (!client) {
-        console.warn(`SMS skipped (Twilio not configured) to ${to}`);
-        return;
+        console.warn(`[SMS] ⚠️  Twilio not configured, SMS skipped to ${to}`);
+        return { success: false, reason: 'twilio_not_configured' };
     }
     try {
-        await client.messages.create({
+        const phoneNumber = to.startsWith('+') ? to : `+91${to}`;
+        console.log(`[SMS] Sending to ${phoneNumber} via Twilio...`);
+        const result = await client.messages.create({
             body,
             from: process.env.TWILIO_PHONE_NUMBER,
-            to: to.startsWith('+') ? to : `+91${to}`,
+            to: phoneNumber,
         });
+        console.log(`[SMS] ✅ Sent successfully! SID: ${result.sid}`);
+        return { success: true, messageSid: result.sid };
     } catch (err) {
-        console.error(`SMS send failed to ${to}:`, err.message);
+        console.error(`[SMS] ❌ Send failed to ${to}:`, err.message);
+        return { success: false, reason: 'send_error', error: err.message };
     }
 };
 
@@ -38,7 +46,8 @@ exports.sendOtpSms = async (to, otp) => {
 };
 
 exports.sendCustomSms = async (to, message) => {
-    await sendSms(to, message);
+    const result = await sendSms(to, message);
+    return result;
 };
 
 exports.sendStatusUpdateSms = async (to, name, status) => {

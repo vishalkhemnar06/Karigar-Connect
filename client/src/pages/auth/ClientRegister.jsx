@@ -900,41 +900,41 @@ const ClientRegister = () => {
 
                                 <div className="pt-2 border-t border-orange-200 space-y-3">
                                     <p className="font-semibold text-orange-800 mb-3">Accept All Terms & Conditions <span className="text-red-600">*</span></p>
-                                    <label className="flex items-center gap-3 cursor-pointer">
+                                    <label className="flex items-start gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
                                             checked={formData.termsPaymentAccepted}
                                             onChange={e => setFormData({ ...formData, termsPaymentAccepted: e.target.checked })}
-                                            className="h-5 w-5 rounded border-orange-300 text-orange-600"
+                                            className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to Payment Terms & Conditions</span>
+                                        <span className="text-sm text-gray-700">I agree to <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Payment Terms & Conditions</a></span>
                                     </label>
-                                    <label className="flex items-center gap-3 cursor-pointer">
+                                    <label className="flex items-start gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
                                             checked={formData.termsDisputePolicyAccepted}
                                             onChange={e => setFormData({ ...formData, termsDisputePolicyAccepted: e.target.checked })}
-                                            className="h-5 w-5 rounded border-orange-300 text-orange-600"
+                                            className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to Dispute Resolution Policy</span>
+                                        <span className="text-sm text-gray-700">I agree to <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Dispute Resolution Policy</a></span>
                                     </label>
-                                    <label className="flex items-center gap-3 cursor-pointer">
+                                    <label className="flex items-start gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
                                             checked={formData.termsDataPrivacyAccepted}
                                             onChange={e => setFormData({ ...formData, termsDataPrivacyAccepted: e.target.checked })}
-                                            className="h-5 w-5 rounded border-orange-300 text-orange-600"
+                                            className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <Link to="/privacy-policy" target="_blank" className="text-orange-600 underline font-medium">Data Privacy Policy</Link></span>
+                                        <span className="text-sm text-gray-700">I agree to <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Data Privacy Policy</a></span>
                                     </label>
-                                    <label className="flex items-center gap-3 cursor-pointer">
+                                    <label className="flex items-start gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
                                             checked={formData.termsWorkerProtectionAccepted}
                                             onChange={e => setFormData({ ...formData, termsWorkerProtectionAccepted: e.target.checked })}
-                                            className="h-5 w-5 rounded border-orange-300 text-orange-600"
+                                            className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to Worker Protection & Safety Terms</span>
+                                        <span className="text-sm text-gray-700">I agree to <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Worker Protection & Safety Terms</a></span>
                                     </label>
                                 </div>
 

@@ -193,21 +193,49 @@ const StandardForm = ({ role, gradient, onSuccess }) => {
 
 // ── Shop owner login form ─────────────────────────────────────────────────────
 const ShopForm = ({ onSuccess }) => {
+    const [method, setMethod]     = useState('password');
     const [mobile, setMobile]     = useState('');
     const [password, setPassword] = useState('');
     const [showPwd, setShowPwd]   = useState(false);
+    const [otp, setOtp]           = useState('');
+    const [otpSent, setOtpSent]   = useState(false);
     const [loading, setLoading]   = useState(false);
 
     const onMobileChange   = useCallback(e => setMobile(e.target.value), []);
     const onPasswordChange = useCallback(e => setPassword(e.target.value), []);
+    const onOtpChange      = useCallback(e => setOtp(e.target.value), []);
     const togglePwd        = useCallback(() => setShowPwd(v => !v), []);
+    const handleMethodChange = useCallback(m => setMethod(m), []);
+
+    const sendOtp = useCallback(async () => {
+        if (!mobile || mobile.length !== 10) return toast.error('Enter valid 10-digit mobile.');
+        setLoading(true);
+        try {
+            await api.shopSendLoginOtp({ mobile });
+            setOtpSent(true);
+            toast.success('OTP sent to your mobile!');
+        } catch (e) {
+            const errMsg = e.response?.data?.message;
+            if (e.response?.data?.notRegistered) {
+                toast.error('This mobile is not registered. Please register first.');
+            } else {
+                toast.error(errMsg || 'Failed to send OTP.');
+            }
+        } finally { setLoading(false); }
+    }, [mobile]);
 
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
         setLoading(true);
         const tid = toast.loading('Logging in...');
         try {
-            const { data } = await api.shopLogin({ mobile, password });
+            let res;
+            if (method === 'password') {
+                res = await api.shopLogin({ mobile, password });
+            } else {
+                res = await api.shopVerifyLoginOtp({ mobile, otp });
+            }
+            const { data } = res;
             localStorage.setItem('shopToken', data.token);
             localStorage.setItem('shopRole', 'shop');
             localStorage.setItem('shop', JSON.stringify(data.shop));
@@ -216,26 +244,45 @@ const ShopForm = ({ onSuccess }) => {
         } catch (e) {
             toast.error(e.response?.data?.message || 'Login failed.', { id: tid });
         } finally { setLoading(false); }
-    }, [mobile, password, onSuccess]);
+    }, [mobile, password, otp, method, onSuccess]);
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             <TextInput label="Registered Mobile" type="tel" placeholder="Shop mobile number"
                 value={mobile} onChange={onMobileChange} required maxLength={10} prefix="+91"
                 name="shop_mobile" autoComplete="off" inputMode="numeric" />
-            <TextInput
-                label="Password" type={showPwd ? 'text' : 'password'}
-                placeholder="Enter your password"
-                value={password} onChange={onPasswordChange} required
-                name="shop_login_password"
-                autoComplete="new-password"
-                rightSlot={
-                    <button type="button" onClick={togglePwd}
-                        className="text-gray-400 hover:text-gray-700 p-1">
-                        {showPwd ? <EyeOff size={15}/> : <Eye size={15}/>}
+            
+            <MethodToggle method={method} onChange={handleMethodChange} />
+
+            {method === 'password' ? (
+                <TextInput
+                    label="Password" type={showPwd ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password} onChange={onPasswordChange} required
+                    name="shop_login_password"
+                    autoComplete="new-password"
+                    rightSlot={
+                        <button type="button" onClick={togglePwd}
+                            className="text-gray-400 hover:text-gray-700 p-1">
+                            {showPwd ? <EyeOff size={15}/> : <Eye size={15}/>}
+                        </button>
+                    }
+                />
+            ) : (
+                <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                        <TextInput label="OTP" type="text" placeholder="6-digit OTP"
+                            value={otp} onChange={onOtpChange} required maxLength={6}
+                            name="shop_otp" autoComplete="one-time-code" inputMode="numeric" />
+                    </div>
+                    <button type="button" onClick={sendOtp} disabled={loading}
+                        className="shrink-0 px-4 py-3.5 bg-orange-100 hover:bg-orange-200 text-orange-700
+                            rounded-xl text-xs font-bold border border-orange-200 disabled:opacity-50 transition-all whitespace-nowrap">
+                        {otpSent ? 'Resend' : 'Send OTP'}
                     </button>
-                }
-            />
+                </div>
+            )}
+
             <SubmitBtn loading={loading} gradient="from-teal-500 to-emerald-600">
                 <Store size={16}/><span>Login to Shop Dashboard</span>
             </SubmitBtn>

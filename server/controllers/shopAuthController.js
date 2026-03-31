@@ -183,6 +183,91 @@ exports.verifyEmailOtp = async (req, res) => {
     }
 };
 
+// ── LOGIN OTP: Send OTP for existing shops ────────────────────────────────────
+exports.sendLoginOtp = async (req, res) => {
+    try {
+        const { mobile } = req.body;
+        if (!mobile || mobile.length !== 10)
+            return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
+
+        // Find existing shop
+        const shop = await Shop.findOne({ mobile });
+        if (!shop) {
+            return res.status(404).json({ 
+                message: 'This mobile number is not registered. Please register first.',
+                notRegistered: true 
+            });
+        }
+
+        if (shop.verificationStatus === 'rejected' || shop.verificationStatus === 'blocked') {
+            return res.status(403).json({ 
+                message: `Your shop account is ${shop.verificationStatus}. Contact support.`,
+                accountBlocked: true 
+            });
+        }
+
+        // Send OTP for login
+        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = new Date(Date.now() + 10 * 60 * 1000);
+        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
+
+        shop.loginOtp       = hashed;
+        shop.loginOtpExpiry = expiry;
+        await shop.save({ validateBeforeSave: false });
+
+        await sendSms(mobile, `KarigarConnect Shop Login: Your OTP is ${otp}. Valid for 10 minutes. Do not share.`);
+        return res.json({ message: 'OTP sent to mobile.' });
+    } catch (err) {
+        console.error('sendLoginOtp:', err);
+        return res.status(500).json({ message: 'Failed to send OTP.' });
+    }
+};
+
+// ── LOGIN OTP: Verify OTP for existing shops ──────────────────────────────────
+exports.verifyLoginOtp = async (req, res) => {
+    try {
+        const { mobile, otp } = req.body;
+        if (!mobile || !otp)
+            return res.status(400).json({ message: 'Mobile and OTP required.' });
+
+        const shop = await Shop.findOne({ mobile }).select('+loginOtp +loginOtpExpiry');
+        if (!shop || !shop.loginOtp)
+            return res.status(400).json({ message: 'No OTP request found. Send OTP first.' });
+
+        if (Date.now() > new Date(shop.loginOtpExpiry).getTime())
+            return res.status(400).json({ message: 'OTP expired. Request a new one.' });
+
+        const hashed = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+        if (hashed !== shop.loginOtp)
+            return res.status(400).json({ message: 'Incorrect OTP.' });
+
+        // Clear OTP fields
+        shop.loginOtp       = undefined;
+        shop.loginOtpExpiry = undefined;
+        await shop.save({ validateBeforeSave: false });
+
+        // Prepare response
+        const token = signToken(shop._id);
+        const shopData = shop.toObject();
+        delete shopData.password;
+        delete shopData.mobileOtp;
+        delete shopData.mobileOtpExpiry;
+        delete shopData.emailOtp;
+        delete shopData.emailOtpExpiry;
+        delete shopData.loginOtp;
+        delete shopData.loginOtpExpiry;
+
+        return res.json({
+            token,
+            shop: shopData,
+            message: 'Login successful!'
+        });
+    } catch (err) {
+        console.error('verifyLoginOtp:', err);
+        return res.status(500).json({ message: 'Verification failed.' });
+    }
+};
+
 // ── STEP 5: Complete Registration ─────────────────────────────────────────────
 exports.registerShop = async (req, res) => {
     try {

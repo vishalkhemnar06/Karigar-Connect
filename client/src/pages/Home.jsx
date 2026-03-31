@@ -1,58 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getWorkerApplicationStatus } from '../api';
 import logo from '../assets/logo.jpg';
 
 const Home = () => {
     const [token, setToken] = useState(null);
     const [role, setRole] = useState(null);
     const [isVisible, setIsVisible] = useState(false);
-    const [statusInput, setStatusInput] = useState('');
-    const [statusLoading, setStatusLoading] = useState(false);
-    const [statusError, setStatusError] = useState('');
-    const [statusResult, setStatusResult] = useState(null);
 
     useEffect(() => {
         // Get auth data from localStorage
         const authToken = localStorage.getItem('token');
         const authRole = localStorage.getItem('role');
+        const shopToken = localStorage.getItem('shopToken');
+        const shopRole = localStorage.getItem('shopRole');
         
-        setToken(authToken);
-        setRole(authRole);
+        // Shop owner is logged in
+        if (shopToken && shopRole) {
+            setToken(shopToken);
+            setRole('shop');
+        }
+        // Other users are logged in
+        else if (authToken && authRole) {
+            setToken(authToken);
+            setRole(authRole);
+        }
         
         // Trigger animations after component mounts
         setTimeout(() => setIsVisible(true), 100);
     }, []);
 
     const dashboardLink = role === 'admin' ? '/admin/dashboard' : 
-                         role === 'worker' ? '/worker/dashboard' : 
+                         role === 'worker' ? '/worker/dashboard' :
+                         role === 'shop' ? '/shop/dashboard' :
                          '/client/dashboard';
-
-    const showWorkerStatusCheck = !token || role === 'worker';
-
-    const handleCheckApplicationStatus = async (e) => {
-        e.preventDefault();
-        const identifier = statusInput.trim();
-        if (!identifier) {
-            setStatusError('Please enter phone number or KarigarID.');
-            setStatusResult(null);
-            return;
-        }
-
-        try {
-            setStatusLoading(true);
-            setStatusError('');
-            setStatusResult(null);
-            const { data } = await getWorkerApplicationStatus({ identifier });
-            setStatusResult(data);
-        } catch (error) {
-            const msg = error?.response?.data?.message || 'Unable to fetch application status.';
-            setStatusError(msg);
-            setStatusResult(null);
-        } finally {
-            setStatusLoading(false);
-        }
-    };
 
     // Features data
     const features = [
@@ -119,6 +99,17 @@ const Home = () => {
                                 </>
                             )}
                         </div>
+
+                        {!token && (
+                            <div className="mt-6 flex justify-center transition-all duration-1000 delay-700" style={{ opacity: isVisible ? 1 : 0 }}>
+                                <Link
+                                    to="/check-status"
+                                    className="px-8 py-3 bg-orange-50 text-orange-600 font-semibold rounded-xl border-2 border-orange-300 hover:bg-orange-100 hover:border-orange-400 shadow-md hover:shadow-lg transform hover:-translate-y-1 transition-all duration-300"
+                                >
+                                    Know Your Application Status
+                                </Link>
+                            </div>
+                        )}
                     </div>
                     
                     {/* Hero Image */}
@@ -139,55 +130,6 @@ const Home = () => {
                 </div>
             </section>
 
-            {showWorkerStatusCheck && (
-                <section className="py-16 bg-orange-50 px-4 sm:px-6 lg:px-8">
-                    <div className="max-w-4xl mx-auto">
-                        <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-8 border border-orange-100">
-                            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Worker Application Status</h2>
-                            <p className="mt-2 text-gray-600">
-                                Know your Application Status using Phone Number or KarigarID (if registered).
-                            </p>
-
-                            <form onSubmit={handleCheckApplicationStatus} className="mt-6 flex flex-col sm:flex-row gap-3">
-                                <input
-                                    type="text"
-                                    value={statusInput}
-                                    onChange={(e) => setStatusInput(e.target.value)}
-                                    placeholder="Enter phone number or KarigarID"
-                                    className="flex-1 px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={statusLoading}
-                                    className="px-6 py-3 bg-orange-600 text-white font-semibold rounded-xl hover:bg-orange-700 transition disabled:opacity-60"
-                                >
-                                    {statusLoading ? 'Checking...' : 'Check Status'}
-                                </button>
-                            </form>
-
-                            {statusError && (
-                                <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700">
-                                    {statusError}
-                                </div>
-                            )}
-
-                            {statusResult?.registered && (
-                                <div className="mt-4 p-4 rounded-xl border border-orange-200 bg-orange-50">
-                                    <p className="text-gray-800"><span className="font-semibold">Status:</span> {String(statusResult.status || '').toUpperCase()}</p>
-                                    <p className="mt-2 text-gray-700">{statusResult.statusMessage}</p>
-                                    {statusResult.status === 'rejected' && statusResult.rejectionReason && (
-                                        <p className="mt-2 text-red-700"><span className="font-semibold">Reason:</span> {statusResult.rejectionReason}</p>
-                                    )}
-                                    {statusResult.worker?.karigarId && (
-                                        <p className="mt-2 text-gray-600">KarigarID: {statusResult.worker.karigarId}</p>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </section>
-            )}
-            
             {/* Features Section */}
             <section className="py-16 bg-white px-4 sm:px-6 lg:px-8">
                 <div className="max-w-7xl mx-auto">

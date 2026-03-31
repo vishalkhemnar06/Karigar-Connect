@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import * as api from '../api';
 import logo from '../assets/logo.jpg';
 import NotificationBell from '../components/NotificationBell';
+import { getImageUrl } from '../utils/imageUrl';
 
 // ─── Language Switcher (Enhanced) ────────────────────────────────────────────
 const LANGUAGES = [
@@ -141,15 +142,30 @@ const LanguageSwitcher = () => {
 const Header = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    
+    // Check for both regular user and shop owner tokens
     const token = localStorage.getItem('token');
     const role = localStorage.getItem('role');
+    const shopToken = localStorage.getItem('shopToken');
+    const shopRole = localStorage.getItem('shopRole');
+    const shopData = JSON.parse(localStorage.getItem('shop') || '{}');
+    
     const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+    // Determine actual authentication status
+    const isShopOwnerLoggedIn = shopToken && shopRole;
+    const isUserLoggedIn = token && role;
+    const isLoggedIn = isUserLoggedIn || isShopOwnerLoggedIn;
+    const currentRole = shopRole || role;
+    const currentUser = shopData.shopName ? { name: shopData.shopName } : user;
 
     const [isAvailable, setIsAvailable] = useState(true);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [notifications, setNotifications] = useState(3);
+    const [workerRating, setWorkerRating] = useState(0);
+    const [totalRatings, setTotalRatings] = useState(0);
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -163,6 +179,8 @@ const Header = () => {
                 try {
                     const { data } = await api.getWorkerProfile();
                     setIsAvailable(data.availability);
+                    setWorkerRating(data.averageRating || 0);
+                    setTotalRatings(data.totalRatings || 0);
                 } catch {
                     console.error('Could not fetch initial availability status.');
                 }
@@ -172,7 +190,8 @@ const Header = () => {
     }, [role]);
 
     let dashboardLink = '/';
-    if (role === 'worker') dashboardLink = '/worker/dashboard';
+    if (isShopOwnerLoggedIn) dashboardLink = '/shop/dashboard';
+    else if (role === 'worker') dashboardLink = '/worker/dashboard';
     else if (role === 'client') dashboardLink = '/client/dashboard';
     else if (role === 'admin') dashboardLink = '/admin/dashboard';
 
@@ -283,7 +302,7 @@ const Header = () => {
                             </div>
                         </Link>
 
-                        {!token && (
+                        {!isLoggedIn && (
                             <>
                                 {/* About Us Link - Only for non-logged in users */}
                                 <a href="#about-us" className={navLinkClass('')}>
@@ -305,7 +324,7 @@ const Header = () => {
                             </>
                         )}
 
-                        {token ? (
+                        {isLoggedIn ? (
                             <>
                                 {/* Dashboard */}
                                 <Link to={dashboardLink} className={navLinkClass(dashboardLink)}>
@@ -321,7 +340,7 @@ const Header = () => {
                                 </Link>
 
                                 {/* Enhanced Worker Availability Toggle */}
-                                {role === 'worker' && (
+                                {currentRole === 'worker' && (
                                     <motion.div
                                         whileHover={{ scale: 1.02 }}
                                         className="relative px-2 lg:px-3 py-1.5 bg-gradient-to-r from-gray-50 to-gray-100 rounded-full border border-gray-200 shadow-sm"
@@ -370,9 +389,9 @@ const Header = () => {
                                 )}
 
                                 {/* Enhanced Notification Bell */}
-                                {(role === 'worker' || role === 'client' || role === 'admin') && (
+                                {(currentRole === 'worker' || currentRole === 'client' || currentRole === 'admin') && (
                                     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                        <NotificationBell role={role} />
+                                        <NotificationBell role={currentRole} />
                                     </motion.div>
                                 )}
 
@@ -388,16 +407,22 @@ const Header = () => {
                                         className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-2.5 py-1.5 rounded-full bg-gradient-to-r from-gray-50 to-white border border-gray-200 hover:border-orange-300 hover:shadow-md transition-all duration-300 group"
                                     >
                                         <div className="relative">
-                                            <img
-                                                src={
-                                                    user?.photo
-                                                        ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
-                                                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true&size=32`
-                                                }
-                                                alt="Profile"
-                                                className="w-7 h-7 lg:w-8 lg:h-8 rounded-full object-cover border-2 border-orange-300 shadow-sm"
-                                            />
-                                            {isAvailable && role === 'worker' && (
+                                            {currentRole === 'admin' ? (
+                                                <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 border-2 border-orange-300 shadow-sm flex items-center justify-center text-white font-bold text-xs lg:text-sm">
+                                                    {user?.name?.charAt(0).toUpperCase() || 'A'}
+                                                </div>
+                                            ) : (
+                                                <img
+                                                    src={
+                                                        isShopOwnerLoggedIn
+                                                            ? (getImageUrl(shopData?.shopLogo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(shopData?.shopName || 'S')}&background=f97316&color=fff&bold=true&size=32`)
+                                                            : (getImageUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true&size=32`)
+                                                    }
+                                                    alt="Profile"
+                                                    className="w-7 h-7 lg:w-8 lg:h-8 rounded-full object-cover border-2 border-orange-300 shadow-sm"
+                                                />
+                                            )}
+                                            {isAvailable && currentRole === 'worker' && (
                                                 <motion.div
                                                     animate={{ scale: [1, 1.2, 1] }}
                                                     transition={{ duration: 2, repeat: Infinity }}
@@ -406,7 +431,9 @@ const Header = () => {
                                             )}
                                         </div>
                                         <span className="text-xs lg:text-sm font-bold text-gray-700 hidden lg:block">
-                                            {user?.name?.split(' ')[0] || 'User'}
+                                            {isShopOwnerLoggedIn 
+                                                ? (shopData?.shopName?.split(' ')[0] || 'Shop') 
+                                                : (user?.name?.split(' ')[0] || 'User')}
                                         </span>
                                         <motion.div
                                             animate={{ rotate: dropdownOpen ? 180 : 0 }}
@@ -428,40 +455,77 @@ const Header = () => {
                                                 {/* Profile Header */}
                                                 <div className="relative px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
                                                     <div className="flex items-center gap-3">
-                                                        <img
-                                                            src={
-                                                                user?.photo
-                                                                    ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
-                                                                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true&size=48`
-                                                            }
-                                                            alt="Profile"
-                                                            className="w-12 h-12 rounded-full object-cover border-3 border-orange-300 shadow-md"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <p className="text-base font-bold text-gray-900">{user?.name}</p>
-                                                            <p className="text-xs text-orange-600 font-medium mt-0.5">
-                                                                {role === 'worker' ? `ID: ${user?.karigarId}` : 'Premium Client'}
-                                                            </p>
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                <div className="flex items-center gap-0.5">
-                                                                    <Star size={10} className="text-yellow-500 fill-yellow-500" />
-                                                                    <span className="text-[10px] text-gray-500">4.9 ★</span>
-                                                                </div>
-                                                                <div className="w-1 h-1 rounded-full bg-gray-300" />
-                                                                <div className="flex items-center gap-0.5">
-                                                                    <Award size={10} className="text-orange-500" />
-                                                                    <span className="text-[10px] text-gray-500">Verified</span>
-                                                                </div>
+                                                        {currentRole === 'admin' ? (
+                                                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 border-3 border-orange-300 shadow-md flex items-center justify-center text-white font-bold text-lg">
+                                                                {user?.name?.charAt(0).toUpperCase() || 'A'}
                                                             </div>
+                                                        ) : (
+                                                            <img
+                                                                src={
+                                                                    isShopOwnerLoggedIn
+                                                                        ? (getImageUrl(shopData?.shopLogo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(shopData?.shopName || 'S')}&background=f97316&color=fff&bold=true&size=48`)
+                                                                        : (getImageUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true&size=48`)
+                                                                }
+                                                                alt="Profile"
+                                                                className="w-12 h-12 rounded-full object-cover border-3 border-orange-300 shadow-md"
+                                                            />
+                                                        )}
+                                                        <div className="flex-1">
+                                                            <p className="text-base font-bold text-gray-900">
+                                                                {isShopOwnerLoggedIn ? shopData?.shopName : user?.name}
+                                                            </p>
+                                                            {isShopOwnerLoggedIn ? (
+                                                                <>
+                                                                    <p className="text-xs text-orange-600 font-medium mt-0.5">
+                                                                        {shopData?.category || 'Shop Owner'}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-gray-500 mt-0.5">
+                                                                        Status: <span className="capitalize font-semibold text-green-600">{shopData?.verificationStatus}</span>
+                                                                    </p>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <p className="text-xs text-orange-600 font-medium mt-0.5">
+                                                                        {currentRole === 'worker' ? `ID: ${user?.karigarId}` : currentRole === 'admin' ? 'Administrator' : 'Premium Client'}
+                                                                    </p>
+                                                                    {currentRole === 'worker' && (
+                                                                        <div className="flex items-center gap-2 mt-1">
+                                                                            <div className="flex items-center gap-0.5">
+                                                                                <Star size={10} className="text-yellow-500 fill-yellow-500" />
+                                                                                <span className="text-[10px] text-gray-500">{workerRating} ★</span>
+                                                                            </div>
+                                                                            <div className="w-1 h-1 rounded-full bg-gray-300" />
+                                                                            <div className="flex items-center gap-0.5">
+                                                                                <Award size={10} className="text-orange-500" />
+                                                                                <span className="text-[10px] text-gray-500">Verified</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            )}
                                                         </div>
-                                                        {role === 'client' && (
+                                                        {currentRole === 'client' && !isShopOwnerLoggedIn && currentRole !== 'admin' && (
                                                             <Crown size={20} className="text-yellow-500" />
                                                         )}
                                                     </div>
                                                 </div>
 
                                                 {/* Menu Items */}
-                                                {role === 'worker' && (
+                                                {isShopOwnerLoggedIn && (
+                                                    <>
+                                
+                                                        <MenuItem 
+                                                            icon={Settings} 
+                                                            title="Settings" 
+                                                            subtitle="Account preferences"
+                                                            to="/shop/dashboard"
+                                                            onClick={() => setDropdownOpen(false)}
+                                                            iconColor="text-purple-500"
+                                                            bgColor="bg-purple-50"
+                                                        />
+                                                    </>
+                                                )}
+                                                {currentRole === 'worker' && (
                                                     <>
                                                         <MenuItem 
                                                             icon={User} 
@@ -494,7 +558,7 @@ const Header = () => {
                                                     </>
                                                 )}
 
-                                                {role === 'client' && (
+                                                {currentRole === 'client' && !isShopOwnerLoggedIn && (
                                                     <>
                                                         <MenuItem 
                                                             icon={Settings} 
@@ -562,8 +626,8 @@ const Header = () => {
 
                     {/* Mobile Controls - Only visible on mobile/tablet */}
                     <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
-                        {token && (role === 'worker' || role === 'client' || role === 'admin') && (
-                            <NotificationBell role={role} />
+                        {isLoggedIn && (currentRole === 'worker' || currentRole === 'client' || currentRole === 'admin') && (
+                            <NotificationBell role={currentRole} />
                         )}
                         <LanguageSwitcher />
                         <motion.button
@@ -595,7 +659,7 @@ const Header = () => {
                                 onClick={() => setMobileMenuOpen(false)} 
                             />
 
-                            {!token && (
+                            {!isLoggedIn && (
                                 <>
                                     <a 
                                         href="#about-us"
@@ -617,7 +681,7 @@ const Header = () => {
                                 </>
                             )}
 
-                            {token ? (
+                            {isLoggedIn ? (
                                 <>
                                     <MobileMenuItem 
                                         icon={LayoutDashboard} 
@@ -626,7 +690,7 @@ const Header = () => {
                                         onClick={() => setMobileMenuOpen(false)} 
                                     />
 
-                                    {role === 'worker' && (
+                                    {currentRole === 'worker' && (
                                         <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200">
                                             <div className="flex items-center gap-2">
                                                 <div className={`w-2.5 h-2.5 rounded-full ${isAvailable ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
@@ -654,23 +718,44 @@ const Header = () => {
                                             <div className="flex items-center gap-3">
                                                 <img
                                                     src={
-                                                        user?.photo
-                                                            ? (user.photo.startsWith('http') ? user.photo : `http://localhost:5000/${user.photo}`)
-                                                            : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true`
+                                                        isShopOwnerLoggedIn
+                                                            ? (getImageUrl(shopData?.shopLogo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(shopData?.shopName || 'S')}&background=f97316&color=fff&bold=true`)
+                                                            : (getImageUrl(user?.photo) || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=f97316&color=fff&bold=true`)
                                                     }
                                                     alt="Profile"
                                                     className="w-10 h-10 rounded-full object-cover border-2 border-orange-300"
                                                 />
                                                 <div>
-                                                    <p className="text-sm font-bold text-gray-900">{user?.name}</p>
+                                                    <p className="text-sm font-bold text-gray-900">
+                                                        {isShopOwnerLoggedIn ? shopData?.shopName : user?.name}
+                                                    </p>
                                                     <p className="text-xs text-orange-600 mt-0.5">
-                                                        {role === 'worker' ? user?.karigarId : 'Client Account'}
+                                                        {isShopOwnerLoggedIn 
+                                                            ? (shopData?.category || 'Shop Owner')
+                                                            : (currentRole === 'worker' ? user?.karigarId : 'Client Account')
+                                                        }
                                                     </p>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {role === 'worker' && (
+                                        {isShopOwnerLoggedIn && (
+                                            <>
+                                                <MobileMenuItem 
+                                                    icon={User} 
+                                                    title="View Profile" 
+                                                    to="/shop/profile" 
+                                                    onClick={() => setMobileMenuOpen(false)} 
+                                                />
+                                                <MobileMenuItem 
+                                                    icon={Settings} 
+                                                    title="Dashboard Settings" 
+                                                    to="/shop/dashboard" 
+                                                    onClick={() => setMobileMenuOpen(false)} 
+                                                />
+                                            </>
+                                        )}
+                                        {currentRole === 'worker' && (
                                             <>
                                                 <MobileMenuItem 
                                                     icon={User} 
@@ -693,7 +778,7 @@ const Header = () => {
                                             </>
                                         )}
 
-                                        {role === 'client' && (
+                                        {currentRole === 'client' && !isShopOwnerLoggedIn && (
                                             <MobileMenuItem 
                                                 icon={Settings} 
                                                 title="Settings" 

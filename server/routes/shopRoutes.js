@@ -46,6 +46,8 @@ router.post('/auth/send-mobile-otp',   shopAuth.sendMobileOtp);
 router.post('/auth/verify-mobile-otp', shopAuth.verifyMobileOtp);
 router.post('/auth/send-email-otp',    shopAuth.sendEmailOtp);
 router.post('/auth/verify-email-otp',  shopAuth.verifyEmailOtp);
+router.post('/auth/send-login-otp',    shopAuth.sendLoginOtp);
+router.post('/auth/verify-login-otp',  shopAuth.verifyLoginOtp);
 
 router.post('/auth/register', upload.fields([
     { name: 'ownerPhoto', maxCount: 1 },
@@ -63,6 +65,7 @@ router.put('/profile', protectShop, upload.fields([
     { name: 'shopLogo',   maxCount: 1 },
     { name: 'ownerPhoto', maxCount: 1 },
 ]), shopCtrl.updateShopProfile);
+router.delete('/account/delete', protectShop, shopCtrl.deleteShopAccount);
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
 router.get('/products',        protectShop, shopCtrl.getProducts);

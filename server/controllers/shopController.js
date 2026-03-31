@@ -49,6 +49,30 @@ exports.updateShopProfile = async (req, res) => {
     }
 };
 
+exports.deleteShopAccount = async (req, res) => {
+    try {
+        const shop = await Shop.findById(req.shop.id);
+        if (!shop) return res.status(404).json({ message: 'Shop not found.' });
+
+        // Delete all products associated with this shop
+        await Product.deleteMany({ shop: req.shop.id });
+
+        // Delete all transactions associated with this shop
+        await Transaction.deleteMany({ shop: req.shop.id });
+
+        // Delete all coupons associated with this shop
+        await Coupon.deleteMany({ shop: req.shop.id });
+
+        // Delete the shop itself
+        await Shop.findByIdAndDelete(req.shop.id);
+
+        return res.json({ message: 'Account deleted successfully.' });
+    } catch (err) {
+        console.error('deleteShopAccount:', err);
+        return res.status(500).json({ message: 'Account deletion failed.' });
+    }
+};
+
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
 exports.getProducts = async (req, res) => {
     try {

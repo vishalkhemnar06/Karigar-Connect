@@ -38,8 +38,10 @@ export function ActionModal({ alert, action, onClose }) {
         if (isDelete && confirmed !== 'DELETE') return setError('Type DELETE to confirm permanent removal.');
 
         const result = await dispatch(takeAdminAction({
-            userId: alert.user_id, userRole: alert.user_role,
-            action, reason: message.trim(),
+            user_id: alert.user_id, 
+            user_role: alert.user_role,
+            action, 
+            reason: message.trim(),
         }));
 
         if (takeAdminAction.fulfilled.match(result)) {

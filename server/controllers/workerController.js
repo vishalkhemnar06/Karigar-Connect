@@ -657,7 +657,16 @@ exports.getWorkerProfile = async (req, res) => {
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const normalized = await normalizeWorkerDocumentUrls(w);
         const sanitized = sanitizeWorkerSensitiveFields(normalized);
-        return res.json(sanitized);
+        
+        // Calculate average rating
+        const ratings = await Rating.find({ worker: req.user.id });
+        const avgStars = ratings.length ? Math.round((ratings.reduce((sum, r) => sum + (r.stars || 0), 0) / ratings.length) * 10) / 10 : 0;
+        
+        return res.json({
+            ...sanitized,
+            averageRating: avgStars,
+            totalRatings: ratings.length,
+        });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 

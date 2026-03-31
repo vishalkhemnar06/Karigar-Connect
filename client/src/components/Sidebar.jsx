@@ -45,8 +45,8 @@ const Sidebar = () => {
         { to: '/worker/dashboard', icon: <LayoutDashboard size={20} />, text: t('worker_sidebar.dashboard', 'Dashboard') },
         { to: '/worker/job-requests', icon: <Briefcase size={20} />, text: t('worker_sidebar.job_requests', 'Job Requests') },
         { to: '/worker/job-bookings', icon: <Calendar size={20} />, text: t('worker_sidebar.my_bookings', 'My Bookings') },
-        { to: '/worker/direct-invites', icon: <Sparkles size={20} />, text: 'Direct Invites', isNew: true },
-        { to: '/worker/shops', icon: <Store size={20} />, text: t('worker_sidebar.shops', 'Shops'), isNew: true },
+        { to: '/worker/direct-invites', icon: <Sparkles size={20} />, text: 'Direct Invites', isNew: false },
+        { to: '/worker/shops', icon: <Store size={20} />, text: t('worker_sidebar.shops', 'Shops'), isNew: false },
         { to: '/worker/community', icon: <MessageSquare size={20} />, text: t('worker_sidebar.community', 'Community') },
         { to: '/worker/create-group', icon: <Users size={20} />, text: t('worker_sidebar.create_group', 'Create Group') },
         { to: '/worker/my-groups', icon: <Layers size={20} />, text: t('worker_sidebar.my_groups', 'My Groups') },
@@ -119,7 +119,7 @@ const Sidebar = () => {
                     {/* Footer */}
                     <div className="p-4 border-t border-orange-100">
                         <div className="text-center text-xs text-gray-400">
-                            © 2024 KarigarConnect
+                              &copy; {new Date().getFullYear()} KarigarConnect™.
                         </div>
                     </div>
                 </div>
@@ -169,7 +169,7 @@ const Sidebar = () => {
                 {/* Desktop Footer */}
                 <div className="p-4 border-t border-orange-100">
                     <div className="text-center text-xs text-gray-400">
-                        <p>© 2024 KarigarConnect</p>
+                        <p>   &copy; {new Date().getFullYear()} KarigarConnect™.</p>
                         <p className="mt-1">Version 2.0</p>
                     </div>
                 </div>

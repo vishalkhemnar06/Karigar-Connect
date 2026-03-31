@@ -107,13 +107,14 @@ export const shopSendMobileOtp   = (d)  => API.post('/api/shop/auth/send-mobile-
 export const shopVerifyMobileOtp = (d)  => API.post('/api/shop/auth/verify-mobile-otp', d);
 export const shopSendEmailOtp    = (d)  => API.post('/api/shop/auth/send-email-otp',    d);
 export const shopVerifyEmailOtp  = (d)  => API.post('/api/shop/auth/verify-email-otp',  d);
+export const shopSendLoginOtp    = (d)  => API.post('/api/shop/auth/send-login-otp',    d);
+export const shopVerifyLoginOtp  = (d)  => API.post('/api/shop/auth/verify-login-otp',  d);
 export const shopRegister        = (fd) => API.post('/api/shop/auth/register',           fd, mp);
 export const shopLogin           = (d)  => API.post('/api/shop/auth/login',              d);
 
 // ── SHOP DASHBOARD ────────────────────────────────────────────────────────────
 export const getShopProfile      = ()       => API.get('/api/shop/profile');
-export const updateShopProfile   = (fd)     => API.put('/api/shop/profile',               fd, mp);
-export const getShopProducts     = ()       => API.get('/api/shop/products');
+export const updateShopProfile   = (fd)     => API.put('/api/shop/profile',               fd, mp);export const deleteShopAccount   = ()       => API.delete('/api/shop/account/delete');export const getShopProducts     = ()       => API.get('/api/shop/products');
 export const addShopProduct      = (fd)     => API.post('/api/shop/products',              fd, mp);
 export const editShopProduct     = (id, fd) => API.put(`/api/shop/products/${id}`,        fd, mp);
 export const deleteShopProduct   = (id)     => API.delete(`/api/shop/products/${id}`);

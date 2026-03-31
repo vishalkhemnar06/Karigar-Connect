@@ -5,7 +5,15 @@ const fraudService = require('../utils/fraudService');
 const ensureInternalSecret = (req, res) => {
     const expected = process.env.INTERNAL_SECRET;
     const received = req.headers['x-internal-secret'];
-    if (!expected || received !== expected) {
+    
+    if (!expected) {
+        console.warn('[fraudNotify] ⚠️  INTERNAL_SECRET not configured in .env');
+        res.status(401).json({ message: 'Unauthorized internal request.' });
+        return false;
+    }
+    
+    if (received !== expected) {
+        console.warn(`[fraudNotify] ❌ Secret mismatch: received="${received || 'MISSING'}"`);
         res.status(401).json({ message: 'Unauthorized internal request.' });
         return false;
     }
@@ -97,12 +105,19 @@ exports.fraudNotify = async (req, res) => {
 
     try {
         const { userId, title, message, mobile, smsMessage, action } = req.body;
+        console.log('[fraudNotify] Received fraud action notification:', { userId, action, mobile });
 
         if (mobile) {
-            await sendCustomSms(mobile, smsMessage || message || title);
+            const msgToSend = smsMessage || message || title;
+            console.log(`[SMS] Sending to ${mobile}...`);
+            const smsResult = await sendCustomSms(mobile, msgToSend);
+            console.log(`[SMS] Result:`, smsResult);
+        } else {
+            console.warn('[SMS] No mobile number provided, skipping SMS');
         }
 
         if (userId && action !== 'delete' && title && message) {
+            console.log('[Notification] Creating in-app notification for user:', userId);
             await createNotification({
                 userId,
                 type: 'system',
@@ -112,9 +127,10 @@ exports.fraudNotify = async (req, res) => {
             });
         }
 
+        console.log('[fraudNotify] ✅ Fraud notification completed');
         return res.json({ success: true });
     } catch (error) {
-        console.error('fraudNotify:', error.message);
+        console.error('[fraudNotify] ❌ Error:', error.message, error.stack);
         return res.status(500).json({ message: 'Failed to deliver fraud notification.' });
     }
 };

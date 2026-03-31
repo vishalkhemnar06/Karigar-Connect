@@ -56,6 +56,8 @@ const shopSchema = new mongoose.Schema({
     mobileOtpExpiry: { type: Date,   select: false },
     emailOtp:        { type: String, select: false },
     emailOtpExpiry:  { type: Date,   select: false },
+    loginOtp:        { type: String, select: false },
+    loginOtpExpiry:  { type: Date,   select: false },
 
     // Analytics helpers (updated on coupon use)
     totalSales:       { type: Number, default: 0 },
