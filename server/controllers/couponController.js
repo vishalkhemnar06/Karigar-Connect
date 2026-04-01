@@ -91,3 +91,82 @@ exports.getMyCoupons = async (req, res) => {
         return res.json(coupons);
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
+
+// ── GET COUPON DETAILS BY CODE (for coupon history lookup) ───────────────────
+exports.getCouponByCode = async (req, res) => {
+    try {
+        const { code } = req.params;
+        const Transaction = require('../models/transactionModel');
+        const Product = require('../models/productModel');
+        const Rating = require('../models/ratingModel');
+        
+        const coupon = await Coupon.findOne({ code: code.toUpperCase() })
+            .populate('worker', 'name karigarId')
+            .populate('usedBy', 'shopName shopLogo shopPhoto ownerName mobile city address category');
+        
+        if (!coupon) {
+            return res.status(404).json({ message: 'Coupon not found.' });
+        }
+
+        // Return basic info if coupon not used yet
+        if (!coupon.isUsed) {
+            return res.json({
+                code: coupon.code,
+                discountPct: coupon.discountPct,
+                isUsed: false,
+                expiresAt: coupon.expiresAt,
+                message: 'This coupon has not been used yet.',
+            });
+        }
+
+        // Fetch transaction and product details for used coupon
+        const transaction = await Transaction.findOne({ coupon: coupon._id })
+            .populate('product', 'name image price');
+        
+        let productDetails = null;
+        let productRating = null;
+
+        if (transaction && transaction.product) {
+            // Get average rating for the product from all users
+            const ratings = await Rating.find({ 'jobId': { $exists: true } })
+                .select('stars');
+            const avgRating = ratings.length > 0 
+                ? (ratings.reduce((sum, r) => sum + r.stars, 0) / ratings.length).toFixed(1)
+                : null;
+
+            productDetails = {
+                productName: transaction.product.name,
+                productImage: transaction.productPhoto || transaction.product.image,
+                productPrice: transaction.originalPrice,
+                discountAmount: transaction.discountAmount,
+                finalPrice: transaction.finalPrice,
+            };
+
+            productRating = avgRating;
+        }
+
+        // Return detailed info if coupon is used
+        return res.json({
+            code: coupon.code,
+            discountPct: coupon.discountPct,
+            isUsed: true,
+            usedAt: coupon.usedAt,
+            expiresAt: coupon.expiresAt,
+            shop: coupon.usedBy ? {
+                shopName: coupon.usedBy.shopName,
+                shopLogo: coupon.usedBy.shopLogo,
+                shopPhoto: coupon.usedBy.shopPhoto,
+                ownerName: coupon.usedBy.ownerName,
+                mobile: coupon.usedBy.mobile,
+                city: coupon.usedBy.city,
+                address: coupon.usedBy.address,
+                category: coupon.usedBy.category,
+            } : null,
+            product: productDetails,
+            productRating: productRating,
+        });
+    } catch (err) {
+        console.error('getCouponByCode:', err);
+        return res.status(500).json({ message: 'Failed to retrieve coupon.' });
+    }
+};

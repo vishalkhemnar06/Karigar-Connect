@@ -7,5 +7,6 @@ const { protect, worker } = require('../middleware/authMiddleware');
 
 router.get('/my',    protect, worker, ctrl.getMyCoupons);
 router.post('/generate', protect, worker, ctrl.getOrGenerateCoupon);
+router.get('/code/:code', protect, worker, ctrl.getCouponByCode);
 
 module.exports = router;

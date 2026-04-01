@@ -1003,32 +1003,32 @@ const AdminDashboard = () => {
                                     ) : filteredData.length > 0 ? (
                                         <>
                                             {/* Card Grid - Show on all devices */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                                                 {filteredData.map(user => {
                                                     const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
                                                     const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
                                                     const claimedByOther = lockOwnerId && !claimedByMe;
 
                                                     return (
-                                                        <div key={user._id} className="bg-white rounded-xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300">
-                                                            {/* Minimal Header Bar */}
-                                                            <div className="h-10 bg-gradient-to-r from-orange-300 via-orange-200 to-amber-200"></div>
+                                                        <div key={user._id} className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
+                                                            {/* Enhanced Header Bar */}
+                                                            <div className="h-16 bg-gradient-to-r from-orange-400 via-orange-300 to-amber-300"></div>
 
                                                             {/* Avatar */}
-                                                            <div className="-mt-8 flex justify-center">
+                                                            <div className="-mt-10 flex justify-center">
                                                                 <img
                                                                     src={getImageUrl(user.photo)}
                                                                     alt={user.name}
-                                                                    className="w-16 h-16 rounded-full border-2 border-white object-cover object-center shadow"
+                                                                    className="w-24 h-24 rounded-full border-4 border-white object-cover object-center shadow-lg"
                                                                     onError={(e) => { e.target.src = '/default-avatar.png'; }}
                                                                 />
                                                             </div>
 
-                                                            {/* Card Body - Compact */}
-                                                            <div className="p-3 pt-1 space-y-2 relative">
+                                                            {/* Card Body - Enhanced */}
+                                                            <div className="p-6 pt-2 space-y-4 relative">
                                                                 {/* Status Badge - Top Right */}
                                                                 {user.role === 'worker' && (
-                                                                    <div className={`absolute top-3 right-3 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm ${
+                                                                    <div className={`absolute top-6 right-6 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md ${
                                                                         user.verificationStatus === 'approved' ? 'bg-green-500' :
                                                                         user.verificationStatus === 'pending' ? 'bg-yellow-500' :
                                                                         user.verificationStatus === 'blocked' ? 'bg-red-500' :
@@ -1040,56 +1040,56 @@ const AdminDashboard = () => {
 
                                                                 {/* Name and Role */}
                                                                 <div>
-                                                                    <h3 className="font-bold text-sm text-gray-900 truncate">{user.name}</h3>
-                                                                    <p className="text-[10px] text-gray-500 capitalize">{user.role}</p>
+                                                                    <h3 className="font-bold text-lg text-gray-900 truncate">{user.name}</h3>
+                                                                    <p className="text-sm text-gray-500 capitalize font-medium">{user.role}</p>
                                                                 </div>
 
                                                                 {/* Karigar ID */}
                                                                 {user.karigarId && (
-                                                                    <p className="text-[10px] text-gray-400 font-mono font-semibold bg-gray-50 p-1.5 rounded border border-gray-200">{user.karigarId}</p>
+                                                                    <p className="text-xs text-gray-500 font-mono font-semibold bg-gray-100 p-2.5 rounded-lg border border-gray-300">{user.karigarId}</p>
                                                                 )}
 
                                                                 {/* Contact */}
-                                                                <div className="flex items-center gap-1 text-[10px] text-gray-600 bg-blue-50 p-1.5 rounded border border-blue-200">
-                                                                    <Phone size={12} className="text-blue-500 flex-shrink-0" />
-                                                                    <span className="font-mono">{user.mobile}</span>
+                                                                <div className="flex items-center gap-2 text-sm text-gray-700 bg-blue-50 p-3 rounded-lg border border-blue-300">
+                                                                    <Phone size={16} className="text-blue-600 flex-shrink-0" />
+                                                                    <span className="font-mono font-medium">{user.mobile}</span>
                                                                 </div>
 
                                                                 {/* Score / Email */}
                                                                 {user.role === 'worker' ? (
-                                                                    <div className="flex gap-1">
-                                                                        <div className="flex-1 bg-orange-50 p-1.5 rounded border border-orange-200 text-center">
-                                                                            <p className="text-[9px] text-orange-600 font-semibold">SCORE</p>
-                                                                            <p className="text-sm font-black text-orange-700">{user.points || 0}</p>
+                                                                    <div className="flex gap-2">
+                                                                        <div className="flex-1 bg-gradient-to-br from-orange-50 to-orange-100 p-3 rounded-lg border border-orange-300 text-center">
+                                                                            <p className="text-xs text-orange-700 font-bold tracking-wider">SCORE</p>
+                                                                            <p className="text-2xl font-black text-orange-700">{user.points || 0}</p>
                                                                         </div>
-                                                                        <div className="flex-1 bg-purple-50 p-1.5 rounded border border-purple-200 text-center">
-                                                                            <p className="text-[9px] text-purple-600 font-semibold">EXP</p>
-                                                                            <p className="text-sm font-black text-purple-700">{user.experience}y</p>
+                                                                        <div className="flex-1 bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-lg border border-purple-300 text-center">
+                                                                            <p className="text-xs text-purple-700 font-bold tracking-wider">EXP</p>
+                                                                            <p className="text-2xl font-black text-purple-700">{user.experience}y</p>
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="text-[10px] text-gray-700 break-all bg-blue-50 p-1.5 rounded border border-blue-200">
-                                                                        <p className="font-semibold text-blue-700 text-[9px] mb-0.5">Email</p>
-                                                                        <p className="font-mono text-[9px] truncate">{user.email}</p>
+                                                                    <div className="text-sm text-gray-700 break-all bg-blue-50 p-3 rounded-lg border border-blue-300">
+                                                                        <p className="font-bold text-blue-700 text-xs mb-1 tracking-wider">EMAIL</p>
+                                                                        <p className="font-mono text-xs truncate">{user.email}</p>
                                                                     </div>
                                                                 )}
 
                                                                 {/* Lock Info */}
                                                                 {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
-                                                                    <div className="text-[9px] bg-yellow-50 p-1.5 rounded border border-yellow-200 flex items-center gap-1">
-                                                                        <span className="text-sm">🔒</span>
-                                                                        <span className="font-semibold text-yellow-700 truncate">{user.reviewLock.lockedBy.name || 'Admin'}</span>
+                                                                    <div className="text-xs bg-yellow-50 p-3 rounded-lg border border-yellow-300 flex items-center gap-2">
+                                                                        <span className="text-lg">🔒</span>
+                                                                        <span className="font-bold text-yellow-800 truncate">Locked by {user.reviewLock.lockedBy.name || 'Admin'}</span>
                                                                     </div>
                                                                 )}
 
-                                                                {/* Action Buttons - Compact */}
-                                                                <div className="space-y-1">
+                                                                {/* Action Buttons - Enhanced */}
+                                                                <div className="space-y-2 pt-2">
                                                                     {/* View Button */}
                                                                     <button 
                                                                         onClick={() => navigate(`/admin/workers/${user.karigarId || user._id}`)} 
-                                                                        className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                     >
-                                                                        <Eye size={12} /> View
+                                                                        <Eye size={16} /> View Details
                                                                     </button>
 
                                                                     {/* Worker Specific Actions */}
@@ -1099,30 +1099,30 @@ const AdminDashboard = () => {
                                                                                 return (
                                                                                     <button 
                                                                                         onClick={() => handleClaimWorker(user._id)} 
-                                                                                        className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-blue-500 to-cyan-500 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                                     >
-                                                                                        <ShieldCheck size={12} /> Claim
+                                                                                        <ShieldCheck size={16} /> Claim Review
                                                                                     </button>
                                                                                 );
                                                                             }
 
                                                                             if (claimedByMe) {
                                                                                 return (
-                                                                                    <div className="flex gap-1">
+                                                                                    <div className="flex gap-2">
                                                                                         <button 
                                                                                             onClick={() => setUserToVerify(user)} 
-                                                                                            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-md text-white py-1.5 rounded-lg text-[9px] font-bold transition-all active:scale-95"
+                                                                                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                                         >
-                                                                                            <Check size={11} /> ✓
+                                                                                            <Check size={16} /> Approve
                                                                                         </button>
                                                                                         <button 
                                                                                             onClick={() => {
                                                                                                 const reason = window.prompt('Enter rejection reason:') || '';
                                                                                                 handleStatusUpdate(user._id, 'rejected', 0, reason);
                                                                                             }}
-                                                                                            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-md text-white py-1.5 rounded-lg text-[9px] font-bold transition-all active:scale-95"
+                                                                                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                                         >
-                                                                                            <X size={11} /> ✗
+                                                                                            <X size={16} /> Reject
                                                                                         </button>
                                                                                     </div>
                                                                                 );
@@ -1130,8 +1130,8 @@ const AdminDashboard = () => {
 
                                                                             if (claimedByOther) {
                                                                                 return (
-                                                                                    <div className="w-full bg-gray-200 text-gray-700 py-1.5 rounded-lg text-[10px] font-bold text-center">
-                                                                                        🔒 Locked
+                                                                                    <div className="w-full bg-gray-300 text-gray-800 py-2.5 rounded-lg text-sm font-bold text-center">
+                                                                                        🔒 Under Review
                                                                                     </div>
                                                                                 );
                                                                             }
@@ -1144,9 +1144,9 @@ const AdminDashboard = () => {
                                                                     {user.role === 'worker' && user.verificationStatus === 'approved' && (
                                                                         <button 
                                                                             onClick={() => handleStatusUpdate(user._id, 'blocked')}
-                                                                            className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-gray-500 to-gray-600 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-gray-600 to-gray-700 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                         >
-                                                                            <ShieldX size={12} /> Block
+                                                                            <ShieldX size={16} /> Block Account
                                                                         </button>
                                                                     )}
 
@@ -1154,18 +1154,18 @@ const AdminDashboard = () => {
                                                                     {user.role === 'worker' && user.verificationStatus === 'blocked' && (
                                                                         <button 
                                                                             onClick={() => handleStatusUpdate(user._id, 'unblocked')}
-                                                                            className="w-full flex items-center justify-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-md text-white py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                         >
-                                                                            <ShieldCheck size={12} /> Unblock
+                                                                            <ShieldCheck size={16} /> Unblock Account
                                                                         </button>
                                                                     )}
 
                                                                     {/* Delete - Always Available */}
                                                                     <button 
                                                                         onClick={() => handleDelete(user._id, user.name, user.role)}
-                                                                        className="w-full flex items-center justify-center gap-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                                                        className="w-full flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 border border-red-300 text-red-600 py-2 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                     >
-                                                                        <Trash2 size={12} /> Delete
+                                                                        <Trash2 size={16} /> Delete
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -1175,7 +1175,10 @@ const AdminDashboard = () => {
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="text-center py-12 text-gray-400">No records found.</div>
+                                        <div className="text-center py-16 text-gray-400">
+                                            <div className="text-4xl mb-4">📋</div>
+                                            <p className="text-lg font-medium">No records found.</p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
