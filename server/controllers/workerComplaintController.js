@@ -6,6 +6,7 @@
 
 const Complaint = require('../models/complaintModel');
 const User      = require('../models/userModel');
+const Job       = require('../models/jobModel');
 const { createNotification } = require('../utils/notificationHelper');
 
 const VALID_CATEGORIES    = ['Platform', 'Client', 'Payment', 'Safety', 'Technical', 'Other'];
@@ -209,14 +210,57 @@ exports.searchClient = async (req, res) => {
     try {
         const { query } = req.query;
         if (!query || query.trim().length < 2) return res.json([]);
+
         const clients = await User.find({
             role: 'client',
             $or: [
                 { name:   { $regex: query.trim(), $options: 'i' } },
                 { mobile: { $regex: query.trim(), $options: 'i' } },
+                { userId: { $regex: query.trim(), $options: 'i' } },
+                { karigarId: { $regex: query.trim(), $options: 'i' } },
             ],
-        }).select('name karigarId photo mobile').limit(10);
-        return res.json(clients);
+        })
+            .select('name userId karigarId photo mobile email address city locality state createdAt')
+            .sort({ updatedAt: -1 })
+            .limit(10)
+            .lean();
+
+        if (!clients.length) return res.json([]);
+
+        const clientIds = clients.map((c) => c._id);
+
+        const [postedCounts, completedCounts] = await Promise.all([
+            Job.aggregate([
+                { $match: { postedBy: { $in: clientIds } } },
+                { $group: { _id: '$postedBy', count: { $sum: 1 } } },
+            ]),
+            Job.aggregate([
+                { $match: { postedBy: { $in: clientIds }, status: 'completed' } },
+                { $group: { _id: '$postedBy', count: { $sum: 1 } } },
+            ]),
+        ]);
+
+        const postedMap = new Map(postedCounts.map((x) => [String(x._id), x.count]));
+        const completedMap = new Map(completedCounts.map((x) => [String(x._id), x.count]));
+
+        const enriched = clients.map((client) => {
+            const id = String(client._id);
+            const normalizedAddress = {
+                ...(client.address || {}),
+                locality: client.address?.locality || client.locality || '',
+                city: client.address?.city || client.city || '',
+                state: client.address?.state || client.state || '',
+            };
+
+            return {
+                ...client,
+                address: normalizedAddress,
+                totalPosted: postedMap.get(id) || 0,
+                totalCompleted: completedMap.get(id) || 0,
+            };
+        });
+
+        return res.json(enriched);
     } catch (err) {
         return res.status(500).json({ message: 'Search failed.' });
     }

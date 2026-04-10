@@ -109,7 +109,7 @@ exports.deleteShop = async (req, res) => {
 exports.getAllCoupons = async (req, res) => {
     try {
         const coupons = await Coupon.find({})
-           .populate('worker', 'name karigarId photo')
+           .populate('worker', 'name userId karigarId photo')
             .populate('usedBy', 'shopName')
             .sort({ createdAt: -1 });
         return res.json(coupons);
@@ -121,7 +121,7 @@ exports.getCouponUsageHistory = async (req, res) => {
     try {
         const txns = await Transaction.find({})
             .populate('shop',    'shopName ownerName')
-           .populate('worker', 'name karigarId photo')
+           .populate('worker', 'name userId karigarId photo')
             .populate('product', 'name price image')
             .populate('coupon',  'code discountPct')
             .sort({ createdAt: -1 });
@@ -133,7 +133,7 @@ exports.getCouponUsageHistory = async (req, res) => {
 exports.getUnclaimedCoupons = async (req, res) => {
     try {
         const coupons = await Coupon.find({ isUsed: false, expiresAt: { $gt: new Date() } })
-           .populate('worker', 'name karigarId photo')
+           .populate('worker', 'name userId karigarId photo')
             .sort({ createdAt: -1 });
         return res.json(coupons);
     } catch { return res.status(500).json({ message: 'Failed.' }); }

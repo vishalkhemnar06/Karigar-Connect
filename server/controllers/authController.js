@@ -21,7 +21,7 @@ const otpStore = new Map(); // key: mobile/email → { otp, expiry }
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const generateKarigarId = () =>
+const generateUserId = () =>
     'KC-' + Math.random().toString(36).substring(2, 7).toUpperCase() +
     Math.floor(100 + Math.random() * 900);
 
@@ -119,12 +119,12 @@ exports.verifyOtp = async (req, res) => {
     } catch { return res.status(500).json({ message: 'Failed to verify OTP.' }); }
 };
 
-// Public endpoint to let workers check application status using mobile or karigarId.
+// Public endpoint to let workers check application status using mobile or userId.
 exports.getWorkerApplicationStatus = async (req, res) => {
     try {
         const identifierRaw = (req.body?.identifier || req.query?.identifier || '').trim();
         if (!identifierRaw) {
-            return res.status(400).json({ message: 'Phone number or KarigarID is required.' });
+            return res.status(400).json({ message: 'Phone number or User ID is required.' });
         }
 
         const identifier = identifierRaw.toUpperCase();
@@ -132,9 +132,10 @@ exports.getWorkerApplicationStatus = async (req, res) => {
             role: 'worker',
             $or: [
                 { mobile: identifierRaw },
+                { userId: identifier },
                 { karigarId: identifier },
             ],
-        }).select('name mobile karigarId verificationStatus rejectionReason');
+        }).select('name mobile userId karigarId verificationStatus rejectionReason');
 
         if (!worker) {
             return res.status(404).json({
@@ -161,6 +162,7 @@ exports.getWorkerApplicationStatus = async (req, res) => {
             worker: {
                 name: worker.name,
                 mobile: worker.mobile,
+                userId: worker.userId || worker.karigarId,
                 karigarId: worker.karigarId,
             },
         });
@@ -324,7 +326,7 @@ exports.registerWorker = async (req, res) => {
 
         // ── Create user ───────────────────────────────────────────────────────
         const user   = await User.create({
-            karigarId: generateKarigarId(),
+            userId: generateUserId(),
             role: 'worker', name: name.trim(), dob, age: computedAge, mobile, phoneType,
             email: email || null, password,
             address:   {
@@ -641,7 +643,7 @@ exports.registerClient = async (req, res) => {
 
         // ── Create client ─────────────────────────────────────────────────────
         const user   = await User.create({
-            karigarId: generateKarigarId(),
+            userId: generateUserId(),
             role: 'client', name: name.trim(), mobile, email,
             age: ageNum,
             dob: dobDate,
@@ -713,7 +715,9 @@ exports.registerClient = async (req, res) => {
             token,
             user: {
                 id: user._id, name: user.name, role: 'client',
-                photo: user.photo, karigarId: user.karigarId,
+                photo: user.photo,
+                userId: user.userId || user.karigarId,
+                karigarId: user.karigarId,
             },
             faceVerification: faceVerificationStatus,
             addressVerificationNeeded: true, // Client needs to verify address with OTP
@@ -757,7 +761,7 @@ exports.verifyAddressOtp = async (req, res) => {
         client.addressVerificationOtpExpiry = undefined;
         await client.save();
 
-        console.log(`[AddressVerification] Client ${client.karigarId} address verified ✅`);
+        console.log(`[AddressVerification] Client ${client.userId || client.karigarId} address verified ✅`);
 
         return res.json({
             message: 'Address verified successfully!',
@@ -790,7 +794,7 @@ exports.loginWithPassword = async (req, res) => {
                 return res.status(401).json({ message: 'Invalid mobile number or password.' });
             }
 
-            const adminUser = await User.findOne({ role: 'admin', mobile: submittedMobile }).select('+password name karigarId photo mobile role');
+            const adminUser = await User.findOne({ role: 'admin', mobile: submittedMobile }).select('+password name userId karigarId photo mobile role');
             if (!adminUser) {
                 await logAuditEvent({ action: 'failed_login', req, metadata: { role: 'admin', mobile: submittedMobile, reason: 'admin_not_found' } });
                 return res.status(401).json({ message: 'Invalid mobile number or password.' });
@@ -813,6 +817,7 @@ exports.loginWithPassword = async (req, res) => {
                     name: adminUser.name,
                     role: 'admin',
                     photo: adminUser.photo || null,
+                    userId: adminUser.userId || adminUser.karigarId,
                     karigarId: adminUser.karigarId,
                 },
             });
@@ -848,7 +853,7 @@ exports.loginWithPassword = async (req, res) => {
         return res.json({
             message: 'Login successful.',
             token,
-            user: { id: user._id, name: user.name, role: user.role, photo: user.photo, karigarId: user.karigarId },
+            user: { id: user._id, name: user.name, role: user.role, photo: user.photo, userId: user.userId || user.karigarId, karigarId: user.karigarId },
         });
     } catch { return res.status(500).json({ message: 'Login failed.' }); }
 };
@@ -902,7 +907,7 @@ exports.loginWithOtp = async (req, res) => {
         return res.json({
             message: 'Login successful.',
             token,
-            user: { id: user._id, name: user.name, role: user.role, photo: user.photo, karigarId: user.karigarId },
+            user: { id: user._id, name: user.name, role: user.role, photo: user.photo, userId: user.userId || user.karigarId, karigarId: user.karigarId },
         });
     } catch { return res.status(500).json({ message: 'Login failed.' }); }
 };

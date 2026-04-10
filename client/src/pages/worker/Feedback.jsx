@@ -163,7 +163,6 @@ function AnalyticsPanel({ feedback }) {
         ? (feedback.reduce((s, f) => s + (f.stars || 0), 0) / feedback.length)
         : 0;
     const points   = feedback.reduce((s, f) => s + (f.points || 0), 0);
-    const best     = feedback.length ? Math.max(...feedback.map(f => f.stars || 0)) : 0;
     const fiveStarCount = feedback.filter(f => f.stars === 5).length;
     const fourStarCount = feedback.filter(f => f.stars === 4).length;
     const threeStarCount = feedback.filter(f => f.stars === 3).length;
@@ -240,7 +239,7 @@ function AnalyticsPanel({ feedback }) {
                     <p className="text-[9px] md:text-xs text-gray-500 mt-0.5 font-semibold">{feedback.length} total ratings</p>
                 </div>
                 <div className="flex gap-1">
-                    {[5, 4, 3].map((star, idx) => {
+                    {[5, 4, 3].map((star) => {
                         const count = star === 5 ? fiveStarCount : star === 4 ? fourStarCount : threeStarCount;
                         return (
                             <div key={star} className="text-center">
@@ -437,7 +436,6 @@ const Feedback = () => {
     const [search,    setSearch]    = useState('');
     const [sortBy,    setSortBy]    = useState('date-desc');
     const [showSort,  setShowSort]  = useState(false);
-    const [viewMode,  setViewMode]  = useState('all'); // 'all' | 'analytics'
 
     const load = async () => {
         setLoading(true);

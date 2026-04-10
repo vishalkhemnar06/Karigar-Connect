@@ -1,9 +1,5 @@
-// src/pages/worker/MyGroups.jsx
-// MOBILE-FRIENDLY VERSION - All original functionality preserved
-// Enhanced with: Responsive design, touch-friendly interactions, mobile-optimized layouts
-
-import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Users, UserPlus, Trash2, LogOut, Copy, CheckCircle,
   ChevronRight, User, Shield, RefreshCw, AlertTriangle,
@@ -14,6 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getMyGroupsAPI, addMemberAPI, deleteGroupAPI, leaveGroupAPI } from '../../api';
+import WorkerProfilePreviewModal from '../../components/WorkerProfilePreviewModal';
 const getImage = (path) => {
   if (!path) return null;
 
@@ -35,7 +32,12 @@ const useToast = () => {
     setToasts(p => [...p, { id, msg, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
   }, []);
-  return { toasts, success: m => show(m, 'success'), error: m => show(m, 'error'), info: m => show(m, 'info') };
+
+  const success = useCallback((m) => show(m, 'success'), [show]);
+  const error = useCallback((m) => show(m, 'error'), [show]);
+  const info = useCallback((m) => show(m, 'info'), [show]);
+
+  return useMemo(() => ({ toasts, success, error, info }), [toasts, success, error, info]);
 };
 
 const ToastList = ({ toasts }) => (
@@ -114,7 +116,7 @@ const ConfirmDialog = ({ message, onConfirm, onCancel, danger = true }) => (
 /* ════════════════════════════════════════════
    MEMBER PROFILE MODAL - Mobile Optimized
 ════════════════════════════════════════════ */
-const MemberProfileModal = ({ member, isGroupAdmin, onClose, navigate }) => {
+const MemberProfileModal = ({ member, isGroupAdmin, onClose, onPreviewProfile }) => {
   if (!member) return null;
 
   const skills = Array.isArray(member.skills)
@@ -170,7 +172,7 @@ const MemberProfileModal = ({ member, isGroupAdmin, onClose, navigate }) => {
                   </span>
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-orange-100 font-mono font-semibold break-all">{member.karigarId}</p>
+              <p className="text-xs sm:text-sm text-orange-100 font-mono font-semibold break-all">{member.userId || member.karigarId}</p>
               {memberSince && (
                 <p className="text-[10px] sm:text-xs text-orange-100/80 mt-1 flex items-center gap-1">
                   <Calendar size={10} /> Member since {memberSince}
@@ -220,7 +222,12 @@ const MemberProfileModal = ({ member, isGroupAdmin, onClose, navigate }) => {
 
           {/* View full profile button */}
           <button
-            onClick={() => { onClose(); navigate(`/profile/public/${member.karigarId}`); }}
+            onClick={() => {
+              const previewId = member?._id || member?.userId || member?.karigarId;
+              if (!previewId) return;
+              onClose();
+              onPreviewProfile(previewId);
+            }}
             className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white py-3 sm:py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:shadow-lg transition-all active:scale-95"
           >
             <ExternalLink size={14} /> View Full Profile
@@ -448,7 +455,7 @@ const GroupCard = ({ group, onRefresh, toast, idx, onViewMember }) => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-gray-800 truncate">{member.name}</p>
-                            <p className="text-[10px] text-gray-500 font-mono truncate">{member.karigarId}</p>
+                            <p className="text-[10px] text-gray-500 font-mono truncate">{member.userId || member.karigarId}</p>
                           </div>
                           <ChevronRight size={14} className="text-orange-400 flex-shrink-0" />
                         </button>
@@ -572,13 +579,14 @@ const GroupCard = ({ group, onRefresh, toast, idx, onViewMember }) => {
    MAIN - Mobile Optimized
 ════════════════════════════════════════════ */
 export default function MyGroups() {
-  const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [viewMember, setViewMember] = useState(null);
+  const [previewWorkerId, setPreviewWorkerId] = useState('');
   const toast = useToast();
+  const toastError = toast.error;
 
   const fetchGroups = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -587,12 +595,12 @@ export default function MyGroups() {
       setGroups(res.data || []);
     } catch (err) {
       console.error('fetchGroups error:', err);
-      if (!silent) toast.error('Could not load groups.');
+      if (!silent) toastError('Could not load groups.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [toastError]);
 
   useEffect(() => { fetchGroups(); }, [fetchGroups]);
 
@@ -615,10 +623,17 @@ export default function MyGroups() {
             member={viewMember.member}
             isGroupAdmin={viewMember.isAdmin}
             onClose={() => setViewMember(null)}
-            navigate={navigate}
+            onPreviewProfile={setPreviewWorkerId}
           />
         )}
       </AnimatePresence>
+
+      {previewWorkerId && (
+        <WorkerProfilePreviewModal
+          workerId={previewWorkerId}
+          onClose={() => setPreviewWorkerId('')}
+        />
+      )}
 
       {/* Header */}
       <motion.div

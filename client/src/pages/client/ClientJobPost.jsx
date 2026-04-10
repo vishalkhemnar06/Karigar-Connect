@@ -51,7 +51,7 @@ const todayStr = () => {
 };
 
 const ensureNonNeg = (v, fb = 0) => { const n = Number(v); return isNaN(n) || n < 0 ? fb : n; };
-const MIN_AI_DESC_CHARS = 60;
+const MIN_AI_DESC_CHARS = 10;
 const OTHER_CITY_OPTION = '__OTHER_CITY__';
 
 const buildThreeLineTitleDraft = ({
@@ -424,7 +424,11 @@ export default function ClientJobPost() {
             setLoadingQ(true);
             const { data } = await aiGenerateQuestions({ workDescription: description, city });
             setQuestions(data.questions || []); setStep(1);
-        } catch { toast.error('Could not generate questions.'); setQuestions([]); setStep(1); }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Could not generate questions.');
+            setQuestions([]);
+            setStep(1);
+        }
         finally { setLoadingQ(false); }
     };
 

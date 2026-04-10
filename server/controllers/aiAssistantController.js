@@ -101,7 +101,7 @@ Output ONLY valid JSON, NO markdown:
   "recommendation": "One sentence recommendation"
 }
 skill must be one of: plumber, electrician, carpenter, painter, tiler, mason, welder, ac_technician, pest_control, cleaner, handyman, gardener
-hours = total for the skill (not per worker). Be realistic.`;
+hours = total for the skill (not per worker). Be realistic. Estimate using current city-specific Indian labour rates and keep the final labour total aligned with those rates.`;
 
 // ── SYSTEM PROMPT: Full Advisory Report ──────────────────────────────────────
 const ADVISOR_SYSTEM_PROMPT = `You are KarigarConnect's expert AI Advisor — a professional home consultant for Indian clients (2025).
@@ -154,6 +154,8 @@ STRICT RULES:
 - skill: plumber, electrician, carpenter, painter, tiler, mason, welder, ac_technician, pest_control, cleaner, handyman, gardener ONLY
 - materialsBreakdown: use real Indian brand names (Asian Paints, Berger, Pidilite, Birla White, Jaquar, Havells, Polycab, etc.)
 - equipmentBreakdown: 2025 Indian market rates — roller ₹400-500, brushes ₹200-350, drop cloth ₹100-200, sandpaper ₹100-150/set, masking tape ₹150-200/3 rolls, drill ₹800-1200, grinder ₹600-900, tile cutter ₹500-800
+- labour costs must use the current city-specific Indian rate table and realistic worker counts/hours
+- return labour, material, equipment, and grand total so the UI can show one combined estimate block
 - colourAndStyleAdvice: ONLY populate if opinions about colour/style were provided. Otherwise empty string.
 - visualizationDescription: vivid, specific, 2-3 sentences describing the final result
 - budgetAdvice: ALWAYS provide if clientBudget was specified — be honest if budget is too low
@@ -205,7 +207,7 @@ const calculateConfidenceScore = ({
         ? clamp(55 + (Array.isArray(imageFindings) ? imageFindings.length * 8 : 0), 55, 95)
         : 45;
     const inputCompletenessScore = clamp(
-        (descLen >= 60 ? 60 : 35) + answeredCount * 8 + opinionsCount * 4,
+        (descLen >= 10 ? 60 : 35) + answeredCount * 8 + opinionsCount * 4,
         40,
         98
     );
@@ -360,10 +362,13 @@ const generatePreviewImage = async ({ sourceImageUrl, prompt, style = '' }) => {
 // ROUTE: POST /api/ai/generate-questions  (UPDATED — returns opinionQuestions too)
 // ══════════════════════════════════════════════════════════════════════════════
 exports.generateQuestions = async (req, res) => {
-    const { workDescription, city = '' } = req.body;
-    if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
-    if (String(workDescription).trim().length < 60) {
-        return res.status(400).json({ message: 'Please enter at least 60 characters in work description.' });
+    const { city = '' } = req.body;
+    const workDescription = String(req.body?.workDescription || req.body?.description || '').trim();
+    if (!workDescription) {
+        return res.status(400).json({ message: 'Work description is required.' });
+    }
+    if (workDescription.length < 10) {
+        return res.status(400).json({ message: 'Please enter at least 10 characters in work description.' });
     }
     try {
         const completion = await groq.chat.completions.create({
@@ -476,7 +481,9 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
         const equipmentBreakdown = aiResult.equipmentBreakdown || [];
         const materialsTotal     = materialsBreakdown.reduce((s,m)=>s+(Number(m.estimatedCost)||0),0);
         const equipmentTotal     = equipmentBreakdown.reduce((s,e)=>s+(Number(e.estimatedCost)||0),0);
-        const grandTotal         = budgetResult.totalEstimated + materialsTotal + equipmentTotal;
+        const labourTotal        = budgetResult.totalEstimated;
+        const combinedTotal      = labourTotal + materialsTotal + equipmentTotal;
+        const grandTotal         = combinedTotal;
 
         const clientBudgetNum = Number(clientBudget) || 0;
         const isOverBudget    = clientBudgetNum > 0 && grandTotal > clientBudgetNum;
@@ -513,10 +520,12 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             isAIEstimate:         true,
             skillBlocks,
             budgetBreakdown:      budgetResult,
+            labourTotal,
             materialsBreakdown,
             equipmentBreakdown,
             materialsTotal,
             equipmentTotal,
+            combinedTotal,
             grandTotal,
             clientBudget:         clientBudgetNum,
             isOverBudget,

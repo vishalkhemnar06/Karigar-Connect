@@ -105,7 +105,6 @@ const Leaderboard = () => {
         
         const totalPoints = leaders.reduce((sum, leader) => sum + leader.points, 0);
         const avgPoints = Math.round(totalPoints / leaders.length);
-        const topPoints = leaders[0]?.points || 0;
         const top3Points = leaders.slice(0, 3).reduce((sum, l) => sum + l.points, 0);
         
         return (

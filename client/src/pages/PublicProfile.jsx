@@ -22,11 +22,13 @@ import {
   Heart,
   Share2,
   Eye,
-  ZoomIn
+  ZoomIn,
+  X
 } from 'lucide-react';
 
-const PublicProfile = () => {
-  const { workerId } = useParams();
+const PublicProfile = ({ workerId: workerIdProp, inline = false, onClose }) => {
+  const params = useParams();
+  const workerId = workerIdProp || params.workerId;
   const navigate = useNavigate();
   const [worker, setWorker] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +45,7 @@ const PublicProfile = () => {
       try {
         const { data } = await api.getPublicWorkerProfile(workerId);
         setWorker(data);
-      } catch (err) {
+      } catch {
         setError("Could not find this worker's profile.");
       } finally {
         setLoading(false);
@@ -51,6 +53,15 @@ const PublicProfile = () => {
     };
     fetchProfile();
   }, [workerId]);
+
+  const handleExit = () => {
+    if (inline && onClose) {
+      onClose();
+      return;
+    }
+
+    navigate(-1);
+  };
 
   const getAge = (dob) => {
     if (!dob) return null;
@@ -85,7 +96,7 @@ const PublicProfile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-white p-4">
+      <div className={inline ? 'flex items-center justify-center bg-white p-4' : 'min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-white p-4'}>
         <div className="text-center">
           <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-sm sm:text-lg font-semibold text-orange-700">Loading profile...</p>
@@ -96,7 +107,7 @@ const PublicProfile = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-amber-50 p-4">
+      <div className={inline ? 'flex items-center justify-center bg-white p-4' : 'min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-amber-50 p-4'}>
         <div className="bg-white shadow-xl rounded-2xl p-6 sm:p-8 text-center max-w-sm w-full">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <User size={32} className="text-red-500" />
@@ -104,10 +115,10 @@ const PublicProfile = () => {
           <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Profile Not Found</h2>
           <p className="text-gray-600 text-sm sm:text-base mb-4">{error}</p>
           <button 
-            onClick={() => navigate(-1)} 
+            onClick={handleExit} 
             className="bg-gradient-to-r from-orange-500 to-amber-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:shadow-lg transition-all active:scale-95"
           >
-            Go Back
+            {inline ? 'Close Preview' : 'Go Back'}
           </button>
         </div>
       </div>
@@ -115,7 +126,7 @@ const PublicProfile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-white pb-20">
+    <div className={inline ? 'w-full bg-white' : 'min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-white pb-20'}>
       {/* Full Screen Image Modal */}
       {selectedImage && (
         <div 
@@ -136,14 +147,16 @@ const PublicProfile = () => {
         </div>
       )}
 
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <div className={inline ? 'w-full px-3 sm:px-4 py-4 sm:py-6' : 'max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6'}>
         {/* Back Button */}
-        <button 
-          onClick={() => navigate(-1)} 
-          className="flex items-center gap-1.5 text-gray-600 hover:text-orange-600 mb-4 sm:mb-6 text-sm sm:text-base font-semibold transition-all active:scale-95"
-        >
-          <ChevronLeft size={16} /> Back
-        </button>
+        {!inline && (
+          <button 
+            onClick={() => navigate(-1)} 
+            className="flex items-center gap-1.5 text-gray-600 hover:text-orange-600 mb-4 sm:mb-6 text-sm sm:text-base font-semibold transition-all active:scale-95"
+          >
+            <ChevronLeft size={16} /> Back
+          </button>
+        )}
 
         {/* Profile Card */}
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden">

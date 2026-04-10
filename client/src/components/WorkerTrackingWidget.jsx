@@ -6,7 +6,7 @@
 // ADD this import + usage to WorkerDashboard.jsx (see instructions at bottom).
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useWorkerLocationSharing from '../hooks/useWorkerLocationSharing';
 import { getWorkerTrackingJobs } from '../api';
@@ -164,7 +164,9 @@ export default function WorkerTrackingWidget() {
                     ['scheduled', 'running'].includes(t.job?.status)
                 );
                 setTrackingJobs(active);
-            } catch {}
+            } catch (err) {
+                console.debug('Failed to fetch worker tracking jobs:', err);
+            }
             finally { setLoading(false); }
         })();
     }, []);

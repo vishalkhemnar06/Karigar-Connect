@@ -140,7 +140,7 @@ exports.verifyCoupon = async (req, res) => {
         if (!code) return res.status(400).json({ message: 'Coupon code required.' });
 
         const coupon = await Coupon.findOne({ code: code.toUpperCase().trim() })
-            .populate('worker', 'name karigarId photo points experience');
+            .populate('worker', 'name userId karigarId photo points experience');
 
         if (!coupon)       return res.status(404).json({ message: 'Invalid coupon code.' });
         if (coupon.isUsed) return res.status(400).json({ message: 'This coupon has already been used.' });
@@ -221,7 +221,7 @@ exports.applyCoupon = async (req, res) => {
 exports.getTransactions = async (req, res) => {
     try {
         const txns = await Transaction.find({ shop: req.shop.id })
-            .populate('worker',  'name karigarId photo')
+            .populate('worker',  'name userId karigarId photo')
             .populate('product', 'name price image')
             .populate('coupon',  'code discountPct')
             .sort({ createdAt: -1 });

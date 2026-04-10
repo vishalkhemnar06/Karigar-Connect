@@ -3,7 +3,7 @@
 // Features: Responsive design, touch-friendly, modern gradients, animations
 
 import { getImageUrl } from '../../constants/config';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,7 +39,7 @@ const ViewProfile = () => {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [activeSection, setActiveSection] = useState('personal');
-    const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const [, setShowMobileMenu] = useState(false);
     const [locationError, setLocationError] = useState('');
     const [selectedDocument, setSelectedDocument] = useState(null);
     const [viewerBlobUrl, setViewerBlobUrl] = useState('');
@@ -258,7 +258,7 @@ const ViewProfile = () => {
             const safeName = String(profile?.name || 'worker-profile').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
             pdf.save(`${safeName}-portfolio.pdf`);
             toast.success('Portfolio PDF downloaded.', { id: toastId });
-        } catch (error) {
+        } catch {
             toast.error('Failed to generate portfolio PDF.', { id: toastId });
         } finally {
             setGeneratingPdf(false);
@@ -493,7 +493,7 @@ const ViewProfile = () => {
         setReferencesData(data.references || []);
     };
 
-    const fetchProfile = async () => {
+    const fetchProfile = useCallback(async () => {
         setLoading(true);
         try {
             const { data } = await api.getWorkerProfile();
@@ -503,20 +503,20 @@ const ViewProfile = () => {
             setSelectedDocument(null);
             setViewerError('');
             setViewerKind('');
-            if (viewerBlobUrl) {
-                URL.revokeObjectURL(viewerBlobUrl);
-                setViewerBlobUrl('');
-            }
-        } catch (error) {
+            setViewerBlobUrl((prev) => {
+                if (prev) URL.revokeObjectURL(prev);
+                return '';
+            });
+        } catch {
             toast.error("Could not load profile.");
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchProfile();
-    }, []);
+    }, [fetchProfile]);
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
     

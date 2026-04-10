@@ -78,6 +78,30 @@ const formatAddress = (address = {}) => {
     return chunks.join(', ') || 'Not provided';
 };
 
+const findWorkerByIdOrKarigarId = async (identifier, options = {}) => {
+    const { select = '', populate = null } = options;
+    const value = String(identifier || '').trim();
+    if (!value) return null;
+
+    const queries = [];
+    if (mongoose.Types.ObjectId.isValid(value)) {
+        queries.push({ _id: value });
+    }
+    queries.push({ userId: value });
+    queries.push({ karigarId: value });
+
+    for (const query of queries) {
+        let finder = User.findOne({ role: 'worker', ...query });
+        if (select) finder = finder.select(select);
+        if (populate) finder = finder.populate(populate);
+
+        const worker = await finder;
+        if (worker) return worker;
+    }
+
+    return null;
+};
+
 const buildFallbackWorkerSummary = (worker = {}) => {
     const skills = getWorkerSkills(worker.skills);
     const summaryPoints = [
@@ -1788,7 +1812,9 @@ exports.inviteWorkersToJob = async (req, res) => {
 
 exports.getWorkerPublicProfile = async (req, res) => {
     try {
-        const w = await User.findById(req.params.workerId).select('name photo karigarId skills overallExperience points verificationStatus location address mobile travelMethod');
+        const w = await findWorkerByIdOrKarigarId(req.params.workerId, {
+            select: 'name photo karigarId skills overallExperience points verificationStatus location address mobile travelMethod',
+        });
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const completedJobs = await Job.countDocuments({ assignedTo: w._id, status: 'completed' });
         const ratings       = await Rating.find({ worker: w._id }).populate('client','name photo').sort({ createdAt: -1 }).limit(10);

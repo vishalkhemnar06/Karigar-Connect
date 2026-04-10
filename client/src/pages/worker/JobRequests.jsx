@@ -1,7 +1,3 @@
-// client/src/pages/worker/JobRequests.jsx
-// MOBILE-FRIENDLY VERSION - All original functionality preserved
-// Enhanced with: Better touch targets, responsive layouts, mobile-optimized interactions
-
 import { useState, useEffect, useRef } from 'react';
 import {
     getAvailableJobs,
@@ -901,7 +897,9 @@ export default function JobRequests() {
         if (!workerId || !job?._id || !semanticMatchesByJob[job._id]) return;
         try {
             await recordSemanticFeedback({ jobId: job._id, workerId, event: 'viewed', source: 'worker_ui' });
-        } catch { }
+        } catch (err) {
+            console.debug('Failed to record semantic feedback:', err);
+        }
     };
 
     const loadJobs = async () => {

@@ -38,7 +38,6 @@ export default function WorkerLiveTracking() {
 
     // Server snapshot (for client's static location)
     const [locationData, setLocationData]  = useState(null);
-    const [loadingSnap,  setLoadingSnap]   = useState(true);
     const [snapError,    setSnapError]     = useState('');
     const pollRef = useRef(null);
 
@@ -50,8 +49,6 @@ export default function WorkerLiveTracking() {
             setSnapError('');
         } catch (err) {
             setSnapError(err?.response?.data?.message || 'Could not load location data.');
-        } finally {
-            setLoadingSnap(false);
         }
     }, [jobId]);
 

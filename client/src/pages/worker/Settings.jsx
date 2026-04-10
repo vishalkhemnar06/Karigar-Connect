@@ -273,7 +273,6 @@ function DeleteAccountSection() {
     const [loading, setLoading] = useState(false);
     const [maskedMobile, setMaskedMobile] = useState('');
     const [verifiedToken, setVerifiedToken] = useState('');
-    const [countdown, setCountdown] = useState(0);
 
     const handleSendOtp = async () => {
         setLoading(true);
@@ -281,9 +280,8 @@ function DeleteAccountSection() {
             const { data } = await api.sendPasswordChangeOtp();
             setMaskedMobile(data.mobile || '');
             setStep('otp_sent');
-            setCountdown(60);
             toast.success('OTP sent for verification');
-        } catch (err) {
+        } catch {
             toast.error('Could not send OTP.');
         } finally {
             setLoading(false);
@@ -297,7 +295,7 @@ function DeleteAccountSection() {
             setVerifiedToken(data.verifiedToken);
             setStep('otp_verified');
             toast.success('OTP verified');
-        } catch (err) {
+        } catch {
             toast.error('Incorrect OTP.');
         } finally {
             setLoading(false);
@@ -312,7 +310,7 @@ function DeleteAccountSection() {
             toast.success('Account deleted permanently.');
             localStorage.clear();
             navigate('/register');
-        } catch (err) {
+        } catch {
             toast.error('Failed to delete account.');
         } finally {
             setLoading(false);

@@ -1,13 +1,6 @@
-// src/pages/worker/CreateGroup.jsx
-// MOBILE-FRIENDLY VERSION
-//   - All converted to Tailwind with responsive design
-//   - Touch-friendly buttons (min-height 48px)
-//   - Improved spacing and layout for mobile
-//   - Better form validation feedback
-//   - Smooth animations and transitions
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   Users, UserPlus, ArrowLeft, AlertCircle,
   CheckCircle, Sparkles, Hash, FileText, User,
@@ -67,7 +60,7 @@ export default function CreateGroup() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [form, setForm] = useState({ name: '', description: '', memberKarigarId: '' });
+  const [form, setForm] = useState({ name: '', description: '', memberUserId: '' });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState(false);
@@ -80,14 +73,18 @@ export default function CreateGroup() {
 
   const validate = () => {
     const e = {};
+    let storedUser = null;
+    try { storedUser = JSON.parse(localStorage.getItem('user') || '{}'); } catch { storedUser = {}; }
+    const currentUserId = (storedUser?.userId || storedUser?.karigarId || '').toUpperCase();
+
     if (!form.name.trim()) e.name = 'Group name is required';
     else if (form.name.trim().length < 3) e.name = 'Name must be at least 3 characters';
     else if (form.name.trim().length > 60) e.name = 'Name cannot exceed 60 characters';
     
-    if (!form.memberKarigarId.trim()) e.memberKarigarId = "Second member's Karigar ID is required";
-    else if (!/^K\d+$/i.test(form.memberKarigarId.trim())) e.memberKarigarId = 'Format: K followed by digits (e.g., K123456)';
-    else if (form.memberKarigarId.trim().toUpperCase() === localStorage.getItem('user')?.karigarId?.toUpperCase()) {
-      e.memberKarigarId = 'You cannot add yourself as a member';
+    if (!form.memberUserId.trim()) e.memberUserId = "Second member's User ID is required";
+    else if (!/^K\d+$/i.test(form.memberUserId.trim())) e.memberUserId = 'Format: K followed by digits (e.g., K123456)';
+    else if (form.memberUserId.trim().toUpperCase() === currentUserId) {
+      e.memberUserId = 'You cannot add yourself as a member';
     }
     return e;
   };
@@ -116,7 +113,7 @@ export default function CreateGroup() {
   };
 
   const charLeft = 200 - (form.description?.length || 0);
-  const isKarigarIdValid = form.memberKarigarId && /^K\d+$/i.test(form.memberKarigarId.trim());
+  const isUserIdValid = form.memberUserId && /^K\d+$/i.test(form.memberUserId.trim());
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50/40 via-white to-orange-50/20 p-3 sm:p-4 pb-24 sm:pb-8">
@@ -258,7 +255,7 @@ export default function CreateGroup() {
                 <Shield size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-xs sm:text-sm text-blue-700 font-medium leading-relaxed">
-                    Enter the <strong>Karigar ID</strong> of the second member
+                    Enter the <strong>User ID</strong> of the second member
                   </p>
                   <code className="inline-block mt-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono">
                     K531792
@@ -267,27 +264,27 @@ export default function CreateGroup() {
               </div>
 
               <Field 
-                label="Second Member's Karigar ID" 
+                label="Second Member's User ID" 
                 required 
-                error={errors.memberKarigarId}
+                error={errors.memberUserId}
                 icon={User}
                 hint="Format: K followed by 6+ digits"
               >
                 <div className="relative">
                   <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400 pointer-events-none" />
                   <input
-                    name="memberKarigarId"
-                    value={form.memberKarigarId}
+                    name="memberUserId"
+                    value={form.memberUserId}
                     onChange={handleChange}
-                    onFocus={() => setFocusedField('karigarId')}
+                    onFocus={() => setFocusedField('userId')}
                     onBlur={() => setFocusedField(null)}
                     placeholder="K123456"
                     autoCapitalize="characters"
                     inputMode="text"
                     className={`w-full pl-9 pr-3 py-3 border-2 rounded-xl text-sm font-mono font-semibold tracking-wider uppercase transition-all min-h-[48px] ${
-                      errors.memberKarigarId 
+                      errors.memberUserId 
                         ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-50'
-                        : focusedField === 'karigarId'
+                        : focusedField === 'userId'
                           ? 'border-orange-400 bg-white ring-4 ring-orange-50'
                           : 'border-orange-200 bg-orange-50 focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-50'
                     }`}
@@ -296,25 +293,25 @@ export default function CreateGroup() {
               </Field>
 
               {/* Valid Format Indicator */}
-              {form.memberKarigarId && !errors.memberKarigarId && isKarigarIdValid && (
+              {form.memberUserId && !errors.memberUserId && isUserIdValid && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left">
                   <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center flex-shrink-0 shadow-sm">
                     <CheckCircle size={14} className="text-white" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-xs sm:text-sm font-bold text-green-800">{form.memberKarigarId.toUpperCase()}</p>
+                    <p className="text-xs sm:text-sm font-bold text-green-800">{form.memberUserId.toUpperCase()}</p>
                     <p className="text-[10px] sm:text-[11px] text-green-600 font-medium">Valid format ✓</p>
                   </div>
                 </div>
               )}
 
               {/* Invalid Format Warning */}
-              {form.memberKarigarId && !errors.memberKarigarId && !isKarigarIdValid && (
+              {form.memberUserId && !errors.memberUserId && !isUserIdValid && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left">
                   <AlertCircle size={14} className="text-amber-600 flex-shrink-0" />
                   <div>
                     <p className="text-xs sm:text-sm font-medium text-amber-800">Invalid format</p>
-                    <p className="text-[10px] sm:text-[11px] text-amber-600">Karigar ID should start with K followed by digits</p>
+                    <p className="text-[10px] sm:text-[11px] text-amber-600">User ID should start with K followed by digits</p>
                   </div>
                 </div>
               )}
@@ -322,7 +319,7 @@ export default function CreateGroup() {
           </div>
 
           {/* Preview Section - Mobile Optimized */}
-          {(form.name.trim() || form.memberKarigarId.trim()) && (
+          {(form.name.trim() || form.memberUserId.trim()) && (
             <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-3xl border-2 border-orange-100 p-6 sm:p-8 shadow-md animate-in fade-in slide-in-from-bottom">
               <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1">
                 <Sparkles size={10} /> Group Preview
@@ -339,12 +336,12 @@ export default function CreateGroup() {
                     <span className="text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-orange-500 to-amber-500 text-white px-2 py-0.5 rounded-full shadow-sm">
                       You (Admin)
                     </span>
-                    {form.memberKarigarId.trim() && isKarigarIdValid && (
+                    {form.memberUserId.trim() && isUserIdValid && (
                       <span className="text-[8px] sm:text-[9px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shadow-sm">
-                        {form.memberKarigarId.toUpperCase()}
+                        {form.memberUserId.toUpperCase()}
                       </span>
                     )}
-                    {form.memberKarigarId.trim() && !isKarigarIdValid && (
+                    {form.memberUserId.trim() && !isUserIdValid && (
                       <span className="text-[8px] sm:text-[9px] font-bold bg-red-400 text-white px-2 py-0.5 rounded-full shadow-sm">
                         Invalid ID
                       </span>
@@ -391,7 +388,7 @@ export default function CreateGroup() {
       </div>
 
       {/* Add custom styles for animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes slide-in-from-top {
           from {
             transform: translateY(-100%);

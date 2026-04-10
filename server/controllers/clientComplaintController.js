@@ -78,8 +78,8 @@ exports.getMyComplaints = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/client/complaints/search-worker
-// Search a worker by karigarId OR mobile (for the complaint form)
-// Query params: ?query=<karigarId or mobile>
+// Search a worker by userId/karigarId OR mobile (for the complaint form)
+// Query params: ?query=<userId or mobile>
 // ─────────────────────────────────────────────────────────────────────────────
 exports.searchWorker = async (req, res) => {
     try {
@@ -90,14 +90,15 @@ exports.searchWorker = async (req, res) => {
 
         const q = query.trim();
 
-        // Search by karigarId (case-insensitive) OR mobile (exact)
+        // Search by userId/karigarId (case-insensitive) OR mobile (exact)
         const worker = await User.findOne({
             role: 'worker',
             $or: [
+                { userId: { $regex: new RegExp(`^${q}$`, 'i') } },
                 { karigarId: { $regex: new RegExp(`^${q}$`, 'i') } },
                 { mobile: q },
             ],
-        }).select('_id name mobile karigarId photo skills overallExperience experience verificationStatus address');
+        }).select('_id name mobile userId karigarId photo skills overallExperience experience verificationStatus address');
 
         if (!worker) {
             return res.status(404).json({ message: 'No worker found with that ID or mobile number.' });

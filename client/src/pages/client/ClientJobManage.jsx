@@ -23,6 +23,7 @@ import {
     repostMissingSkill, dismissMissingSkill, respondToSubTaskApplicant,
     completeSubTask, initClientLocation, recordSemanticFeedback,
 } from '../../api/index';
+import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -925,7 +926,7 @@ export default function ClientJobManage() {
     const handleOpenWorkerProfile = async (workerRef) => {
         const directKarigarId = workerRef?.karigarId || workerRef?.workerKarigarId;
         if (directKarigarId) {
-            navigate(`/profile/public/${directKarigarId}`);
+            openWorkerProfilePreview(directKarigarId);
             return;
         }
 
@@ -944,7 +945,7 @@ export default function ClientJobManage() {
                 toast.error('Public profile is not available for this worker');
                 return;
             }
-            navigate(`/profile/public/${data.karigarId}`);
+            openWorkerProfilePreview(data.karigarId);
         } catch {
             toast.error('Unable to open worker profile');
         }

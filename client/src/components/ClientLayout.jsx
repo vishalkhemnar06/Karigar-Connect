@@ -6,19 +6,21 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusSquare, Briefcase, Bot,
     User, LogOut, X, Menu, ChevronRight, Sparkles,
-    AlertTriangle, Users, Camera, Home, Search, Settings,
-    Bell, ChevronLeft, History, Heart
+    AlertTriangle, Users, History, Heart
 } from 'lucide-react';
+import WorkerProfilePreviewModal from './WorkerProfilePreviewModal';
+import { WORKER_PROFILE_PREVIEW_EVENT } from '../utils/workerProfilePreview';
 
 const navItems = [
+
     { to: '/client/dashboard',  label: 'Dashboard',   icon: LayoutDashboard, desc: 'Overview & stats' },
+        { to: '/client/ai-assist',  label: 'AI Tool',     icon: Bot,             desc: 'Smart project planner' },
     { to: '/client/job-post',   label: 'Post Job',    icon: PlusSquare,      desc: 'Create new listing' },
     { to: '/client/job-manage', label: 'Manage Jobs', icon: Briefcase,       desc: 'Track all postings' },
     { to: '/client/history',    label: 'History',     icon: History,         desc: 'Past job records' },
     { to: '/client/favorites',  label: 'Favorites',   icon: Heart,           desc: 'Starred workers' },
-    { to: '/client/ai-assist',  label: 'AI Tool',     icon: Bot,             desc: 'Smart project planner' },
     { to: '/client/groups',     label: 'Groups',      icon: Users,           desc: 'Find worker teams' },
-    { to: '/client/worker-face-verify', label: 'Face Verify', icon: Camera,  desc: 'Verify worker identity' },
+    // { to: '/client/worker-face-verify', label: 'Face Verify', icon: Camera,  desc: 'Verify worker identity' },
     { to: '/client/complaints', label: 'Complaints',  icon: AlertTriangle,   desc: 'Report issues' },
     { to: '/client/profile',    label: 'Profile',     icon: User,            desc: 'Account settings' },
 ];
@@ -28,6 +30,7 @@ export default function ClientLayout() {
     const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
     const [showScrollHint, setShowScrollHint] = useState(true);
+    const [previewWorkerId, setPreviewWorkerId] = useState('');
     const bottomNavRef = useRef(null);
 
     // Check if bottom nav is scrollable
@@ -43,11 +46,27 @@ export default function ClientLayout() {
         return () => window.removeEventListener('resize', checkScrollable);
     }, []);
 
+    useEffect(() => {
+        const handleOpenPreview = (event) => {
+            const workerId = String(event?.detail?.workerId || '').trim();
+            if (workerId) {
+                setPreviewWorkerId(workerId);
+            }
+        };
+
+        window.addEventListener(WORKER_PROFILE_PREVIEW_EVENT, handleOpenPreview);
+        return () => window.removeEventListener(WORKER_PROFILE_PREVIEW_EVENT, handleOpenPreview);
+    }, []);
+
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('role');
         navigate('/login');
+    };
+
+    const closeWorkerProfilePreview = () => {
+        setPreviewWorkerId('');
     };
 
     const SidebarContent = ({ onNavClick }) => (
@@ -129,6 +148,13 @@ export default function ClientLayout() {
                 <div className="pb-20 md:pb-0">
                     <Outlet />
                 </div>
+
+                {previewWorkerId && (
+                    <WorkerProfilePreviewModal
+                        workerId={previewWorkerId}
+                        onClose={closeWorkerProfilePreview}
+                    />
+                )}
                 
                 {/* Mobile Bottom Navigation Spacer - Prevents content from hiding behind bottom nav */}
                 <div className="md:hidden h-16" />
@@ -196,7 +222,7 @@ export default function ClientLayout() {
             </div>
 
             {/* Hide scrollbar styles */}
-            <style jsx>{`
+            <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                     display: none;
                 }

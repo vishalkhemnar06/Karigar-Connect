@@ -16,10 +16,10 @@ export const getMyGroupsAPI = () =>
   axios.get(`${API}/my`, { headers: getAuthHeader() });
 
 // 3. Add Member - FIXED: Changed "add-member" to "add" to match Backend Route
-export const addMemberAPI = (groupId, karigarId) =>
+export const addMemberAPI = (groupId, userId) =>
   axios.put(
     `${API}/${groupId}/add`, 
-    { karigarId },
+    { userId },
     { headers: getAuthHeader() }
   );
 

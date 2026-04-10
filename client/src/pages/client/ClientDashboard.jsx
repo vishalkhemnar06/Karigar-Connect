@@ -7,9 +7,9 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { Link } from 'react-router-dom';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
+import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
 import {
   Search,
   MapPin,
@@ -441,12 +441,13 @@ const KarigarCard = ({ karigar, index }) => {
                   </a>
                 )}
 
-                <Link
-                  to={`/profile/public/${karigar.karigarId}`}
+                <button
+                  type="button"
+                  onClick={() => openWorkerProfilePreview(karigar._id || karigar.karigarId)}
                   className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
                 >
                   View Profile <ChevronRight size={12} />
-                </Link>
+                </button>
               </div>
 
               {/* AI Summary button */}

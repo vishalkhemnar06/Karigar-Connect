@@ -2,6 +2,7 @@ const Job = require('../models/jobModel');
 const User = require('../models/userModel');
 const Rating = require('../models/ratingModel');
 const Complaint = require('../models/complaintModel');
+const mongoose = require('mongoose');
 const crypto = require('crypto');
 const path = require('path');
 const { createNotification } = require('../utils/notificationHelper');
@@ -123,6 +124,30 @@ const normalizeWorkerDocumentUrls = async (workerDoc) => {
     }
 
     return worker;
+};
+
+const findWorkerByIdOrKarigarId = async (identifier, options = {}) => {
+    const { select = '', populate = null } = options;
+    const value = String(identifier || '').trim();
+    if (!value) return null;
+
+    const queries = [];
+    if (mongoose.Types.ObjectId.isValid(value)) {
+        queries.push({ _id: value });
+    }
+    queries.push({ userId: value });
+    queries.push({ karigarId: value });
+
+    for (const query of queries) {
+        let finder = User.findOne({ role: 'worker', ...query });
+        if (select) finder = finder.select(select);
+        if (populate) finder = finder.populate(populate);
+
+        const worker = await finder;
+        if (worker) return worker;
+    }
+
+    return null;
 };
 
 const sanitizeWorkerSensitiveFields = (workerDoc) => {
@@ -636,17 +661,28 @@ exports.cancelAcceptedJob = async (req, res) => {
 exports.getWorkerAnalytics = async (req, res) => {
     try {
         const wid = req.user.id;
+        const workerObjectId = new mongoose.Types.ObjectId(wid);
         const [c, r, p, ca] = await Promise.all([
             Job.countDocuments({ assignedTo: wid, status: 'completed' }),
             Job.countDocuments({ assignedTo: wid, status: 'running' }),
             Job.countDocuments({ applicants: { $elemMatch: { workerId: wid, status: 'pending' } } }),
             Job.countDocuments({ cancelledWorkerId: wid }),
         ]);
-        const ratings = await Rating.find({ worker: wid });
-        const avg = ratings.length ? ratings.reduce((s, r2) => s + (r2.stars || 0), 0) / ratings.length : 0;
+        const [ratingStats] = await Rating.aggregate([
+            { $match: { worker: workerObjectId } },
+            {
+                $group: {
+                    _id: null,
+                    avgStars: { $avg: '$stars' },
+                    totalRatings: { $sum: 1 },
+                },
+            },
+        ]);
+        const avg = ratingStats?.avgStars || 0;
+        const totalRatings = ratingStats?.totalRatings || 0;
         return res.json({
             completed: c, running: r, pending: p, cancelled: ca,
-            avgStars: Math.round(avg * 10) / 10, totalRatings: ratings.length,
+            avgStars: Math.round(avg * 10) / 10, totalRatings,
         });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -657,15 +693,24 @@ exports.getWorkerProfile = async (req, res) => {
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const normalized = await normalizeWorkerDocumentUrls(w);
         const sanitized = sanitizeWorkerSensitiveFields(normalized);
-        
-        // Calculate average rating
-        const ratings = await Rating.find({ worker: req.user.id });
-        const avgStars = ratings.length ? Math.round((ratings.reduce((sum, r) => sum + (r.stars || 0), 0) / ratings.length) * 10) / 10 : 0;
+        const workerObjectId = new mongoose.Types.ObjectId(req.user.id);
+        const [ratingStats] = await Rating.aggregate([
+            { $match: { worker: workerObjectId } },
+            {
+                $group: {
+                    _id: null,
+                    avgStars: { $avg: '$stars' },
+                    totalRatings: { $sum: 1 },
+                },
+            },
+        ]);
+        const avgStars = Math.round(((ratingStats?.avgStars || 0) * 10)) / 10;
+        const totalRatings = ratingStats?.totalRatings || 0;
         
         return res.json({
             ...sanitized,
             averageRating: avgStars,
-            totalRatings: ratings.length,
+            totalRatings,
         });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -830,9 +875,10 @@ exports.deleteAccount = async (req, res) => {
 
 exports.getPublicWorkerProfile = async (req, res) => {
     try {
-        const w = await User.findOne({ karigarId: req.params.id, role: 'worker' })
-            .select('-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry')
-            .populate('reviewLock.lockedBy', 'name mobile karigarId');
+        const w = await findWorkerByIdOrKarigarId(req.params.id, {
+            select: '-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry',
+            populate: { path: 'reviewLock.lockedBy', select: 'name mobile karigarId' },
+        });
         if (!w) return res.status(404).json({ message: 'Not found.' });
 
         const [completedJobs, ratings, rankCount, completedJobDocs] = await Promise.all([

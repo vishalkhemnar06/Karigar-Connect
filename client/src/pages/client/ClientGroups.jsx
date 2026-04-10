@@ -11,7 +11,7 @@ import {
     ChevronUp, Eye
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const SKILL_OPTIONS = [
@@ -20,7 +20,7 @@ const SKILL_OPTIONS = [
 ];
 
 // ── Member Profile Drawer (Mobile Optimized) ─────────────────────────────────────
-const MemberDrawer = ({ member, isAdmin, onClose, navigate }) => {
+const MemberDrawer = ({ member, isAdmin, onClose }) => {
     if (!member) return null;
     const skills = Array.isArray(member.skills)
         ? member.skills.map(s => typeof s === 'object' ? s.name : s)
@@ -124,7 +124,7 @@ const MemberDrawer = ({ member, isAdmin, onClose, navigate }) => {
                 {/* Footer */}
                 <div className="flex-shrink-0 p-4 sm:p-5 border-t border-gray-100">
                     <button
-                        onClick={() => { onClose(); navigate(`/profile/public/${member.karigarId}`); }}
+                        onClick={() => { onClose(); openWorkerProfilePreview(member?._id || member?.karigarId); }}
                         className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm shadow-lg shadow-orange-200 hover:shadow-orange-300 active:scale-95 transition-all flex items-center justify-center gap-2"
                     >
                         <ExternalLink size={14} /> View Full Profile
@@ -382,8 +382,6 @@ const GroupCard = ({ group, onViewMember, onContact }) => {
 
 // ── Main Page (Mobile Optimized) ─────────────────────────────────────────────────
 export default function ClientGroups() {
-    const navigate = useNavigate();
-
     const [groups, setGroups]         = useState([]);
     const [loading, setLoading]       = useState(true);
     const [page, setPage]             = useState(1);
@@ -424,7 +422,6 @@ export default function ClientGroups() {
                     member={viewMember.member}
                     isAdmin={viewMember.isAdmin}
                     onClose={() => setViewMember(null)}
-                    navigate={navigate}
                 />
             )}
 

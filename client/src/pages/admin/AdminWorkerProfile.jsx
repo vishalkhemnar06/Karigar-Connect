@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as api from '../../api';
-import { getImageUrl, BASE_URL } from '../../constants/config';
+import { getImageUrl } from '../../constants/config';
 import Header from '../../components/Header';
 import AdminSidebar from './AdminSidebar';
 import {
-  CheckCircle, MapPin, Phone, Calendar, Briefcase, Star, ChevronLeft,
-  X, Image, FileText, Globe, ShieldCheck,
+  Phone, FileText,
 } from 'lucide-react';
 
 const AdminWorkerProfile = () => {
@@ -22,8 +21,20 @@ const AdminWorkerProfile = () => {
   const [activeFilter, setActiveFilter] = useState('pending');
   const [currentSection, setCurrentSection] = useState('dashboard');
   const [viewMode, setViewMode] = useState('stats');
-  const [stats, setStats] = useState({});
-  const [dashboardStats, setDashboardStats] = useState({});
+  const [stats, setStats] = useState({
+    totalWorkers: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    blocked: 0,
+    totalClients: 0,
+  });
+  const [dashboardStats, setDashboardStats] = useState({
+    ivrStats: {},
+    shops: 0,
+    couponsGenerated: 0,
+    topSkills: [],
+  });
   const [viewerKind, setViewerKind] = useState('');
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerError, setViewerError] = useState('');
@@ -41,6 +52,65 @@ const AdminWorkerProfile = () => {
     };
     fetchProfile();
   }, [workerId]);
+
+  useEffect(() => {
+    const fetchSidebarData = async () => {
+      try {
+        const [workersRes, clientsRes, adminStatsRes] = await Promise.all([
+          api.getAllWorkers(),
+          api.getAllClients(),
+          api.getAdminStats(),
+        ]);
+
+        const workers = Array.isArray(workersRes.data) ? workersRes.data : [];
+        const clients = Array.isArray(clientsRes.data) ? clientsRes.data : [];
+
+        setStats({
+          totalWorkers: workers.length,
+          pending: workers.filter((w) => w.verificationStatus === 'pending').length,
+          approved: workers.filter((w) => w.verificationStatus === 'approved').length,
+          rejected: workers.filter((w) => w.verificationStatus === 'rejected').length,
+          blocked: workers.filter((w) => w.verificationStatus === 'blocked').length,
+          totalClients: clients.length,
+        });
+
+        setDashboardStats(adminStatsRes.data || {});
+      } catch {
+        // Keep profile usable even if sidebar counters fail to load.
+      }
+    };
+
+    fetchSidebarData();
+  }, []);
+
+  const handleSidebarFilterChange = (filter) => {
+    setActiveFilter(filter);
+    navigate('/admin/dashboard', {
+      state: { activeFilter: filter, currentSection: 'dashboard', viewMode: 'records' },
+    });
+  };
+
+  const handleSidebarSectionChange = (section) => {
+    setCurrentSection(section);
+
+    if (section === 'dashboard') {
+      navigate('/admin/dashboard', {
+        state: { currentSection: 'dashboard', viewMode: 'stats' },
+      });
+      return;
+    }
+
+    const sectionRoutes = {
+      fraud: '/admin/fraud',
+      complaints: '/admin/complaints',
+      'worker-complaints': '/admin/worker-complaints',
+      community: '/admin/community',
+      shops: '/admin/shops',
+    };
+
+    const targetRoute = sectionRoutes[section] || '/admin/dashboard';
+    navigate(targetRoute);
+  };
 
   const getAge = (dob) => {
     if (!dob) return null;
@@ -207,9 +277,9 @@ const AdminWorkerProfile = () => {
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           activeFilter={activeFilter}
-          onFilterChange={setActiveFilter}
+          onFilterChange={handleSidebarFilterChange}
           currentSection={currentSection}
-          onSectionChange={setCurrentSection}
+          onSectionChange={handleSidebarSectionChange}
           stats={stats}
           dashboardStats={dashboardStats}
           onViewModeChange={setViewMode}
@@ -217,11 +287,7 @@ const AdminWorkerProfile = () => {
 
         <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0 overflow-auto">
           <div className="max-w-6xl mx-auto p-4 md:p-6 pt-8">
-            <button onClick={() => navigate(-1)} className="text-sm text-orange-700 hover:text-orange-900 font-semibold flex items-center gap-2 mb-4 relative z-20">
-              <ChevronLeft size={16} /> Back to Admin Dashboard
-            </button>
-
-            <div className="bg-white rounded-2xl shadow-lg border border-orange-100 overflow-hidden mt-16 relative z-20">
+            <div className="bg-white rounded-2xl shadow-lg border border-orange-100 overflow-hidden relative z-20">
           <div className="px-4 sm:px-6 pb-6 pt-6">
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
               <div className="flex items-center gap-4">

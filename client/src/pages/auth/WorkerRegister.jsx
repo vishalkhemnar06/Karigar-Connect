@@ -10,7 +10,7 @@ import FaceVerification, { dataURLtoBlob } from './FaceVerification';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 import {
     Calendar, Smartphone, User, Shield, Mail, MapPin, Award, Users,
-    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon, Eye, EyeOff,
+    ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon, Eye, EyeOff, X,
 } from 'lucide-react';
 
 const skillList = [
@@ -97,6 +97,7 @@ const WorkerRegister = () => {
     const [showPassword,         setShowPassword]         = useState(false);
     const [showConfirmPassword,  setShowConfirmPassword]  = useState(false);
     const [locationError,        setLocationError]        = useState('');
+    const [legalPreview,         setLegalPreview]         = useState({ open: false, title: '', path: '' });
 
     const navigate = useNavigate();
     const strength = getPasswordStrength(formData.password);
@@ -245,6 +246,15 @@ const WorkerRegister = () => {
     };
 
     const formatTime = s => `0:${s < 10 ? '0' : ''}${s}`;
+
+    const openLegalPreview = (title, path) => {
+        const previewPath = path.includes('?') ? `${path}&embed=1` : `${path}?embed=1`;
+        setLegalPreview({ open: true, title, path: previewPath });
+    };
+
+    const closeLegalPreview = () => {
+        setLegalPreview({ open: false, title: '', path: '' });
+    };
 
     const captureLocation = async () => {
         setLocationError('');
@@ -861,7 +871,7 @@ const WorkerRegister = () => {
                                 <div className="pt-2 border-t border-orange-200">
                                     <label className="flex items-start gap-3 cursor-pointer">
                                         <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"/>
-                                        <span className="text-sm text-gray-700">I agree to the <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Terms and Conditions</a> and <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Privacy Policy</a></span>
+                                        <span className="text-sm text-gray-700">I agree to the <button type="button" onClick={() => openLegalPreview('Terms and Conditions', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Terms and Conditions</button> and <button type="button" onClick={() => openLegalPreview('Privacy Policy', '/privacy-policy')} className="text-orange-600 underline font-bold">Privacy Policy</button></span>
                                     </label>
                                     <label className="flex items-start gap-3 cursor-pointer mt-3">
                                         <input type="checkbox" checked={ageConsent} onChange={e => setAgeConsent(e.target.checked)} className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"/>
@@ -885,6 +895,20 @@ const WorkerRegister = () => {
                     </div>
                 </div>
             </div>
+
+            {legalPreview.open && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={closeLegalPreview}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="h-14 border-b border-orange-100 px-4 sm:px-5 flex items-center justify-between bg-orange-50">
+                            <h3 className="text-sm sm:text-base font-black text-orange-700 truncate">{legalPreview.title}</h3>
+                            <button type="button" onClick={closeLegalPreview} className="w-9 h-9 rounded-full bg-white border border-orange-200 text-orange-700 hover:bg-orange-100 flex items-center justify-center" aria-label="Close legal preview">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <iframe title={legalPreview.title} src={legalPreview.path} className="w-full h-[calc(85vh-56px)] border-0 bg-white" />
+                    </div>
+                </div>
+            )}
 
             {/* Face Verification Modal */}
             {showFaceVerification && (

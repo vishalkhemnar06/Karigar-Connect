@@ -1,18 +1,23 @@
 import React from "react";
 import Header from "./Header";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 
 const PrivacyPolicy = () => {
+  const location = useLocation();
+  const isEmbedded = new URLSearchParams(location.search).get('embed') === '1';
+
   return (
     <>
-      <Header />
-      <div className="min-h-screen bg-gradient-to-b from-white to-orange-50 py-12 px-4 sm:px-6 lg:px-8">
+      {!isEmbedded && <Header />}
+      <div className={`min-h-screen bg-gradient-to-b from-white to-orange-50 px-4 sm:px-6 lg:px-8 ${isEmbedded ? 'py-6' : 'py-12'}`}>
         <div className="max-w-5xl mx-auto">
           {/* Back Button */}
-          <Link to="/" className="inline-flex items-center text-orange-600 hover:text-orange-700 mb-6 font-semibold">
-            <ChevronLeft size={20} className="mr-1" /> Back to Home
-          </Link>
+          {!isEmbedded && (
+            <Link to="/" className="inline-flex items-center text-orange-600 hover:text-orange-700 mb-6 font-semibold">
+              <ChevronLeft size={20} className="mr-1" /> Back to Home
+            </Link>
+          )}
 
           <h1 className="text-4xl font-black text-orange-600 mb-2">Privacy Policy</h1>
           <p className="text-gray-600 mb-8 text-lg">Last updated: March 2024</p>
@@ -208,11 +213,13 @@ const PrivacyPolicy = () => {
           </div>
 
           {/* Footer CTA */}
-          <div className="mt-12 text-center">
-            <Link to="/register" className="inline-block px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-xl hover:shadow-lg transition-all">
-              Ready to Join? Register Now
-            </Link>
-          </div>
+          {!isEmbedded && (
+            <div className="mt-12 text-center">
+              <Link to="/register" className="inline-block px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-xl hover:shadow-lg transition-all">
+                Ready to Join? Register Now
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </>
