@@ -14,6 +14,7 @@
   "dependencies": {
     "@google/genai": "^1.41.0",
     "@reduxjs/toolkit": "^2.11.2",
+    "@vitalets/google-translate-api": "^9.2.1",
     "axios": "^1.13.6",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.41.3",

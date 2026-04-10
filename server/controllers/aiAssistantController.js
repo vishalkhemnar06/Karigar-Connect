@@ -10,6 +10,12 @@
 const Groq = require('groq-sdk');
 const User = require('../models/userModel');
 const { calculateStructuredBudget, BASE_RATES } = require('../utils/rateTable');
+const {
+    detectAndTranslateToEnglish,
+    translateText,
+    translateBatch,
+    normalizeLanguage,
+} = require('../services/translationService');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -165,9 +171,251 @@ STRICT RULES:
 
 // ── HELPER: Parse JSON ────────────────────────────────────────────────────────
 const parseGroqJson = (text) => {
-    const cleaned = text
-        .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-    return JSON.parse(cleaned);
+    const cleaned = String(text || '')
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+    const direct = (() => {
+        try { return JSON.parse(cleaned); } catch (_err) { return null; }
+    })();
+    if (direct) return direct;
+
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+        const sliced = cleaned.slice(start, end + 1);
+        try {
+            return JSON.parse(sliced);
+        } catch (_err) {
+            return null;
+        }
+    }
+    return null;
+};
+
+const SKILL_IDENTIFIERS = new Set([
+    'plumber', 'electrician', 'carpenter', 'painter', 'tiler',
+    'mason', 'welder', 'ac_technician', 'pest_control', 'cleaner',
+    'handyman', 'gardener',
+]);
+
+const shouldKeepAsIs = (value = '') => {
+    const v = String(value || '').trim();
+    if (!v) return true;
+    if (SKILL_IDENTIFIERS.has(v.toLowerCase())) return true;
+    if (/^https?:\/\//i.test(v)) return true;
+    if (/^[a-z0-9_-]{1,32}$/i.test(v) && (v.toLowerCase().startsWith('q') || v.toLowerCase().startsWith('op'))) return true;
+    if (/^\d+([.,]\d+)?$/.test(v)) return true;
+    return false;
+};
+
+const translateQuestionSet = async (questions = [], targetLanguage = 'en') => {
+    if (normalizeLanguage(targetLanguage) === 'en') return questions;
+    const source = Array.isArray(questions) ? questions : [];
+    const strings = [];
+
+    source.forEach((q) => {
+        if (q?.question && !shouldKeepAsIs(q.question)) strings.push(q.question);
+        if (Array.isArray(q?.options)) {
+            q.options.forEach((opt) => {
+                if (opt && !shouldKeepAsIs(opt)) strings.push(opt);
+            });
+        }
+    });
+
+    if (!strings.length) return source;
+    const translated = await translateBatch({ texts: strings, from: 'en', to: targetLanguage });
+    const map = new Map();
+    strings.forEach((src, idx) => map.set(src, translated[idx] || src));
+
+    return source.map((q) => ({
+        ...q,
+        question: map.get(q.question) || q.question,
+        options: Array.isArray(q.options)
+            ? q.options.map((opt) => map.get(opt) || opt)
+            : q.options,
+    }));
+};
+
+const translateAdvisorReport = async (report = {}, targetLanguage = 'en') => {
+    if (normalizeLanguage(targetLanguage) === 'en') return report;
+
+    const texts = [];
+    const pushIfText = (value) => {
+        if (typeof value === 'string' && value.trim() && !shouldKeepAsIs(value)) texts.push(value);
+    };
+
+    pushIfText(report.jobTitle);
+    pushIfText(report.problemSummary);
+    pushIfText(report.budgetAdvice);
+    pushIfText(report.colourAndStyleAdvice);
+    pushIfText(report.visualizationDescription);
+    pushIfText(report.recommendation);
+
+    (report.workPlan || []).forEach((step) => {
+        pushIfText(step?.title);
+        pushIfText(step?.description);
+        pushIfText(step?.estimatedTime);
+        pushIfText(step?.phase);
+    });
+    (report.expectedOutcome || []).forEach(pushIfText);
+    (report.designSuggestions || []).forEach(pushIfText);
+    (report.imageFindings || []).forEach(pushIfText);
+    (report.warnings || []).forEach(pushIfText);
+
+    (report.materialsBreakdown || []).forEach((item) => {
+        pushIfText(item?.item);
+        pushIfText(item?.quantity);
+        pushIfText(item?.note);
+    });
+    (report.equipmentBreakdown || []).forEach((item) => {
+        pushIfText(item?.item);
+        pushIfText(item?.note);
+    });
+    (report.improvementIdeas || []).forEach((item) => {
+        pushIfText(item?.idea);
+        pushIfText(item?.benefit);
+    });
+    (report.skillBlocks || []).forEach((item) => {
+        pushIfText(item?.description);
+    });
+
+    (report.topWorkers || []).forEach((worker) => {
+        pushIfText(worker?.locality);
+    });
+
+    if (!texts.length) return report;
+
+    const translated = await translateBatch({ texts, from: 'en', to: targetLanguage });
+    const map = new Map();
+    texts.forEach((src, idx) => map.set(src, translated[idx] || src));
+    const tr = (v) => (typeof v === 'string' ? (map.get(v) || v) : v);
+
+    return {
+        ...report,
+        jobTitle: tr(report.jobTitle),
+        problemSummary: tr(report.problemSummary),
+        budgetAdvice: tr(report.budgetAdvice),
+        colourAndStyleAdvice: tr(report.colourAndStyleAdvice),
+        visualizationDescription: tr(report.visualizationDescription),
+        recommendation: tr(report.recommendation),
+        workPlan: (report.workPlan || []).map((step) => ({
+            ...step,
+            title: tr(step?.title),
+            description: tr(step?.description),
+            estimatedTime: tr(step?.estimatedTime),
+            phase: tr(step?.phase),
+        })),
+        expectedOutcome: (report.expectedOutcome || []).map((v) => tr(v)),
+        designSuggestions: (report.designSuggestions || []).map((v) => tr(v)),
+        imageFindings: (report.imageFindings || []).map((v) => tr(v)),
+        warnings: (report.warnings || []).map((v) => tr(v)),
+        materialsBreakdown: (report.materialsBreakdown || []).map((item) => ({
+            ...item,
+            item: tr(item?.item),
+            quantity: tr(item?.quantity),
+            note: tr(item?.note),
+        })),
+        equipmentBreakdown: (report.equipmentBreakdown || []).map((item) => ({
+            ...item,
+            item: tr(item?.item),
+            note: tr(item?.note),
+        })),
+        improvementIdeas: (report.improvementIdeas || []).map((item) => ({
+            ...item,
+            idea: tr(item?.idea),
+            benefit: tr(item?.benefit),
+        })),
+        skillBlocks: (report.skillBlocks || []).map((item) => ({
+            ...item,
+            description: tr(item?.description),
+        })),
+        topWorkers: (report.topWorkers || []).map((worker) => ({
+            ...worker,
+            locality: tr(worker?.locality),
+        })),
+    };
+};
+
+const buildTranslatedInput = async ({ workDescription = '', city = '', answers = {}, opinions = {}, preferredLanguage = '' }) => {
+    const combined = [
+        workDescription,
+        city,
+        ...Object.keys(answers || {}),
+        ...Object.values(answers || {}),
+        ...Object.keys(opinions || {}),
+        ...Object.values(opinions || {}),
+    ].filter(Boolean).join(' ');
+
+    const detection = await detectAndTranslateToEnglish(combined || workDescription || '');
+    const inputLanguage = normalizeLanguage(detection.detectedLanguage);
+    const selectedLanguage = normalizeLanguage(preferredLanguage || inputLanguage);
+
+    const workDescriptionEn = (await translateText(workDescription, 'en', 'auto')).translatedText;
+    const cityEn = city ? (await translateText(city, 'en', 'auto')).translatedText : city;
+
+    const translatedAnswers = {};
+    for (const [k, v] of Object.entries(answers || {})) {
+        const keyEn = k ? (await translateText(String(k), 'en', 'auto')).translatedText : k;
+        const valueEn = v ? (await translateText(String(v), 'en', 'auto')).translatedText : v;
+        translatedAnswers[keyEn] = valueEn;
+    }
+
+    const translatedOpinions = {};
+    for (const [k, v] of Object.entries(opinions || {})) {
+        const keyEn = k ? (await translateText(String(k), 'en', 'auto')).translatedText : k;
+        const valueEn = v ? (await translateText(String(v), 'en', 'auto')).translatedText : v;
+        translatedOpinions[keyEn] = valueEn;
+    }
+
+    return {
+        inputLanguage,
+        selectedLanguage,
+        workDescriptionEn,
+        cityEn,
+        answersEn: translatedAnswers,
+        opinionsEn: translatedOpinions,
+    };
+};
+
+const callGroqJson = async ({ systemPrompt, userPrompt, maxTokens = 1200, temperature = 0.2, fallback = {} }) => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const completion = await groq.chat.completions.create({
+                model: 'llama-3.3-70b-versatile',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    {
+                        role: 'user',
+                        content: attempt === 1
+                            ? userPrompt
+                            : `${userPrompt}\n\nIMPORTANT: Return only strict JSON object with no markdown and no prose.`,
+                    },
+                ],
+                temperature,
+                max_tokens: maxTokens,
+                response_format: { type: 'json_object' },
+            });
+
+            const raw = completion.choices[0]?.message?.content || '{}';
+            const parsed = parseGroqJson(raw);
+            if (parsed && typeof parsed === 'object') {
+                return { parsed, usedFallback: false };
+            }
+            lastError = new Error('Invalid JSON from Groq');
+        } catch (err) {
+            lastError = err;
+        }
+    }
+
+    return {
+        parsed: fallback,
+        usedFallback: true,
+        error: lastError,
+    };
 };
 
 // ── HELPER: Format worker ─────────────────────────────────────────────────────
@@ -362,7 +610,7 @@ const generatePreviewImage = async ({ sourceImageUrl, prompt, style = '' }) => {
 // ROUTE: POST /api/ai/generate-questions  (UPDATED — returns opinionQuestions too)
 // ══════════════════════════════════════════════════════════════════════════════
 exports.generateQuestions = async (req, res) => {
-    const { city = '' } = req.body;
+    const { city = '', preferredLanguage = '' } = req.body;
     const workDescription = String(req.body?.workDescription || req.body?.description || '').trim();
     if (!workDescription) {
         return res.status(400).json({ message: 'Work description is required.' });
@@ -371,27 +619,58 @@ exports.generateQuestions = async (req, res) => {
         return res.status(400).json({ message: 'Please enter at least 10 characters in work description.' });
     }
     try {
-        const completion = await groq.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-                { role: 'system', content: QUESTIONS_SYSTEM_PROMPT },
-                { role: 'user',   content: `Work Description: "${workDescription}"${city ? `\nCity: ${city}` : ''}` },
-            ],
-            temperature: 0.3, max_tokens: 1000, response_format: { type: 'json_object' },
+        const { inputLanguage, selectedLanguage, workDescriptionEn, cityEn } = await buildTranslatedInput({
+            workDescription,
+            city,
+            preferredLanguage,
+            answers: {},
+            opinions: {},
         });
-        const raw    = completion.choices[0]?.message?.content || '{}';
-        const parsed = parseGroqJson(raw);
-        let questions = parsed.questions || [];
-        let opinionQuestions = parsed.opinionQuestions || [];
+
+        const { parsed, usedFallback } = await callGroqJson({
+            systemPrompt: QUESTIONS_SYSTEM_PROMPT,
+            userPrompt: `Work Description: "${workDescriptionEn}"${cityEn ? `\nCity: ${cityEn}` : ''}`,
+            maxTokens: 1000,
+            temperature: 0.3,
+            fallback: {
+                questions: ensureMinimumWorkQuestions([]),
+                opinionQuestions: [],
+            },
+        });
+
+        let questions = parsed?.questions || [];
+        let opinionQuestions = parsed?.opinionQuestions || [];
         if (!Array.isArray(questions)) questions = [];
         if (!Array.isArray(opinionQuestions)) opinionQuestions = [];
         questions = ensureMinimumWorkQuestions(questions);
-        return res.status(200).json({ questions, opinionQuestions });
+
+        if (selectedLanguage !== 'en') {
+            questions = await translateQuestionSet(questions, selectedLanguage);
+            opinionQuestions = await translateQuestionSet(opinionQuestions, selectedLanguage);
+        }
+
+        return res.status(200).json({
+            questions,
+            opinionQuestions,
+            language: {
+                detected: inputLanguage,
+                selected: selectedLanguage,
+                translatedToEnglish: true,
+                responseTranslated: selectedLanguage !== 'en',
+                usedFallback,
+            },
+        });
     } catch (err) {
         console.error('generateQuestions error:', err.message);
         return res.status(200).json({
             questions: ensureMinimumWorkQuestions([]),
             opinionQuestions: [],
+            language: {
+                detected: 'en',
+                translatedToEnglish: false,
+                responseTranslated: false,
+                usedFallback: true,
+            },
         });
     }
 };
@@ -404,18 +683,34 @@ exports.getRateTableCities = async (_req, res) => {
 // ROUTE: POST /api/ai/generate-estimate  (UNCHANGED)
 // ══════════════════════════════════════════════════════════════════════════════
 exports.generateEstimate = async (req, res) => {
-    const { workDescription, answers = {}, city = '', urgent = false, workerCountOverride } = req.body;
+    const { workDescription, answers = {}, city = '', urgent = false, workerCountOverride, preferredLanguage = '' } = req.body;
     if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
     try {
-        const answersText = Object.entries(answers).map(([q, a]) => `  - ${q}: ${a}`).join('\n');
-        const userPrompt  = `Work: "${workDescription}"\nCity: ${city||'Unknown'}\nUrgent: ${urgent?'Yes':'No'}\n${answersText?`Answers:\n${answersText}`:''}`;
-        const completion  = await groq.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'system', content: ESTIMATE_SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
-            temperature: 0.2, max_tokens: 1000, response_format: { type: 'json_object' },
+        const { inputLanguage, selectedLanguage, workDescriptionEn, cityEn, answersEn } = await buildTranslatedInput({
+            workDescription,
+            city,
+            preferredLanguage,
+            answers,
+            opinions: {},
         });
-        const raw = completion.choices[0]?.message?.content || '{}';
-        const aiResult = parseGroqJson(raw);
+
+        const answersText = Object.entries(answersEn).map(([q, a]) => `  - ${q}: ${a}`).join('\n');
+        const userPrompt = `Work: "${workDescriptionEn}"\nCity: ${cityEn || 'Unknown'}\nUrgent: ${urgent ? 'Yes' : 'No'}\n${answersText ? `Answers:\n${answersText}` : ''}`;
+
+        const { parsed: aiResult, usedFallback: groqFallbackUsed } = await callGroqJson({
+            systemPrompt: ESTIMATE_SYSTEM_PROMPT,
+            userPrompt,
+            maxTokens: 1000,
+            temperature: 0.2,
+            fallback: {
+                jobTitle: workDescriptionEn.slice(0, 60) || 'Home Service Work',
+                skillBlocks: [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }],
+                durationDays: 1,
+                urgent: !!urgent,
+                recommendation: 'Please share more details for a more accurate estimate.',
+            },
+        });
+
         const skillBlocks = aiResult.skillBlocks || [];
         const override = Number(workerCountOverride);
         if (override > 0 && skillBlocks.length > 0) {
@@ -430,8 +725,55 @@ exports.generateEstimate = async (req, res) => {
         const budgetResult = calculateStructuredBudget(skillBlocks, city, aiResult.urgent||urgent);
         const skillNames   = skillBlocks.map(b=>b.skill).filter(Boolean);
         const topWorkers   = await User.find({ role:'worker', verificationStatus:'approved', skills:{$elemMatch:{name:{$in:skillNames}}} }).sort({points:-1}).limit(10).select('name karigarId photo overallExperience points skills mobile address');
-        return res.status(200).json({ jobTitle: aiResult.jobTitle||'', durationDays: aiResult.durationDays||1, skillBlocks, budgetBreakdown: budgetResult, recommendation: aiResult.recommendation||'', topWorkers: topWorkers.map(formatWorker) });
-    } catch (err) { console.error('generateEstimate error:', err); return res.status(500).json({ message: 'Failed.' }); }
+
+        let response = {
+            jobTitle: aiResult.jobTitle || '',
+            durationDays: aiResult.durationDays || 1,
+            skillBlocks,
+            budgetBreakdown: budgetResult,
+            recommendation: aiResult.recommendation || '',
+            topWorkers: topWorkers.map(formatWorker),
+            language: {
+                detected: inputLanguage,
+                selected: selectedLanguage,
+                translatedToEnglish: true,
+                responseTranslated: selectedLanguage !== 'en',
+                usedFallback: groqFallbackUsed,
+            },
+        };
+
+        if (selectedLanguage !== 'en') {
+            const translated = await translateAdvisorReport(response, selectedLanguage);
+            response = {
+                ...translated,
+                skillBlocks: response.skillBlocks.map((block, idx) => ({
+                    ...block,
+                    description: translated.skillBlocks?.[idx]?.description || block.description,
+                })),
+                language: response.language,
+            };
+        }
+
+        return res.status(200).json(response);
+    } catch (err) {
+        console.error('generateEstimate error:', err);
+        const fallbackSkillBlocks = [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }];
+        const fallbackBudget = calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
+        return res.status(200).json({
+            jobTitle: workDescription?.slice(0, 60) || 'Home Service Work',
+            durationDays: 1,
+            skillBlocks: fallbackSkillBlocks,
+            budgetBreakdown: fallbackBudget,
+            recommendation: 'Please share more details for a more accurate estimate.',
+            topWorkers: [],
+            language: {
+                detected: 'en',
+                translatedToEnglish: false,
+                responseTranslated: false,
+                usedFallback: true,
+            },
+        });
+    }
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -440,7 +782,7 @@ exports.generateEstimate = async (req, res) => {
 exports.generateAdvisorReport = async (req, res) => {
     const {
         workDescription, answers = {}, opinions = {},
-        city = '', urgent = false, clientBudget,
+        city = '', urgent = false, clientBudget, preferredLanguage = '',
     } = req.body;
 
     if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
@@ -454,24 +796,50 @@ exports.generateAdvisorReport = async (req, res) => {
         ? `\nClient Budget: ₹${Number(clientBudget).toLocaleString('en-IN')} (consider this in your estimate and budgetAdvice)`
         : '';
 
-    const answersText  = Object.entries(answers).filter(([,v])=>v).map(([q,a])=>`  - ${q}: ${a}`).join('\n');
-    const opinionsText = Object.entries(opinions).filter(([,v])=>v).map(([q,a])=>`  - ${q}: ${a}`).join('\n');
+    const {
+        inputLanguage,
+        selectedLanguage,
+        workDescriptionEn,
+        cityEn,
+        answersEn,
+        opinionsEn,
+    } = await buildTranslatedInput({ workDescription, city, answers, opinions, preferredLanguage });
 
-    const userPrompt = `Work: "${workDescription}"
-City: ${city||'Pune'}
+    const answersText  = Object.entries(answersEn).filter(([,v])=>v).map(([q,a])=>`  - ${q}: ${a}`).join('\n');
+    const opinionsText = Object.entries(opinionsEn).filter(([,v])=>v).map(([q,a])=>`  - ${q}: ${a}`).join('\n');
+
+    const userPrompt = `Work: "${workDescriptionEn}"
+City: ${cityEn||'Pune'}
 Urgent: ${urgent?'Yes':'No'}${budgetNote}
 ${answersText?`Client Answers:\n${answersText}`:''}
 ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageHint}`;
 
     try {
-        const completion = await groq.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'system', content: ADVISOR_SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
-            temperature: 0.3, max_tokens: 3000, response_format: { type: 'json_object' },
+        const { parsed: aiResult, usedFallback: groqFallbackUsed } = await callGroqJson({
+            systemPrompt: ADVISOR_SYSTEM_PROMPT,
+            userPrompt,
+            maxTokens: 3000,
+            temperature: 0.3,
+            fallback: {
+                jobTitle: workDescriptionEn.slice(0, 60) || 'Home Service Work',
+                problemSummary: 'Basic advisory generated due to temporary AI issue.',
+                skillBlocks: [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }],
+                materialsBreakdown: [],
+                equipmentBreakdown: [],
+                workPlan: [],
+                timeEstimate: { totalDays: 1, totalHours: 8, phases: [] },
+                expectedOutcome: [],
+                colourAndStyleAdvice: '',
+                designSuggestions: [],
+                improvementIdeas: [],
+                imageFindings: [],
+                warnings: ['Advisory generated in fallback mode.'],
+                visualizationDescription: '',
+                budgetAdvice: 'Please review with a local expert before finalizing.',
+                durationDays: 1,
+                urgent: !!urgent,
+            },
         });
-
-        const raw      = completion.choices[0]?.message?.content || '{}';
-        const aiResult = parseGroqJson(raw);
 
         const skillBlocks  = aiResult.skillBlocks || [];
         const isUrgent     = aiResult.urgent || urgent;
@@ -511,7 +879,7 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             topWorkers,
         });
 
-        const report = {
+        let report = {
             jobTitle:             aiResult.jobTitle         || workDescription.slice(0,60),
             problemSummary:       aiResult.problemSummary   || '',
             city,
@@ -545,12 +913,73 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             confidence,
             originalImageUrl:     req.file?.path || '',
             previewOptions:       [],
+            language: {
+                detected: inputLanguage,
+                selected: selectedLanguage,
+                translatedToEnglish: true,
+                responseTranslated: selectedLanguage !== 'en',
+                usedFallback: groqFallbackUsed,
+            },
         };
+
+        if (selectedLanguage !== 'en') {
+            const translated = await translateAdvisorReport(report, selectedLanguage);
+            report = {
+                ...translated,
+                language: report.language,
+            };
+        }
 
         return res.status(200).json(report);
     } catch (err) {
         console.error('generateAdvisorReport error:', err);
-        return res.status(500).json({ message: 'Failed to generate advisor report.' });
+        const fallbackSkillBlocks = [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }];
+        const budgetResult = calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
+        return res.status(200).json({
+            jobTitle: workDescription?.slice(0, 60) || 'Home Service Work',
+            problemSummary: 'Unable to generate full advisory at the moment.',
+            city,
+            urgent: !!urgent,
+            durationDays: 1,
+            isAIEstimate: true,
+            skillBlocks: fallbackSkillBlocks,
+            budgetBreakdown: budgetResult,
+            labourTotal: budgetResult.totalEstimated,
+            materialsBreakdown: [],
+            equipmentBreakdown: [],
+            materialsTotal: 0,
+            equipmentTotal: 0,
+            combinedTotal: budgetResult.totalEstimated,
+            grandTotal: budgetResult.totalEstimated,
+            clientBudget: Number(clientBudget) || 0,
+            isOverBudget: false,
+            budgetGap: 0,
+            budgetAdvice: 'Please try again shortly or consult a verified worker.',
+            workPlan: [],
+            timeEstimate: { totalDays: 1, totalHours: 8, phases: [] },
+            expectedOutcome: [],
+            colourAndStyleAdvice: '',
+            designSuggestions: [],
+            improvementIdeas: [],
+            imageFindings: [],
+            imageUploaded,
+            warnings: ['Fallback response used due to AI processing failure.'],
+            visualizationDescription: '',
+            topWorkers: [],
+            confidence: {
+                score: 50,
+                factors: { imageClarity: 45, userInputs: 55, similarPastJobs: 50 },
+                basedOn: ['Fallback mode'],
+            },
+            originalImageUrl: req.file?.path || '',
+            previewOptions: [],
+            language: {
+                detected: 'en',
+                translatedToEnglish: false,
+                responseTranslated: false,
+                usedFallback: true,
+            },
+        });
     }
 };
 

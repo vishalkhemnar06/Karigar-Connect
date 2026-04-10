@@ -62,6 +62,35 @@ const sanitizeNumber = (value) => {
 const MIN_AI_DESCRIPTION_CHARS = 10;
 const OTHER_CITY_OPTION = '__OTHER_CITY__';
 
+const SUPPORTED_UI_LANGUAGES = new Set(['en', 'hi', 'mr']);
+
+const getPreferredUiLanguage = () => {
+    const match = document.cookie.match(/(?:^|;\s*)googtrans=\/en\/([a-z]{2})/i);
+    const lang = (match?.[1] || 'en').toLowerCase();
+    return SUPPORTED_UI_LANGUAGES.has(lang) ? lang : 'en';
+};
+
+const normalizeQuestionList = (items = [], prefix = 'q') => {
+    const list = Array.isArray(items) ? items : [];
+    return list
+        .filter((item) => item && typeof item === 'object')
+        .map((item, index) => {
+            const rawId = item.id ? String(item.id).trim() : `${prefix}${index + 1}`;
+            const id = rawId || `${prefix}${index + 1}`;
+            const type = ['select', 'number', 'text', 'color'].includes(item.type) ? item.type : 'text';
+            const options = Array.isArray(item.options)
+                ? item.options.map((opt) => String(opt || '').trim()).filter(Boolean)
+                : [];
+            return {
+                id,
+                question: String(item.question || '').trim(),
+                type,
+                options,
+            };
+        })
+        .filter((item) => item.question);
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Components
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,9 +149,9 @@ const QuestionField = ({ question, value, onChange }) => {
                     {question.question}
                 </label>
                 <div className="flex flex-wrap gap-2">
-                    {question.options.map(option => (
+                    {question.options.map((option, idx) => (
                         <button
-                            key={option}
+                            key={`${question.id}-${idx}-${option}`}
                             type="button"
                             onClick={() => onChange(question.id, option)}
                             className={`
@@ -735,10 +764,11 @@ export default function ClientAIAssist() {
         try {
             const { data } = await aiGenerateQuestions({
                 workDescription: description,
-                city: city
+                city: city,
+                preferredLanguage: getPreferredUiLanguage(),
             });
-            setQuestions(data.questions || []);
-            setPreferenceQuestions(data.opinionQuestions || []);
+            setQuestions(normalizeQuestionList(data.questions, 'q'));
+            setPreferenceQuestions(normalizeQuestionList(data.opinionQuestions, 'op'));
             setPhase('questions');
         } catch (error) {
             console.error('Failed to generate questions:', error);
@@ -770,6 +800,7 @@ export default function ClientAIAssist() {
             formData.append('opinions', JSON.stringify(preferencesMap));
             formData.append('city', city);
             formData.append('urgent', String(urgent));
+            formData.append('preferredLanguage', getPreferredUiLanguage());
             if (clientBudget && Number(clientBudget) > 0) {
                 formData.append('clientBudget', clientBudget);
             }
@@ -946,7 +977,7 @@ export default function ClientAIAssist() {
                     {/* Main Content */}
                     <div className="lg:col-span-2">
                         {activeTab === 'advisor' ? (
-                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                            <div key={`advisor-${phase}`} className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6" translate="yes">
                                 {phase !== 'report' && phase !== 'loading' && (
                                     <PhaseIndicator currentPhase={phase} />
                                 )}
@@ -1032,17 +1063,8 @@ export default function ClientAIAssist() {
                                             disabled={isLoading.questions || !description.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS}
                                             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                         >
-                                            {isLoading.questions ? (
-                                                <>
-                                                    <Loader2 size={18} className="animate-spin" />
-                                                    Analyzing...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Sparkles size={18} />
-                                                    Continue
-                                                </>
-                                            )}
+                                            <Sparkles size={18} className={isLoading.questions ? 'animate-pulse' : ''} />
+                                            Continue
                                         </button>
                                     </div>
                                 )}
@@ -1060,9 +1082,9 @@ export default function ClientAIAssist() {
                                             <p className="text-center text-gray-500 py-8">No additional questions needed.</p>
                                         ) : (
                                             <div className="space-y-4">
-                                                {questions.map(q => (
+                                                {questions.map((q, idx) => (
                                                     <QuestionField
-                                                        key={q.id}
+                                                        key={`${q.id}-${idx}`}
                                                         question={q}
                                                         value={answers[q.id]}
                                                         onChange={handleAnswerChange}
@@ -1152,9 +1174,9 @@ export default function ClientAIAssist() {
                                         </div>
 
                                         <div className="space-y-4">
-                                            {preferenceQuestions.map(q => (
+                                            {preferenceQuestions.map((q, idx) => (
                                                 <QuestionField
-                                                    key={q.id}
+                                                    key={`${q.id}-${idx}`}
                                                     question={q}
                                                     value={preferences[q.id]}
                                                     onChange={handlePreferenceChange}
@@ -1236,14 +1258,8 @@ export default function ClientAIAssist() {
                                                 disabled={isLoading.report}
                                                 className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
                                             >
-                                                {isLoading.report ? (
-                                                    <>
-                                                        <Loader2 size={18} className="animate-spin" />
-                                                        Analyzing...
-                                                    </>
-                                                ) : (
-                                                    'Generate Analysis'
-                                                )}
+                                                <Loader2 size={18} className={isLoading.report ? 'animate-spin' : 'opacity-0'} />
+                                                Generate Analysis
                                             </button>
                                         </div>
                                     </div>
