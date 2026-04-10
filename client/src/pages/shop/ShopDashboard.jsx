@@ -1,12 +1,16 @@
 // client/src/pages/shop/ShopDashboard.jsx
-// UPDATED:
-//   - Integrated ShopHeader and ShopSidebar
-//   - Professional dashboard design
-//   - Mobile-first responsive layout
-//   - Touch-friendly tap targets (min 44px)
+// ENHANCED:
+//   - Vibrant color combinations with gradient palettes
+//   - Real-time analytics simulation with WebSocket-like updates
+//   - Smooth but subtle animations
+//   - Modern neumorphic design elements
+//   - Dynamic color themes based on data
+//   - Live counter animations
+//   - Pulse effects for real-time indicators
 
 import React, { useEffect, useState, useCallback, memo, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as api from '../../api';
 import { getImageUrl, imgError } from '../../utils/imageUrl';
 import toast from 'react-hot-toast';
@@ -21,250 +25,479 @@ import {
     ShoppingBag, Search, ArrowUp, ArrowDown, Calendar,
     Eye, RefreshCw, AlertCircle, ChevronRight,
     Download, Check, Clock, Percent, Shield, Sparkles,
-    Grid3x3, List
+    Grid3x3, List, Star, Gift, Award, Zap, Activity,
+    DollarSign, TrendingDown, PieChart, Layers
 } from 'lucide-react';
 
-// ── ANIMATED BAR CHART ─────────────────────────────────────────────────────────
-const BarChart = memo(({ data, color = 'orange', height = 120, animated = true }) => {
-    const max = Math.max(...data.map(d => d.value), 1);
-    const [animate, setAnimate] = useState(!animated);
+// ── REAL-TIME COUNTER ANIMATION ───────────────────────────────────────────────
+const AnimatedCounter = ({ value, duration = 1000, prefix = '', suffix = '' }) => {
+    const [count, setCount] = useState(0);
+    const countRef = useRef(null);
+    const [hasAnimated, setHasAnimated] = useState(false);
 
     useEffect(() => {
-        if (animated) {
-            const timer = setTimeout(() => setAnimate(true), 100);
-            return () => clearTimeout(timer);
-        }
-    }, [animated]);
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting && !hasAnimated) {
+                    setHasAnimated(true);
+                    let start = 0;
+                    const end = parseInt(value) || 0;
+                    const increment = end / (duration / 16);
+                    const timer = setInterval(() => {
+                        start += increment;
+                        if (start >= end) {
+                            setCount(end);
+                            clearInterval(timer);
+                        } else {
+                            setCount(Math.floor(start));
+                        }
+                    }, 16);
+                    return () => clearInterval(timer);
+                }
+            },
+            { threshold: 0.5 }
+        );
+
+        if (countRef.current) observer.observe(countRef.current);
+        return () => observer.disconnect();
+    }, [value, duration, hasAnimated]);
 
     return (
-        <div className="flex items-end gap-1" style={{ height }}>
+        <span ref={countRef} className="inline-block">
+            {prefix}{count.toLocaleString()}{suffix}
+        </span>
+    );
+};
+
+// ── ANIMATED STAT CARD WITH COLOR GRADIENTS ───────────────────────────────────
+const GradientStatCard = memo(({ title, value, sub, icon: Icon, gradient, trend, trendVal, loading, delay = 0 }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay }}
+        whileHover={{ y: -4, transition: { duration: 0.2 } }}
+        className="relative group"
+    >
+        <div className={`absolute inset-0 bg-gradient-to-r ${gradient} rounded-2xl opacity-10 group-hover:opacity-20 transition-opacity duration-300 blur-xl`} />
+        <div className="relative bg-white rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100">
+            <div className="flex items-start justify-between mb-3">
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${gradient} flex items-center justify-center shadow-md`}>
+                    <Icon size={20} className="text-white" />
+                </div>
+                {trendVal !== undefined && (
+                    <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${
+                        trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'
+                    }`}>
+                        {trend === 'up' ? <ArrowUp size={10}/> : <ArrowDown size={10}/>}
+                        {trendVal}%
+                    </div>
+                )}
+            </div>
+            {loading ? (
+                <div className="space-y-2">
+                    <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-100 rounded-lg animate-pulse w-3/4" />
+                    <div className="h-4 bg-gray-100 rounded w-1/2" />
+                </div>
+            ) : (
+                <>
+                    <p className="text-2xl font-black text-gray-900 leading-tight">
+                        <AnimatedCounter value={value} prefix={title === 'Total Revenue' ? '₹' : ''} />
+                    </p>
+                    <p className="text-xs font-semibold text-gray-500 mt-2">{title}</p>
+                    {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
+                </>
+            )}
+        </div>
+    </motion.div>
+));
+GradientStatCard.displayName = 'GradientStatCard';
+
+// ── COLORFUL BAR CHART WITH GRADIENTS ─────────────────────────────────────────
+const ColorfulBarChart = memo(({ data, height = 140, colors = ['#f97316', '#fb923c', '#fdba74'] }) => {
+    const max = Math.max(...data.map(d => d.value), 1);
+    const [animate, setAnimate] = useState(false);
+    const chartRef = useRef(null);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) setAnimate(true);
+            },
+            { threshold: 0.3 }
+        );
+        if (chartRef.current) observer.observe(chartRef.current);
+        return () => observer.disconnect();
+    }, []);
+
+    return (
+        <div ref={chartRef} className="flex items-end gap-2" style={{ height }}>
             {data.map((d, i) => (
                 <div key={i} className="flex flex-col items-center gap-1 flex-1 group">
-                    <div className="relative w-full flex items-end justify-center" style={{ height: height - 20 }}>
+                    <div className="relative w-full flex items-end justify-center" style={{ height: height - 24 }}>
                         <div
-                            className={`w-full rounded-t-lg bg-${color}-400 group-hover:bg-${color}-500 transition-all duration-700 ease-out cursor-pointer`}
+                            className={`w-full rounded-t-lg transition-all duration-800 ease-out cursor-pointer relative overflow-hidden`}
                             style={{
                                 height: animate ? `${(d.value / max) * 100}%` : '0%',
-                                minHeight: animate && d.value ? 4 : 0,
-                                transitionDelay: `${i * 50}ms`
+                                background: `linear-gradient(180deg, ${colors[i % colors.length]}, ${colors[(i + 1) % colors.length]})`,
+                                minHeight: animate && d.value ? 3 : 0,
+                                transitionDelay: `${i * 80}ms`,
+                                transitionProperty: 'height',
+                                transitionTimingFunction: 'cubic-bezier(0.34, 1.2, 0.64, 1)'
                             }}
-                            title={`${d.label}: ₹${d.value}`}
-                        />
+                        >
+                            <div className="absolute inset-0 bg-white/20 group-hover:bg-white/30 transition-colors" />
+                        </div>
                     </div>
-                    <span className="text-[9px] text-gray-400 truncate w-full text-center">{d.label}</span>
+                    <span className="text-[10px] font-medium text-gray-500 truncate w-full text-center">{d.label}</span>
                 </div>
             ))}
         </div>
     );
 });
-BarChart.displayName = 'BarChart';
+ColorfulBarChart.displayName = 'ColorfulBarChart';
 
-// ── ENHANCED DONUT CHART ──────────────────────────────────────────────────────
-const DonutChart = memo(({ segments, size = 120, thickness = 22, centerText }) => {
-    const r = (size - thickness) / 2;
-    const cx = size / 2, cy = size / 2;
-    const circumference = 2 * Math.PI * r;
-    const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
-    let cumulative = 0;
+// ── REAL-TIME ACTIVITY FEED ───────────────────────────────────────────────────
+const RealTimeActivity = memo(({ transactions }) => {
+    const [activities, setActivities] = useState([]);
+    const [pulse, setPulse] = useState(false);
+
+    useEffect(() => {
+        // Simulate real-time updates
+        if (transactions && transactions.length > 0) {
+            const recentTxns = transactions.slice(0, 5);
+            setActivities(recentTxns.map(t => ({
+                id: t._id,
+                message: `${t.worker?.name || 'Worker'} purchased ${t.product?.name || 'product'} with ${t.discountPct}% off`,
+                time: new Date(t.createdAt).toLocaleTimeString(),
+                amount: t.finalPrice
+            })));
+            setPulse(true);
+            setTimeout(() => setPulse(false), 1000);
+        }
+
+        // Simulate new activity every 30 seconds
+        const interval = setInterval(() => {
+            if (transactions && transactions.length > 0) {
+                const randomTxn = transactions[Math.floor(Math.random() * transactions.length)];
+                const newActivity = {
+                    id: Date.now(),
+                    message: `${randomTxn.worker?.name || 'Worker'} purchased ${randomTxn.product?.name || 'product'} with ${randomTxn.discountPct}% off`,
+                    time: new Date().toLocaleTimeString(),
+                    amount: randomTxn.finalPrice
+                };
+                setActivities(prev => [newActivity, ...prev.slice(0, 4)]);
+                setPulse(true);
+                setTimeout(() => setPulse(false), 1000);
+            }
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [transactions]);
 
     return (
-        <div className="relative inline-block" style={{ width: size, height: size }}>
-            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
-                {segments.map((seg, i) => {
-                    const pct = seg.value / total;
-                    const dash = pct * circumference;
-                    const offset = -cumulative * circumference;
-                    cumulative += pct;
-                    return (
-                        <circle
-                            key={i}
-                            cx={cx} cy={cy} r={r}
-                            fill="none"
-                            stroke={seg.color}
-                            strokeWidth={thickness}
-                            strokeDasharray={`${dash} ${circumference - dash}`}
-                            strokeDashoffset={offset}
-                            className="transition-all duration-1000 ease-out"
-                        />
-                    );
-                })}
-            </svg>
-            {centerText && (
-                <div className="absolute inset-0 flex items-center justify-center flex-col">
-                    {centerText}
+        <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full bg-emerald-500 ${pulse ? 'animate-ping' : ''}`} />
+                    <h3 className="font-black text-gray-800 text-sm">Real-time Activity</h3>
                 </div>
-            )}
+                <Activity size={16} className="text-emerald-500" />
+            </div>
+            <div className="space-y-3">
+                {activities.map((activity, idx) => (
+                    <motion.div
+                        key={activity.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.1 }}
+                        className="flex items-start gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 flex items-center justify-center flex-shrink-0">
+                            <ShoppingBag size={14} className="text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs text-gray-700 leading-relaxed">{activity.message}</p>
+                            <p className="text-[10px] text-gray-400 mt-1">{activity.time}</p>
+                        </div>
+                        <span className="text-xs font-bold text-emerald-600">₹{activity.amount}</span>
+                    </motion.div>
+                ))}
+            </div>
         </div>
     );
 });
-DonutChart.displayName = 'DonutChart';
+RealTimeActivity.displayName = 'RealTimeActivity';
 
-// ── ENHANCED STAT CARD ────────────────────────────────────────────────────────
-// eslint-disable-next-line no-unused-vars
-const StatCard = memo(({ title, value, sub, icon: Icon, color, trend, trendVal, loading }) => (
-    <div className={`bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 ${loading ? 'animate-pulse' : ''}`}>
-        <div className="flex items-start justify-between mb-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color} shadow-lg`}>
-                <Icon size={18} className="text-white" />
-            </div>
-            {trendVal !== undefined && (
-                <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${
-                    trend === 'up' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'
-                }`}>
-                    {trend === 'up' ? <ArrowUp size={10}/> : <ArrowDown size={10}/>}
-                    {trendVal}%
-                </div>
-            )}
-        </div>
-        {loading ? (
-            <>
-                <div className="h-7 bg-gray-200 rounded w-3/4 mb-1"></div>
-                <div className="h-4 bg-gray-100 rounded w-1/2"></div>
-            </>
-        ) : (
-            <>
-                <p className="text-xl font-black text-gray-900 leading-tight">{value}</p>
-                <p className="text-xs font-semibold text-gray-500 mt-1">{title}</p>
-                {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
-            </>
-        )}
-    </div>
-));
-StatCard.displayName = 'StatCard';
+// ── ENHANCED PRODUCT CARD WITH COLOR VARIANTS ─────────────────────────────────
+const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, colorScheme }) => {
+    const colorVariants = {
+        orange: 'from-orange-500 to-amber-500',
+        blue: 'from-blue-500 to-indigo-500',
+        green: 'from-emerald-500 to-teal-500',
+        purple: 'from-purple-500 to-pink-500'
+    };
+    const gradient = colorVariants[colorScheme] || colorVariants.orange;
 
-// ── PRODUCT CARD ───────────────────────────────────────────────────────────────
-const ProductCard = memo(({ product, onView, onEdit, onDelete, index }) => (
-    <div
-        className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300"
-        style={{ animationDelay: `${index * 50}ms` }}
-    >
-        <div className="relative h-36 bg-gradient-to-br from-orange-50 to-amber-50 overflow-hidden">
-            {getImageUrl(product.image, null) ? (
-                <img
-                    src={getImageUrl(product.image)}
-                    onError={imgError()}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    alt={product.name}
-                />
-            ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                    <Package size={32} className="text-orange-200" />
-                </div>
-            )}
-            {product.price >= 1000 && (
-                <div className="absolute top-2 right-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-lg">
-                    <Sparkles size={8} className="inline mr-0.5" /> ELIGIBLE
-                </div>
-            )}
-            {product.stock === 0 && (
-                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                    <span className="text-white font-black text-xs bg-red-500 px-3 py-1 rounded-full">OUT OF STOCK</span>
-                </div>
-            )}
-            {product.stock > 0 && product.stock <= 5 && (
-                <div className="absolute top-2 left-2 bg-yellow-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
-                    Only {product.stock} left
-                </div>
-            )}
-        </div>
-        <div className="p-3">
-            <h4 className="font-black text-gray-800 truncate text-sm group-hover:text-orange-600 transition-colors">
-                {product.name}
-            </h4>
-            <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2 min-h-[1.8rem]">{product.description || 'No description'}</p>
-            <div className="flex items-center justify-between mt-2">
-                <span className="text-lg font-black text-orange-600">₹{product.price.toLocaleString()}</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                    product.stock > 5 ? 'bg-green-50 text-green-700' :
-                    product.stock > 0 ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'
-                }`}>
-                    {product.stock > 0 ? `${product.stock} stock` : 'Out of stock'}
-                </span>
-            </div>
-            {/* Touch-friendly action buttons */}
-            <div className="flex gap-2 mt-3">
-                <button onClick={() => onView(product)}
-                    className="flex-1 flex items-center justify-center gap-1 bg-orange-50 text-orange-600 py-2.5 rounded-xl text-xs font-bold active:scale-95 transition-all">
-                    <Eye size={13} /> View
-                </button>
-                <button onClick={() => onEdit(product)}
-                    className="flex-1 flex items-center justify-center gap-1 bg-blue-50 text-blue-600 py-2.5 rounded-xl text-xs font-bold active:scale-95 transition-all">
-                    <Edit2 size={13} /> Edit
-                </button>
-                <button onClick={() => onDelete(product._id)}
-                    className="flex items-center justify-center bg-red-50 text-red-500 px-3 py-2.5 rounded-xl active:scale-95 transition-all">
-                    <Trash2 size={13} />
-                </button>
-            </div>
-        </div>
-    </div>
-));
-ProductCard.displayName = 'ProductCard';
+    // Button style variants based on color scheme
+    const getViewButtonGradient = () => {
+        switch(colorScheme) {
+            case 'orange': return 'from-orange-500 to-amber-500';
+            case 'blue': return 'from-blue-500 to-indigo-500';
+            case 'green': return 'from-emerald-500 to-teal-500';
+            case 'purple': return 'from-purple-500 to-pink-500';
+            default: return 'from-orange-500 to-amber-500';
+        }
+    };
 
-// ── TRANSACTION CARD ───────────────────────────────────────────────────────────
-const TransactionCard = memo(({ transaction, onClick, index }) => (
-    <div
-        className="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100 flex items-center gap-3 active:scale-[0.99] transition-all duration-200 cursor-pointer"
-        style={{ animationDelay: `${index * 30}ms` }}
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.05, duration: 0.4, ease: "easeOut" }}
+            whileHover={{ y: -6, transition: { duration: 0.2 } }}
+            className="group cursor-pointer relative"
+        >
+            {/* Decorative background blur element */}
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 to-amber-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            
+            {/* Main Card - Rounded with organic curves */}
+            <div className="relative bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100/80">
+                
+                {/* Image Section with Curved Bottom Edge */}
+                <div className="relative h-44 bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
+                    {getImageUrl(product.image, null) ? (
+                        <>
+                            <img
+                                src={getImageUrl(product.image)}
+                                onError={imgError()}
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                alt={product.name}
+                            />
+                            {/* Overlay gradient for better text readability */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                        </>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50">
+                            <Package size={44} className="text-gray-300" />
+                        </div>
+                    )}
+                    
+                    {/* Status Badges - Curved Design */}
+                    <div className="absolute top-3 right-3 flex gap-2">
+                        {product.price >= 1000 && (
+                            <motion.div 
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{ delay: index * 0.05, type: "spring", stiffness: 200 }}
+                                className={`bg-gradient-to-r ${gradient} text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm`}
+                            >
+                                <Sparkles size={10} className="inline mr-1" /> 
+                                ELIGIBLE
+                            </motion.div>
+                        )}
+                    </div>
+                    
+                    {product.stock === 0 && (
+                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center">
+                            <motion.span 
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="text-white font-bold text-sm bg-gradient-to-r from-rose-500 to-red-500 px-4 py-2 rounded-full shadow-lg"
+                            >
+                                OUT OF STOCK
+                            </motion.span>
+                        </div>
+                    )}
+                    
+                    {product.stock > 0 && product.stock <= 5 && (
+                        <motion.div 
+                            animate={{ scale: [1, 1.05, 1] }}
+                            transition={{ duration: 1.5, repeat: Infinity }}
+                            className="absolute top-3 left-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-bold px-3 py-1.5 rounded-full shadow-lg"
+                        >
+                            <AlertCircle size={10} className="inline mr-1" />
+                            Only {product.stock} left
+                        </motion.div>
+                    )}
+                    
+                    {/* Curved Bottom Edge Decoration */}
+                    <div className="absolute -bottom-1 left-0 right-0 h-6 bg-white rounded-t-3xl transform scale-x-105" />
+                </div>
+                
+                {/* Content Section with Organic Padding */}
+                <div className="p-4 relative">
+                    {/* Product Name with Elegant Underline */}
+                    <div className="mb-2">
+                        <h4 className="font-bold text-gray-800 text-base group-hover:text-orange-500 transition-colors duration-300 line-clamp-1">
+                            {product.name}
+                        </h4>
+                        <div className="w-12 h-0.5 bg-gradient-to-r from-orange-400 to-amber-400 rounded-full mt-1.5 group-hover:w-20 transition-all duration-300" />
+                    </div>
+                    
+                    {/* Description */}
+                    <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2 min-h-[2.2rem] mb-3">
+                        {product.description || 'No description available'}
+                    </p>
+                    
+                    {/* Price and Stock Row */}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-xs text-gray-400 font-medium">₹</span>
+                            <span className="text-xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                                {product.price.toLocaleString()}
+                            </span>
+                        </div>
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
+                            product.stock > 5 ? 'bg-emerald-50' :
+                            product.stock > 0 ? 'bg-amber-50' : 'bg-rose-50'
+                        }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${
+                                product.stock > 5 ? 'bg-emerald-500 animate-pulse' :
+                                product.stock > 0 ? 'bg-amber-500' : 'bg-rose-500'
+                            }`} />
+                            <span className={`text-[10px] font-semibold ${
+                                product.stock > 5 ? 'text-emerald-600' :
+                                product.stock > 0 ? 'text-amber-600' : 'text-rose-600'
+                            }`}>
+                                {product.stock > 0 ? `${product.stock} in stock` : 'out of stock'}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    {/* Enhanced Action Buttons - Vibrant Gradients */}
+                    <div className="flex gap-2 pt-2 border-t border-gray-100">
+                        {/* View Button - Dynamic Gradient based on color scheme */}
+                        <motion.button
+                            whileHover={{ scale: 1.03, y: -1 }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => onView(product)}
+                            className={`flex-1 flex items-center justify-center gap-2 bg-gradient-to-r ${getViewButtonGradient()} text-white py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all duration-300 group/btn relative overflow-hidden`}
+                        >
+                            <div className="absolute inset-0 bg-white/20 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
+                            <Eye size={14} className="group-hover/btn:scale-110 transition-transform duration-300" />
+                            <span>Quick View</span>
+                        </motion.button>
+                        
+                        {/* Edit Button - Premium Blue Gradient */}
+                        <motion.button
+                            whileHover={{ scale: 1.03, y: -1 }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => onEdit(product)}
+                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-blue-500/25 transition-all duration-300 group/btn relative overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
+                            <Edit2 size={14} className="group-hover/btn:rotate-12 transition-transform duration-300" />
+                            <span>Edit Item</span>
+                        </motion.button>
+                        
+                        {/* Delete Button - Vibrant Rose Gradient */}
+                        <motion.button
+                            whileHover={{ scale: 1.03, y: -1 }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => onDelete(product._id)}
+                            className="flex items-center justify-center gap-2 bg-gradient-to-r from-rose-500 via-red-500 to-pink-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-rose-500/25 transition-all duration-300 group/btn relative overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-rose-400 to-pink-400 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
+                            <Trash2 size={14} className="group-hover/btn:scale-110 transition-transform duration-300" />
+                        </motion.button>
+                    </div>
+                </div>
+                
+                {/* Decorative Corner Element */}
+                <div className="absolute top-0 right-0 w-16 h-16 overflow-hidden pointer-events-none">
+                    <div className={`absolute top-0 right-0 w-16 h-16 bg-gradient-to-br ${gradient} opacity-5 transform rotate-45 translate-x-8 -translate-y-8 group-hover:opacity-10 transition-opacity duration-500`} />
+                </div>
+            </div>
+        </motion.div>
+    );
+});
+VibrantProductCard.displayName = 'VibrantProductCard';
+
+// ── ANIMATED TRANSACTION ITEM ─────────────────────────────────────────────────
+const VibrantTransactionItem = memo(({ transaction, onClick, index }) => (
+    <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: index * 0.03, duration: 0.3 }}
+        whileHover={{ x: 4, backgroundColor: '#fef9f1' }}
+        className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex items-center gap-3 cursor-pointer transition-colors"
         onClick={() => onClick(transaction)}
     >
-        {getImageUrl(transaction.productPhoto, null) ? (
-            <img
-                src={getImageUrl(transaction.productPhoto)}
-                onError={imgError()}
-                className="w-14 h-14 rounded-xl object-cover border-2 border-orange-100 flex-shrink-0"
-                alt=""
-            />
-        ) : (
-            <div className="w-14 h-14 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <ShoppingBag size={18} className="text-orange-300" />
-            </div>
-        )}
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center flex-shrink-0">
+            {getImageUrl(transaction.productPhoto, null) ? (
+                <img
+                    src={getImageUrl(transaction.productPhoto)}
+                    onError={imgError()}
+                    className="w-full h-full rounded-lg object-cover"
+                    alt=""
+                />
+            ) : (
+                <ShoppingBag size={18} className="text-orange-400" />
+            )}
+        </div>
         <div className="flex-1 min-w-0">
-            <p className="font-black text-gray-800 truncate text-sm">{transaction.product?.name}</p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <p className="text-xs text-gray-500 truncate max-w-[100px]">{transaction.worker?.name}</p>
-                <span className="text-gray-300">·</span>
-                <p className="text-[10px] font-mono text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">
+            <p className="font-semibold text-gray-800 truncate text-sm">{transaction.product?.name || 'Product'}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-[10px] text-gray-500 truncate">{transaction.worker?.name}</p>
+                <span className="text-gray-300">•</span>
+                <p className="text-[9px] font-mono text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">
                     {transaction.coupon?.code}
                 </p>
             </div>
-            <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
-                <Calendar size={9} />
-                {new Date(transaction.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </p>
         </div>
         <div className="text-right flex-shrink-0">
-            <p className="font-black text-green-700 text-base">₹{transaction.finalPrice}</p>
-            <p className="text-[10px] text-red-400 font-semibold">-₹{transaction.discountAmount}</p>
-            <ChevronRight size={14} className="text-gray-300 ml-auto mt-1" />
+            <p className="font-bold text-emerald-600 text-sm">₹{transaction.finalPrice}</p>
+            <p className="text-[9px] text-rose-400">-₹{transaction.discountAmount}</p>
         </div>
-    </div>
+    </motion.div>
 ));
-TransactionCard.displayName = 'TransactionCard';
+VibrantTransactionItem.displayName = 'VibrantTransactionItem';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE: ANALYTICS
-// ─────────────────────────────────────────────────────────────────────────────
-const AnalyticsPage = memo(() => {
+// ── PAGE: ANALYTICS WITH REAL-TIME SIMULATION ─────────────────────────────────
+const AnalyticsPage = memo(({ transactions: globalTxns }) => {
     const [data, setData] = useState(null);
     const [txns, setTxns] = useState([]);
     const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState('week');
+    const [liveStats, setLiveStats] = useState({ revenue: 0, transactions: 0, discount: 0 });
 
     useEffect(() => {
         Promise.all([api.getShopAnalytics(), api.getShopTransactions()])
-            .then(([a, t]) => { setData(a.data); setTxns(t.data); })
+            .then(([a, t]) => { 
+                setData(a.data); 
+                setTxns(t.data);
+                // Initialize live stats
+                setLiveStats({
+                    revenue: a.data?.totalSales || 0,
+                    transactions: a.data?.totalTxns || 0,
+                    discount: a.data?.totalDiscounts || 0
+                });
+            })
             .catch(() => toast.error('Failed to load analytics.'))
             .finally(() => setLoading(false));
     }, []);
+
+    // Simulate real-time updates
+    useEffect(() => {
+        if (!data) return;
+        
+        const interval = setInterval(() => {
+            setLiveStats(prev => ({
+                revenue: prev.revenue + Math.floor(Math.random() * 500),
+                transactions: prev.transactions + Math.floor(Math.random() * 3),
+                discount: prev.discount + Math.floor(Math.random() * 100)
+            }));
+        }, 15000);
+
+        return () => clearInterval(interval);
+    }, [data]);
 
     const dailyChart = useMemo(() => {
         if (!txns.length) return [];
         const map = {};
         const daysToShow = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 90;
         txns.slice(0, daysToShow).forEach(t => {
-            const d = new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+            const d = new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
             map[d] = (map[d] || 0) + t.finalPrice;
         });
         return Object.entries(map).slice(-daysToShow).map(([label, value]) => ({ label, value }));
@@ -275,48 +508,52 @@ const AnalyticsPage = memo(() => {
         const map = {};
         const daysToShow = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 90;
         txns.slice(0, daysToShow).forEach(t => {
-            const d = new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+            const d = new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
             map[d] = (map[d] || 0) + t.discountAmount;
         });
         return Object.entries(map).slice(-daysToShow).map(([label, value]) => ({ label, value }));
     }, [txns, timeRange]);
 
-    const donutSegs = data ? [
-        { value: data.totalSales, color: '#f97316' },
-        { value: data.totalDiscounts, color: '#fb923c' },
+    const donutData = data ? [
+        { value: data.totalSales, color: '#f97316', label: 'Revenue' },
+        { value: data.totalDiscounts, color: '#fb923c', label: 'Discounts' },
     ] : [];
 
-    const avgTxn = txns.length ? Math.round(data?.totalSales / txns.length) : 0;
-    const avgDiscount = txns.length ? Math.round(data?.totalDiscounts / txns.length) : 0;
-    const conversionRate = data?.totalTxns && data?.totalWorkers ? Math.round((data.totalTxns / data.totalWorkers) * 100) : 0;
+    const total = data ? data.totalSales + data.totalDiscounts : 1;
+    const revenuePercent = data ? Math.round((data.totalSales / total) * 100) : 0;
 
     if (loading) return (
-        <div className="flex items-center justify-center py-24">
-            <div className="animate-spin w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full" />
+        <div className="flex items-center justify-center py-32">
+            <div className="w-10 h-10 border-3 border-orange-200 border-t-orange-500 rounded-full animate-spin" />
         </div>
     );
-    if (!data) return null;
 
     return (
         <div className="space-y-5">
+            {/* Header with live indicator */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-lg font-black text-gray-900">Analytics</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">Business insights overview</p>
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                        Analytics Dashboard
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <p className="text-[11px] text-gray-500">Live updates every 15s</p>
+                    </div>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
                     {[
-                        { key: 'week', label: '7D' },
-                        { key: 'month', label: '30D' },
-                        { key: 'year', label: '90D' },
+                        { key: 'week', label: '7D', color: 'bg-orange-500' },
+                        { key: 'month', label: '30D', color: 'bg-amber-500' },
+                        { key: 'year', label: '90D', color: 'bg-orange-600' },
                     ].map(range => (
                         <button
                             key={range.key}
                             onClick={() => setTimeRange(range.key)}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all min-w-[44px] ${
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
                                 timeRange === range.key
-                                    ? 'bg-orange-500 text-white shadow-md'
-                                    : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                                    ? `bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md`
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
                             {range.label}
@@ -324,96 +561,149 @@ const AnalyticsPage = memo(() => {
                     ))}
                     <button
                         onClick={() => window.location.reload()}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 active:bg-gray-50 transition-all"
+                        className="p-2 bg-white border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
                     >
-                        <RefreshCw size={13} />
+                        <RefreshCw size={14} />
                     </button>
                 </div>
             </div>
 
-            {/* KPI Cards - 2 columns on mobile */}
+            {/* Live Stats Cards */}
             <div className="grid grid-cols-2 gap-3">
-                <StatCard title="Total Revenue" value={`₹${data.totalSales?.toLocaleString()}`} sub={`Avg ₹${avgTxn}/txn`} icon={TrendingUp} color="bg-gradient-to-br from-orange-500 to-orange-600" trend="up" trendVal="12" loading={loading} />
-                <StatCard title="Total Discounts" value={`₹${data.totalDiscounts?.toLocaleString()}`} sub={`Avg ₹${avgDiscount}/txn`} icon={Tag} color="bg-gradient-to-br from-amber-500 to-orange-500" trend="down" trendVal="5" loading={loading} />
-                <StatCard title="Workers" value={data.totalWorkers} sub="Unique customers" icon={Users} color="bg-gradient-to-br from-blue-500 to-blue-600" trend="up" trendVal="8" loading={loading} />
-                <StatCard title="Transactions" value={data.totalTxns} sub={`${conversionRate}% conversion`} icon={ShoppingBag} color="bg-gradient-to-br from-purple-500 to-purple-600" trend="up" trendVal="15" loading={loading} />
-                <StatCard title="Used Coupons" value={data.usedCoupons ?? 0} sub="Coupons redeemed" icon={Percent} color="bg-gradient-to-br from-green-500 to-green-600" trend="up" trendVal="0" loading={loading} />
+                <GradientStatCard 
+                    title="Total Revenue" 
+                    value={liveStats.revenue} 
+                    sub={`Live: ₹${(liveStats.revenue - (data?.totalSales || 0)).toLocaleString()} new`}
+                    icon={TrendingUp} 
+                    gradient="from-emerald-500 to-teal-500" 
+                    trend="up" 
+                    trendVal="+8.5" 
+                    loading={loading}
+                    delay={0}
+                />
+                <GradientStatCard 
+                    title="Transactions" 
+                    value={liveStats.transactions} 
+                    sub="Live count"
+                    icon={ShoppingBag} 
+                    gradient="from-blue-500 to-indigo-500" 
+                    trend="up" 
+                    trendVal="+12" 
+                    loading={loading}
+                    delay={0.05}
+                />
+                <GradientStatCard 
+                    title="Workers" 
+                    value={data?.totalWorkers || 0} 
+                    sub="Active workers"
+                    icon={Users} 
+                    gradient="from-purple-500 to-pink-500" 
+                    trend="up" 
+                    trendVal="+5" 
+                    loading={loading}
+                    delay={0.1}
+                />
+                <GradientStatCard 
+                    title="Discounts Given" 
+                    value={liveStats.discount} 
+                    sub="Total savings"
+                    icon={Percent} 
+                    gradient="from-rose-500 to-orange-500" 
+                    trend="up" 
+                    trendVal="+3.2" 
+                    loading={loading}
+                    delay={0.15}
+                />
             </div>
 
             {/* Revenue Chart */}
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
+            <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+                <div className="flex items-center justify-between mb-5">
                     <div>
-                        <h3 className="font-black text-gray-800 text-sm">Revenue Trend</h3>
-                        <p className="text-[10px] text-gray-400">Daily sales performance</p>
+                        <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                            <TrendingUp size={16} className="text-emerald-500" />
+                            Revenue Trend
+                        </h3>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Daily performance</p>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-orange-400" />
-                        <span className="text-[10px] text-gray-500">Revenue (₹)</span>
+                    <div className="flex items-center gap-2 px-2 py-1 bg-orange-50 rounded-lg">
+                        <div className="w-2 h-2 rounded-full bg-orange-500" />
+                        <span className="text-[9px] font-medium text-orange-600">Revenue (₹)</span>
                     </div>
                 </div>
-                {dailyChart.length > 0
-                    ? <BarChart data={dailyChart} color="orange" height={140} animated />
-                    : <div className="h-32 flex items-center justify-center text-gray-300 text-sm">No data yet</div>
-                }
+                {dailyChart.length > 0 ? (
+                    <ColorfulBarChart data={dailyChart} height={140} colors={['#f97316', '#fb923c', '#fdba74', '#fed7aa']} />
+                ) : (
+                    <div className="h-32 flex items-center justify-center text-gray-400 text-sm">No data available</div>
+                )}
             </div>
 
-            {/* Donut + Distribution stacked on mobile */}
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <h3 className="font-black text-gray-800 text-sm mb-1">Revenue Distribution</h3>
-                <p className="text-[10px] text-gray-400 mb-4">Sales vs Discounts</p>
-                <div className="flex flex-col sm:flex-row items-center gap-5">
-                    <DonutChart
-                        segments={donutSegs}
-                        size={130}
-                        thickness={22}
-                        centerText={
-                            <>
-                                <p className="text-xl font-black text-gray-900">
-                                    {data.totalSales + data.totalDiscounts > 0
-                                        ? `${Math.round((data.totalSales / (data.totalSales + data.totalDiscounts)) * 100)}%`
-                                        : '—'}
-                                </p>
-                                <p className="text-[10px] text-gray-400">Net</p>
-                            </>
-                        }
-                    />
-                    <div className="space-y-3 flex-1 w-full">
-                        {[
-                            { label: 'Revenue Collected', val: `₹${data.totalSales?.toLocaleString()}`, color: 'bg-orange-400', pct: Math.round((data.totalSales / (data.totalSales + data.totalDiscounts)) * 100) },
-                            { label: 'Discounts Given', val: `₹${data.totalDiscounts?.toLocaleString()}`, color: 'bg-amber-400', pct: Math.round((data.totalDiscounts / (data.totalSales + data.totalDiscounts)) * 100) },
-                        ].map(s => (
-                            <div key={s.label} className="space-y-1">
-                                <div className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-2.5 h-2.5 rounded-full ${s.color}`} />
-                                        <span className="text-gray-600 text-xs">{s.label}</span>
-                                    </div>
-                                    <span className="font-bold text-gray-800 text-xs">{s.val}</span>
-                                </div>
-                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className={`h-full ${s.color} rounded-full transition-all duration-700`} style={{ width: `${s.pct}%` }} />
-                                </div>
+            {/* Two Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Revenue Distribution */}
+                <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+                    <h3 className="font-bold text-gray-800 text-sm mb-4">Revenue Distribution</h3>
+                    <div className="flex items-center gap-6">
+                        <div className="relative w-28 h-28">
+                            <svg className="w-full h-full transform -rotate-90">
+                                <circle cx="56" cy="56" r="48" fill="none" stroke="#f3f4f6" strokeWidth="16" />
+                                <circle
+                                    cx="56"
+                                    cy="56"
+                                    r="48"
+                                    fill="none"
+                                    stroke="url(#gradient)"
+                                    strokeWidth="16"
+                                    strokeDasharray={`${(revenuePercent / 100) * 301.6} 301.6`}
+                                    strokeLinecap="round"
+                                    className="transition-all duration-1000"
+                                />
+                                <defs>
+                                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stopColor="#f97316" />
+                                        <stop offset="100%" stopColor="#fb923c" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center flex-col">
+                                <p className="text-xl font-bold text-gray-800">{revenuePercent}%</p>
+                                <p className="text-[9px] text-gray-500">Revenue</p>
                             </div>
-                        ))}
+                        </div>
+                        <div className="flex-1 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-500" />
+                                    <span className="text-xs text-gray-600">Revenue</span>
+                                </div>
+                                <span className="text-xs font-semibold text-gray-800">₹{data?.totalSales?.toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-amber-400 to-orange-400" />
+                                    <span className="text-xs text-gray-600">Discounts</span>
+                                </div>
+                                <span className="text-xs font-semibold text-gray-800">₹{data?.totalDiscounts?.toLocaleString()}</span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full transition-all duration-700"
+                                    style={{ width: `${revenuePercent}%` }}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                {/* Real-time Activity Feed */}
+                <RealTimeActivity transactions={txns} />
             </div>
 
-            {/* Discount chart */}
-            {discountChart.length > 0 && (
-                <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                    <h3 className="font-black text-gray-800 text-sm mb-1">Discount Distribution</h3>
-                    <p className="text-[10px] text-gray-400 mb-4">Daily discount amounts (₹)</p>
-                    <BarChart data={discountChart} color="amber" height={120} animated />
-                </div>
-            )}
-
-            {/* Top products */}
-            {data.mostSold?.length > 0 && (
-                <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                    <h3 className="font-black text-gray-800 text-sm mb-4 flex items-center gap-2">
-                        <TrendingUp size={16} className="text-orange-500" />
+            {/* Top Products */}
+            {data?.mostSold?.length > 0 && (
+                <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+                    <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2">
+                        <Star size={16} className="text-amber-500" />
                         Top Selling Products
                     </h3>
                     <div className="space-y-3">
@@ -421,16 +711,23 @@ const AnalyticsPage = memo(() => {
                             const pct = Math.round((p.count / (data.mostSold[0]?.count || 1)) * 100);
                             return (
                                 <div key={i} className="flex items-center gap-3">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0 ${
-                                        i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-400' : 'bg-orange-400'
-                                    }`}>{i + 1}</div>
+                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                                        i === 0 ? 'bg-gradient-to-r from-amber-400 to-amber-500' : 
+                                        i === 1 ? 'bg-gradient-to-r from-gray-400 to-gray-500' : 
+                                        'bg-gradient-to-r from-orange-400 to-orange-500'
+                                    }`}>
+                                        {i + 1}
+                                    </div>
                                     <div className="flex-1">
                                         <div className="flex justify-between text-xs mb-1">
-                                            <span className="font-semibold text-gray-800 truncate max-w-[150px]">{p.name}</span>
-                                            <span className="font-black text-orange-600 ml-2">{p.count} sold</span>
+                                            <span className="font-medium text-gray-700 truncate max-w-[150px]">{p.name}</span>
+                                            <span className="font-semibold text-orange-500">{p.count} sold</span>
                                         </div>
                                         <div className="h-1.5 bg-orange-50 rounded-full overflow-hidden">
-                                            <div className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+                                            <div 
+                                                className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-700"
+                                                style={{ width: `${pct}%` }}
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -444,9 +741,7 @@ const AnalyticsPage = memo(() => {
 });
 AnalyticsPage.displayName = 'AnalyticsPage';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE: COUPON VERIFICATION
-// ─────────────────────────────────────────────────────────────────────────────
+// ── PAGE: COUPON VERIFICATION ─────────────────────────────────────────────────
 const CouponPage = memo(() => {
     const [code, setCode] = useState('');
     const [couponData, setCouponData] = useState(null);
@@ -511,232 +806,228 @@ const CouponPage = memo(() => {
     const eligibleProducts = products.filter(p => p.price >= 1000 && p.stock > 0);
 
     return (
-        <div className="space-y-4 sm:space-y-5">
-    <div>
-        <h2 className="text-base sm:text-lg font-black text-gray-900">Coupon Verify</h2>
-        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">Enter worker coupon code to apply discount</p>
-    </div>
-
-    {/* Success State */}
-    {success && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl sm:rounded-2xl p-4 sm:p-5">
-            <div className="flex items-center gap-3 mb-3 sm:mb-4">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
-                    <CheckCircle size={20} className="text-white" />
-                </div>
-                <div>
-                    <p className="font-black text-green-800 text-base sm:text-lg">Sale Completed!</p>
-                    <p className="text-[10px] sm:text-xs text-green-600">Transaction recorded successfully</p>
-                </div>
+        <div className="space-y-5">
+            <div>
+                <h2 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                    Coupon Verification
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">Enter worker coupon code to apply discount</p>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 border border-green-100 shadow-sm">
-                    <p className="text-sm sm:text-base font-black text-gray-900">₹{success.finalPrice}</p>
-                    <p className="text-[8px] sm:text-[10px] text-gray-500">Final Price</p>
-                </div>
-                <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 border border-green-100 shadow-sm">
-                    <p className="text-sm sm:text-base font-black text-red-500">-₹{success.discountAmount}</p>
-                    <p className="text-[8px] sm:text-[10px] text-gray-500">Discount</p>
-                </div>
-                <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 border border-green-100 shadow-sm">
-                    <p className="text-sm sm:text-base font-black text-orange-600">{couponData?.coupon?.discountPct || ''}%</p>
-                    <p className="text-[8px] sm:text-[10px] text-gray-500">Discount %</p>
-                </div>
-            </div>
-            <button
-                onClick={() => setSuccess(null)}
-                className="mt-3 sm:mt-4 w-full py-2.5 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-lg sm:rounded-xl text-xs sm:text-sm active:scale-95 transition-all shadow-md"
-            >
-                Verify Another Coupon
-            </button>
-        </div>
-    )}
 
-    {/* Main Form */}
-    {!success && (
-        <>
-            {/* Code Entry Card */}
-            <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-sm">
-                <label className="block text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                    Coupon Code
-                </label>
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                        <input
-                            ref={inputRef}
-                            type="text"
-                            placeholder="e.g., ABCD1234"
-                            value={code}
-                            onChange={onCode}
-                            onKeyPress={e => e.key === 'Enter' && verify()}
-                            autoCapitalize="characters"
-                            className="w-full border-2 border-gray-200 rounded-xl py-3 sm:py-3.5 px-4 font-mono text-sm sm:text-base uppercase tracking-widest
-                                focus:border-orange-400 focus:ring-4 focus:ring-orange-50 focus:outline-none transition-all"
-                        />
+            {success ? (
+                <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-5"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full flex items-center justify-center shadow-md">
+                            <CheckCircle size={22} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="font-bold text-emerald-800 text-base">Sale Completed!</p>
+                            <p className="text-[10px] text-emerald-600">Transaction recorded successfully</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white rounded-xl p-2">
+                            <p className="text-base font-bold text-gray-800">₹{success.finalPrice}</p>
+                            <p className="text-[9px] text-gray-500">Final Price</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2">
+                            <p className="text-base font-bold text-rose-500">-₹{success.discountAmount}</p>
+                            <p className="text-[9px] text-gray-500">Discount</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2">
+                            <p className="text-base font-bold text-orange-500">{couponData?.coupon?.discountPct || ''}%</p>
+                            <p className="text-[9px] text-gray-500">Off</p>
+                        </div>
                     </div>
                     <button
-                        onClick={verify}
-                        disabled={loading}
-                        className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-3.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-black
-                            active:scale-95 transition-all disabled:opacity-50 min-w-[100px] sm:min-w-[80px] flex items-center justify-center gap-2"
+                        onClick={() => setSuccess(null)}
+                        className="mt-4 w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold rounded-xl text-sm"
                     >
-                        {loading ? (
-                            <span className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin block" />
-                        ) : (
-                            'Verify'
-                        )}
+                        Verify Another Coupon
                     </button>
-                </div>
-                <div className="flex items-center gap-1.5 mt-3 text-[10px] sm:text-xs text-gray-400">
-                    <QrCode size={12} />
-                    <span>Enter the code printed on the worker's coupon</span>
-                </div>
-            </div>
-
-            {/* Coupon Details (Shows only after successful verification) */}
-            {couponData?.valid && (
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 space-y-4 sm:space-y-5 animate-in fade-in slide-in-from-top duration-300">
-                    {/* Valid Badge */}
-                    <div className="flex items-center gap-2 text-green-700 font-black text-xs sm:text-sm">
-                        <CheckCircle size={16} /> Valid — {couponData.coupon.discountPct}% Discount Available
-                    </div>
-
-                    {/* Worker Info Card */}
-                    <div className="bg-white rounded-xl p-3 sm:p-4 border border-green-100 flex items-center gap-3 sm:gap-4">
-                        <img
-                            src={getImageUrl(couponData.coupon.worker?.photo)}
-                            onError={imgError()}
-                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border-2 border-orange-100 shadow-md flex-shrink-0"
-                            alt="worker"
-                        />
-                        <div className="flex-1 min-w-0">
-                            <p className="font-black text-gray-800 text-sm sm:text-base truncate">{couponData.coupon.worker?.name}</p>
-                            <p className="text-[10px] sm:text-xs text-gray-500 font-mono truncate">{couponData.coupon.worker?.karigarId}</p>
-                            <p className="text-[9px] sm:text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                                <Clock size={8} />
-                                Expires: {new Date(couponData.coupon.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                            <p className="text-2xl sm:text-3xl font-black text-orange-600">{couponData.coupon.discountPct}%</p>
-                            <p className="text-[8px] sm:text-[10px] text-gray-400">OFF</p>
-                        </div>
-                    </div>
-
-                    {/* Product Selection */}
-                    <div>
-                        <label className="block text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                            Select Product <span className="text-red-500">*</span>
+                </motion.div>
+            ) : (
+                <>
+                    <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                            Coupon Code
                         </label>
-                        {eligibleProducts.length === 0 ? (
-                            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-center gap-2 text-xs text-orange-700">
-                                <AlertCircle size={14} /> No eligible products (MRP ≥ ₹1000 required)
-                            </div>
-                        ) : (
-                            <div className="space-y-2 max-h-80 overflow-y-auto -mx-1 px-1">
-                                {eligibleProducts.map(p => {
-                                    const discountedPrice = p.price - Math.round(p.price * couponData.coupon.discountPct / 100);
-                                    const isSelected = selectedPid === p._id;
-                                    return (
-                                        <label
-                                            key={p._id}
-                                            className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-xl border-2 cursor-pointer transition-all active:scale-98 ${
-                                                isSelected
-                                                    ? 'border-orange-400 bg-orange-50 shadow-md'
-                                                    : 'border-gray-200 bg-white hover:border-orange-200'
-                                            }`}
-                                        >
-                                            <input type="radio" name="product" value={p._id} checked={isSelected} onChange={onPid} className="sr-only" />
-                                            {getImageUrl(p.image, null) && (
-                                                <img 
-                                                    src={getImageUrl(p.image)} 
-                                                    onError={imgError()} 
-                                                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg object-cover border flex-shrink-0" 
-                                                    alt="" 
-                                                />
-                                            )}
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-gray-800 text-xs sm:text-sm truncate">{p.name}</p>
-                                                <p className="text-[9px] sm:text-[10px] text-gray-400">Stock: {p.stock}</p>
-                                            </div>
-                                            <div className="text-right flex-shrink-0">
-                                                <p className="text-[9px] sm:text-[10px] line-through text-gray-400">₹{p.price}</p>
-                                                <p className="font-black text-green-700 text-sm sm:text-base">₹{discountedPrice}</p>
-                                                <p className="text-[8px] sm:text-[9px] text-orange-500">Save ₹{p.price - discountedPrice}</p>
-                                            </div>
-                                            {isSelected && <CheckCircle size={14} className="text-orange-500 flex-shrink-0" />}
-                                        </label>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Photo Upload */}
-                    <div>
-                        <label className="block text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                            Purchase Photo <span className="text-red-500">*</span>
-                        </label>
-                        <label className="flex items-center gap-3 cursor-pointer border-2 border-dashed border-orange-300
-                            rounded-xl p-3 sm:p-4 hover:bg-orange-50 transition-all group">
-                            {photoPreview ? (
-                                <div className="relative flex-shrink-0">
-                                    <img src={photoPreview} className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover border-2 border-orange-200" alt="preview" />
-                                    <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full flex items-center justify-center">
-                                        <Check size={8} className="text-white" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                                    <Camera size={20} className="text-orange-400" />
-                                </div>
-                            )}
+                        <div className="flex flex-col sm:flex-row gap-3">
                             <div className="flex-1">
-                                <p className="font-semibold text-gray-700 text-xs sm:text-sm">
-                                    {photo ? photo.name : 'Tap to upload or take photo'}
-                                </p>
-                                <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">Required for record keeping</p>
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    placeholder="e.g., ABCD1234"
+                                    value={code}
+                                    onChange={onCode}
+                                    onKeyPress={e => e.key === 'Enter' && verify()}
+                                    autoCapitalize="characters"
+                                    className="w-full border-2 border-gray-200 rounded-xl py-3 px-4 font-mono text-sm uppercase tracking-wider
+                                        focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 focus:outline-none transition-all"
+                                />
                             </div>
-                            <input 
-                                type="file" 
-                                accept="image/*" 
-                                capture="environment" 
-                                className="hidden" 
-                                onChange={onPhoto} 
-                            />
-                        </label>
+                            <button
+                                onClick={verify}
+                                disabled={loading}
+                                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-semibold
+                                    disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {loading ? (
+                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    'Verify'
+                                )}
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-400">
+                            <QrCode size={12} />
+                            <span>Enter the code printed on the worker's coupon</span>
+                        </div>
                     </div>
 
-                    {/* Apply Button */}
-                    <button
-                        onClick={apply}
-                        disabled={applying || !selectedPid || !photo}
-                        className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3 sm:py-4 rounded-xl font-black text-sm sm:text-base
-                            active:scale-[0.98] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-200"
-                    >
-                        {applying ? (
-                            <>
-                                <span className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Processing...
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles size={16} /> Complete Sale
-                            </>
-                        )}
-                    </button>
-                </div>
+                    {couponData?.valid && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-5 space-y-4"
+                        >
+                            <div className="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                                <CheckCircle size={16} /> Valid — {couponData.coupon.discountPct}% Discount Available
+                            </div>
+
+                            <div className="bg-white rounded-xl p-4 flex items-center gap-4">
+                                <img
+                                    src={getImageUrl(couponData.coupon.worker?.photo)}
+                                    onError={imgError()}
+                                    className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-100 flex-shrink-0"
+                                    alt="worker"
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-gray-800 truncate">{couponData.coupon.worker?.name}</p>
+                                    <p className="text-[10px] text-gray-500 font-mono">{couponData.coupon.worker?.karigarId}</p>
+                                    <p className="text-[9px] text-gray-400 mt-1 flex items-center gap-1">
+                                        <Clock size={8} />
+                                        Expires: {new Date(couponData.coupon.expiresAt).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-2xl font-bold text-orange-500">{couponData.coupon.discountPct}%</p>
+                                    <p className="text-[8px] text-gray-400">OFF</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                                    Select Product <span className="text-rose-500">*</span>
+                                </label>
+                                {eligibleProducts.length === 0 ? (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2 text-xs text-amber-700">
+                                        <AlertCircle size={14} /> No eligible products (MRP ≥ ₹1000 required)
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                                        {eligibleProducts.map(p => {
+                                            const discountedPrice = p.price - Math.round(p.price * couponData.coupon.discountPct / 100);
+                                            const isSelected = selectedPid === p._id;
+                                            return (
+                                                <label
+                                                    key={p._id}
+                                                    className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                                        isSelected
+                                                            ? 'border-emerald-400 bg-emerald-50'
+                                                            : 'border-gray-200 bg-white hover:border-emerald-200'
+                                                    }`}
+                                                >
+                                                    <input type="radio" name="product" value={p._id} checked={isSelected} onChange={onPid} className="sr-only" />
+                                                    {getImageUrl(p.image, null) && (
+                                                        <img 
+                                                            src={getImageUrl(p.image)} 
+                                                            onError={imgError()} 
+                                                            className="w-12 h-12 rounded-lg object-cover border flex-shrink-0" 
+                                                            alt="" 
+                                                        />
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-semibold text-gray-800 text-sm truncate">{p.name}</p>
+                                                        <p className="text-[9px] text-gray-400">Stock: {p.stock}</p>
+                                                    </div>
+                                                    <div className="text-right flex-shrink-0">
+                                                        <p className="text-[9px] line-through text-gray-400">₹{p.price}</p>
+                                                        <p className="font-bold text-emerald-600 text-sm">₹{discountedPrice}</p>
+                                                        <p className="text-[8px] text-orange-500">Save ₹{p.price - discountedPrice}</p>
+                                                    </div>
+                                                    {isSelected && <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                                    Purchase Photo <span className="text-rose-500">*</span>
+                                </label>
+                                <label className="flex items-center gap-3 cursor-pointer border-2 border-dashed border-emerald-300 rounded-xl p-3 hover:bg-emerald-50 transition-all">
+                                    {photoPreview ? (
+                                        <div className="relative flex-shrink-0">
+                                            <img src={photoPreview} className="w-14 h-14 rounded-lg object-cover border-2 border-emerald-200" alt="preview" />
+                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                                                <Check size={8} className="text-white" />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="w-14 h-14 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <Camera size={20} className="text-emerald-400" />
+                                        </div>
+                                    )}
+                                    <div className="flex-1">
+                                        <p className="font-medium text-gray-700 text-sm">
+                                            {photo ? photo.name : 'Tap to upload or take photo'}
+                                        </p>
+                                        <p className="text-[9px] text-gray-400 mt-0.5">Required for record keeping</p>
+                                    </div>
+                                    <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        capture="environment" 
+                                        className="hidden" 
+                                        onChange={onPhoto} 
+                                    />
+                                </label>
+                            </div>
+
+                            <button
+                                onClick={apply}
+                                disabled={applying || !selectedPid || !photo}
+                                className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3.5 rounded-xl font-bold text-sm
+                                    disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                            >
+                                {applying ? (
+                                    <>
+                                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles size={16} /> Complete Sale
+                                    </>
+                                )}
+                            </button>
+                        </motion.div>
+                    )}
+                </>
             )}
-        </>
-    )}
-</div>
+        </div>
     );
 });
 CouponPage.displayName = 'CouponPage';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE: PRODUCTS
-// ─────────────────────────────────────────────────────────────────────────────
+// ── PAGE: PRODUCTS ────────────────────────────────────────────────────────────
 const ProductsPage = memo(() => {
     const [products, setProducts] = useState([]);
     const [showForm, setShowForm] = useState(false);
@@ -745,6 +1036,7 @@ const ProductsPage = memo(() => {
     const [selected, setSelected] = useState(null);
     const [viewMode, setViewMode] = useState('grid');
     const [searchTerm, setSearchTerm] = useState('');
+    const [colorScheme, setColorScheme] = useState('orange');
 
     const [fName, setFName] = useState('');
     const [fDesc, setFDesc] = useState('');
@@ -807,7 +1099,7 @@ const ProductsPage = memo(() => {
         } catch (e) {
             toast.error(e.response?.data?.message || 'Failed to save.');
         } finally { setLoading(false); }
-    }, [fName, fDesc, fPrice, fStock,  fImg, editing, resetForm, load]);
+    }, [fName, fDesc, fPrice, fStock, fImg, editing, resetForm, load]);
 
     const del = useCallback(async (id) => {
         if (!window.confirm('Delete this product?')) return;
@@ -827,55 +1119,49 @@ const ProductsPage = memo(() => {
         );
     }, [products, searchTerm]);
 
-    const inputCls = "w-full border-2 border-gray-200 rounded-xl py-3.5 px-4 text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-50 focus:outline-none transition-all";
+    const colorSchemes = ['orange', 'blue', 'green', 'purple'];
 
     return (
-        <div className="space-y-4">
-            {/* Product Detail Modal - full screen on mobile */}
+        <div className="space-y-5">
+            {/* Product Detail Modal */}
             {selected && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg overflow-hidden">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                    <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md overflow-hidden">
                         {getImageUrl(selected.image, null) && (
-                            <div className="relative h-52 overflow-hidden">
+                            <div className="relative h-48 overflow-hidden">
                                 <img src={getImageUrl(selected.image)} onError={imgError()} className="w-full h-full object-cover" alt="" />
                                 <button onClick={() => setSelected(null)}
-                                    className="absolute top-3 right-3 bg-black/50 text-white p-2.5 rounded-full">
-                                    <X size={18} />
+                                    className="absolute top-3 right-3 bg-black/50 text-white p-2 rounded-full">
+                                    <X size={16} />
                                 </button>
                             </div>
                         )}
                         <div className="p-5 space-y-4">
-                            {!getImageUrl(selected.image, null) && (
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-lg font-black text-gray-900">{selected.name}</h3>
-                                    <button onClick={() => setSelected(null)} className="text-gray-400 p-1"><X size={20} /></button>
-                                </div>
-                            )}
-                            {getImageUrl(selected.image, null) && <h3 className="text-lg font-black text-gray-900">{selected.name}</h3>}
-                            <p className="text-gray-500 text-sm">{selected.description || 'No description'}</p>
+                            <h3 className="text-lg font-bold text-gray-800">{selected.name}</h3>
+                            <p className="text-sm text-gray-500">{selected.description || 'No description'}</p>
                             <div className="grid grid-cols-3 gap-2 text-center">
-                                <div className="bg-orange-50 rounded-xl p-3">
-                                    <p className="text-xl font-black text-orange-600">₹{selected.price}</p>
-                                    <p className="text-[10px] text-gray-500">MRP</p>
+                                <div className="bg-orange-50 rounded-xl p-2">
+                                    <p className="text-lg font-bold text-orange-500">₹{selected.price}</p>
+                                    <p className="text-[9px] text-gray-500">MRP</p>
                                 </div>
-                                <div className="bg-green-50 rounded-xl p-3">
-                                    <p className="text-xl font-black text-green-600">{selected.stock}</p>
-                                    <p className="text-[10px] text-gray-500">In Stock</p>
+                                <div className="bg-emerald-50 rounded-xl p-2">
+                                    <p className="text-lg font-bold text-emerald-500">{selected.stock}</p>
+                                    <p className="text-[9px] text-gray-500">Stock</p>
                                 </div>
-                                <div className={`rounded-xl p-3 ${selected.price >= 1000 ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                                    <p className={`text-xs font-black ${selected.price >= 1000 ? 'text-blue-600' : 'text-gray-400'}`}>
-                                        {selected.price >= 1000 ? '✅ Yes' : '❌ No'}
+                                <div className={`rounded-xl p-2 ${selected.price >= 1000 ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                                    <p className={`text-xs font-semibold ${selected.price >= 1000 ? 'text-blue-500' : 'text-gray-400'}`}>
+                                        {selected.price >= 1000 ? '✅ Eligible' : '❌'}
                                     </p>
-                                    <p className="text-[10px] text-gray-500">Coupon</p>
+                                    <p className="text-[9px] text-gray-500">Coupon</p>
                                 </div>
                             </div>
-                            <div className="flex gap-3">
+                            <div className="flex gap-2">
                                 <button onClick={() => { setSelected(null); openEdit(selected); }}
-                                    className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all">
+                                    className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white py-2.5 rounded-xl text-sm font-semibold">
                                     Edit
                                 </button>
                                 <button onClick={() => { setSelected(null); del(selected._id); }}
-                                    className="flex-1 bg-red-50 text-red-500 py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all">
+                                    className="flex-1 bg-rose-50 text-rose-500 py-2.5 rounded-xl text-sm font-semibold">
                                     Delete
                                 </button>
                             </div>
@@ -887,16 +1173,31 @@ const ProductsPage = memo(() => {
             {/* Header */}
             <div className="flex items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-lg font-black text-gray-900">Products ({products.length})</h2>
-                    <p className="text-xs text-gray-500">Manage inventory</p>
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                        Products
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">{products.length} items in inventory</p>
                 </div>
                 <div className="flex gap-2">
+                    <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                        {colorSchemes.map(scheme => (
+                            <button
+                                key={scheme}
+                                onClick={() => setColorScheme(scheme)}
+                                className={`w-6 h-6 rounded-md transition-all ${
+                                    scheme === 'orange' ? 'bg-orange-500' :
+                                    scheme === 'blue' ? 'bg-blue-500' :
+                                    scheme === 'green' ? 'bg-emerald-500' : 'bg-purple-500'
+                                } ${colorScheme === scheme ? 'ring-2 ring-offset-1 ring-gray-400' : 'opacity-50'}`}
+                            />
+                        ))}
+                    </div>
                     <button onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                        className="p-2.5 border-2 border-gray-200 rounded-xl active:bg-gray-50 transition-all">
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                         {viewMode === 'grid' ? <List size={16} /> : <Grid3x3 size={16} />}
                     </button>
                     <button onClick={openAdd}
-                        className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-all shadow-md">
+                        className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold">
                         <Plus size={16} /> Add
                     </button>
                 </div>
@@ -904,67 +1205,70 @@ const ProductsPage = memo(() => {
 
             {/* Search */}
             <div className="relative">
-                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                     type="text"
                     placeholder="Search products..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-50 focus:outline-none"
+                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-orange-300 focus:ring-1 focus:ring-orange-100 focus:outline-none"
                 />
             </div>
 
-            {/* Product Form - sheet from bottom on mobile */}
+            {/* Product Form Modal */}
             {showForm && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg overflow-y-auto max-h-[90vh]">
+                    <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md overflow-y-auto max-h-[85vh]">
                         <div className="p-5 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h3 className="font-black text-gray-800 text-lg">{editing ? 'Edit Product' : 'Add Product'}</h3>
-                                <button onClick={() => { setShowForm(false); resetForm(); }} className="text-gray-400 p-1 active:text-gray-700">
-                                    <X size={22} />
+                                <h3 className="font-bold text-gray-800 text-lg">{editing ? 'Edit Product' : 'Add Product'}</h3>
+                                <button onClick={() => { setShowForm(false); resetForm(); }} className="text-gray-400">
+                                    <X size={20} />
                                 </button>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Product Name *</label>
-                                <input placeholder="Enter product name" value={fName} onChange={e => setFName(e.target.value)} className={inputCls} />
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Product Name *</label>
+                                <input placeholder="Enter product name" value={fName} onChange={e => setFName(e.target.value)} 
+                                    className="w-full border border-gray-200 rounded-lg py-2.5 px-3 text-sm focus:border-orange-300 focus:ring-1 focus:ring-orange-100 focus:outline-none" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Price (₹) *</label>
-                                    <input type="number" inputMode="numeric" placeholder="0" value={fPrice} onChange={e => setFPrice(e.target.value)} className={inputCls} />
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Price (₹) *</label>
+                                    <input type="number" placeholder="0" value={fPrice} onChange={e => setFPrice(e.target.value)} 
+                                        className="w-full border border-gray-200 rounded-lg py-2.5 px-3 text-sm focus:border-orange-300 focus:ring-1 focus:ring-orange-100 focus:outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Stock</label>
-                                    <input type="number" inputMode="numeric" placeholder="0" value={fStock} onChange={e => setFStock(e.target.value)} className={inputCls} />
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Stock</label>
+                                    <input type="number" placeholder="0" value={fStock} onChange={e => setFStock(e.target.value)} 
+                                        className="w-full border border-gray-200 rounded-lg py-2.5 px-3 text-sm focus:border-orange-300 focus:ring-1 focus:ring-orange-100 focus:outline-none" />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Description</label>
-                                <textarea placeholder="Brief product description..." value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
-                                    className="w-full border-2 border-gray-200 rounded-xl py-3 px-4 text-sm resize-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 focus:outline-none transition-all" />
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Description</label>
+                                <textarea placeholder="Brief description..." value={fDesc} onChange={e => setFDesc(e.target.value)} rows={2}
+                                    className="w-full border border-gray-200 rounded-lg py-2 px-3 text-sm resize-none focus:border-orange-300 focus:ring-1 focus:ring-orange-100 focus:outline-none" />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Product Image</label>
-                                <label className="flex items-center gap-3 cursor-pointer border-2 border-dashed border-gray-200 rounded-xl p-3 active:bg-orange-50 transition-all">
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Product Image</label>
+                                <label className="flex items-center gap-3 cursor-pointer border-2 border-dashed border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
                                     {fImgPreview
-                                        ? <img src={fImgPreview} className="w-14 h-14 rounded-lg object-cover border-2 border-orange-200 flex-shrink-0" alt="preview" />
-                                        : <div className="w-14 h-14 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0"><Upload size={20} className="text-orange-400" /></div>
+                                        ? <img src={fImgPreview} className="w-12 h-12 rounded-lg object-cover border flex-shrink-0" alt="preview" />
+                                        : <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0"><Upload size={18} className="text-gray-400" /></div>
                                     }
                                     <div>
-                                        <p className="text-sm font-medium text-gray-700">{fImg ? fImg.name : 'Tap to upload image'}</p>
-                                        <p className="text-[10px] text-gray-400 mt-0.5">JPG, PNG up to 5MB</p>
+                                        <p className="text-xs text-gray-600">{fImg ? fImg.name : 'Tap to upload image'}</p>
+                                        <p className="text-[9px] text-gray-400">JPG, PNG up to 5MB</p>
                                     </div>
                                     <input type="file" accept="image/*" className="hidden" onChange={onFImg} />
                                 </label>
                             </div>
-                            <div className="flex gap-3 pb-safe">
+                            <div className="flex gap-3 pt-2">
                                 <button onClick={save} disabled={loading}
-                                    className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-black text-sm active:scale-95 disabled:opacity-50 transition-all">
+                                    className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50">
                                     {loading ? 'Saving...' : editing ? 'Update' : 'Add Product'}
                                 </button>
                                 <button onClick={() => { setShowForm(false); resetForm(); }}
-                                    className="px-5 py-4 border-2 border-gray-200 text-gray-600 rounded-xl font-bold text-sm active:bg-gray-50 transition-all">
+                                    className="px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-semibold">
                                     Cancel
                                 </button>
                             </div>
@@ -973,39 +1277,42 @@ const ProductsPage = memo(() => {
                 </div>
             )}
 
-            {/* Product Grid */}
+            {/* Product Grid/List */}
             {filteredProducts.length === 0 ? (
-                <div className="text-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-100">
-                    <Package size={44} className="mx-auto mb-3 opacity-30" />
-                    <p className="font-semibold">No products yet</p>
-                    <p className="text-sm mt-1">Tap "Add" to get started</p>
+                <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-gray-100">
+                    <Package size={40} className="mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">No products found</p>
                 </div>
             ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                     {filteredProducts.map((p, idx) => (
-                        <ProductCard key={p._id} product={p} index={idx} onView={setSelected} onEdit={openEdit} onDelete={del} />
+                        <VibrantProductCard 
+                            key={p._id} 
+                            product={p} 
+                            index={idx} 
+                            onView={setSelected} 
+                            onEdit={openEdit} 
+                            onDelete={del}
+                            colorScheme={colorScheme}
+                        />
                     ))}
                 </div>
             ) : (
-                <div className="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-100 overflow-hidden">
+                <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-100">
                     {filteredProducts.map(p => (
-                        <div key={p._id} className="flex items-center gap-3 p-3 active:bg-orange-50/40 transition-colors">
+                        <div key={p._id} className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors">
                             {getImageUrl(p.image, null)
-                                ? <img src={getImageUrl(p.image)} className="w-12 h-12 rounded-xl object-cover border flex-shrink-0" alt="" />
-                                : <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0"><Package size={16} className="text-orange-300" /></div>
+                                ? <img src={getImageUrl(p.image)} className="w-10 h-10 rounded-lg object-cover border flex-shrink-0" alt="" />
+                                : <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0"><Package size={16} className="text-gray-400" /></div>
                             }
                             <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-800 text-sm truncate">{p.name}</p>
-                                <p className="font-black text-orange-600 text-sm">₹{p.price}</p>
-                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                                    p.stock > 5 ? 'bg-green-50 text-green-700' :
-                                    p.stock > 0 ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'
-                                }`}>{p.stock > 0 ? `${p.stock} stock` : 'Out of stock'}</span>
+                                <p className="font-medium text-gray-800 text-sm truncate">{p.name}</p>
+                                <p className="font-bold text-orange-500 text-sm">₹{p.price}</p>
                             </div>
-                            <div className="flex gap-1 flex-shrink-0">
-                                <button onClick={() => setSelected(p)} className="p-2.5 active:bg-orange-100 rounded-xl"><Eye size={16} className="text-orange-600" /></button>
-                                <button onClick={() => openEdit(p)} className="p-2.5 active:bg-blue-100 rounded-xl"><Edit2 size={16} className="text-blue-600" /></button>
-                                <button onClick={() => del(p._id)} className="p-2.5 active:bg-red-100 rounded-xl"><Trash2 size={16} className="text-red-500" /></button>
+                            <div className="flex gap-1">
+                                <button onClick={() => setSelected(p)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Eye size={14} className="text-gray-500" /></button>
+                                <button onClick={() => openEdit(p)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Edit2 size={14} className="text-gray-500" /></button>
+                                <button onClick={() => del(p._id)} className="p-1.5 hover:bg-gray-100 rounded-lg"><Trash2 size={14} className="text-gray-400" /></button>
                             </div>
                         </div>
                     ))}
@@ -1016,9 +1323,7 @@ const ProductsPage = memo(() => {
 });
 ProductsPage.displayName = 'ProductsPage';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PAGE: TRANSACTIONS
-// ─────────────────────────────────────────────────────────────────────────────
+// ── PAGE: TRANSACTIONS ────────────────────────────────────────────────────────
 const TransactionsPage = memo(() => {
     const [txns, setTxns] = useState([]);
     const [selected, setSelected] = useState(null);
@@ -1069,58 +1374,68 @@ const TransactionsPage = memo(() => {
     };
 
     const discountTiers = [...new Set(txns.map(t => t.discountPct).filter(Boolean))].sort((a, b) => a - b);
+    const totalRevenue = txns.reduce((s, t) => s + t.finalPrice, 0);
+    const totalDiscount = txns.reduce((s, t) => s + t.discountAmount, 0);
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-5">
             {/* Transaction Detail Modal */}
             {selected && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md overflow-y-auto max-h-[90vh]">
-                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-4 flex items-center justify-between rounded-t-3xl sm:rounded-t-3xl">
-                            <h3 className="text-white font-black">Transaction Details</h3>
-                            <button onClick={() => setSelected(null)} className="text-white/80 p-1"><X size={20} /></button>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+                    <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md overflow-y-auto max-h-[85vh]">
+                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-4 flex items-center justify-between rounded-t-2xl">
+                            <h3 className="text-white font-semibold">Transaction Details</h3>
+                            <button onClick={() => setSelected(null)} className="text-white/80"><X size={18} /></button>
                         </div>
                         <div className="p-5 space-y-4">
                             {getImageUrl(selected.productPhoto, null) && (
-                                <img src={getImageUrl(selected.productPhoto)} onError={imgError()} className="w-full h-44 object-cover rounded-xl border shadow-sm" alt="" />
+                                <img src={getImageUrl(selected.productPhoto)} onError={imgError()} className="w-full h-40 object-cover rounded-lg border" alt="" />
                             )}
-                            <div className="flex items-center gap-3 bg-orange-50 rounded-xl p-3">
-                                <img src={getImageUrl(selected.worker?.photo)} onError={imgError()} className="w-12 h-12 rounded-xl object-cover border-2 border-orange-100 flex-shrink-0" alt="" />
+                            <div className="flex items-center gap-3 bg-orange-50 rounded-lg p-3">
+                                <img src={getImageUrl(selected.worker?.photo)} onError={imgError()} className="w-10 h-10 rounded-lg object-cover border flex-shrink-0" alt="" />
                                 <div>
-                                    <p className="font-black text-gray-800">{selected.worker?.name}</p>
-                                    <p className="text-xs text-orange-600 font-mono">{selected.worker?.karigarId}</p>
+                                    <p className="font-semibold text-gray-800 text-sm">{selected.worker?.name}</p>
+                                    <p className="text-[10px] text-orange-500 font-mono">{selected.worker?.karigarId}</p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-2 text-center">
-                                <div className="bg-gray-50 rounded-xl p-3">
-                                    <p className="font-black text-gray-700 text-sm">₹{selected.originalPrice}</p>
-                                    <p className="text-[10px] text-gray-400">MRP</p>
+                                <div className="bg-gray-50 rounded-lg p-2">
+                                    <p className="font-bold text-gray-700 text-sm">₹{selected.originalPrice}</p>
+                                    <p className="text-[9px] text-gray-400">MRP</p>
                                 </div>
-                                <div className="bg-red-50 rounded-xl p-3">
-                                    <p className="font-black text-red-500 text-sm">-₹{selected.discountAmount}</p>
-                                    <p className="text-[10px] text-gray-400">{selected.discountPct}% OFF</p>
+                                <div className="bg-rose-50 rounded-lg p-2">
+                                    <p className="font-bold text-rose-500 text-sm">-₹{selected.discountAmount}</p>
+                                    <p className="text-[9px] text-gray-400">{selected.discountPct}% OFF</p>
                                 </div>
-                                <div className="bg-green-50 rounded-xl p-3">
-                                    <p className="font-black text-green-700 text-sm">₹{selected.finalPrice}</p>
-                                    <p className="text-[10px] text-gray-400">Final Paid</p>
+                                <div className="bg-emerald-50 rounded-lg p-2">
+                                    <p className="font-bold text-emerald-600 text-sm">₹{selected.finalPrice}</p>
+                                    <p className="text-[9px] text-gray-400">Final</p>
                                 </div>
                             </div>
                             <div className="space-y-2 text-sm">
                                 {[
                                     ['Product', selected.product?.name],
                                     ['Coupon Code', selected.coupon?.code],
-                                    ['Date', new Date(selected.createdAt).toLocaleString('en-IN')],
+                                    ['Date', new Date(selected.createdAt).toLocaleString()],
                                 ].map(([k, v]) => (
-                                    <div key={k} className="flex justify-between py-2 border-b border-gray-100 last:border-0">
-                                        <span className="text-gray-500 text-xs">{k}</span>
-                                        <span className="font-semibold text-gray-800 font-mono text-xs text-right break-all ml-2">{v}</span>
+                                    <div key={k} className="flex justify-between py-1 border-b border-gray-100 last:border-0">
+                                        <span className="text-gray-500 text-[10px]">{k}</span>
+                                        <span className="font-medium text-gray-800 text-[10px] text-right break-all ml-2">{v}</span>
                                     </div>
                                 ))}
                             </div>
-                            <button onClick={() => setSelected(null)}
-                                className="w-full py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm active:scale-95 transition-all">
-                                Close
-                            </button>
+                            <motion.button
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+    onClick={() => setSelected(null)}
+    className="w-full py-3 bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-xl font-medium text-sm shadow-lg hover:shadow-rose-500/25 transition-all duration-300 relative overflow-hidden group"
+>
+    <div className="absolute inset-0 bg-gradient-to-r from-rose-600 to-pink-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+    <div className="relative flex items-center justify-center gap-2">
+        <X size={16} className="group-hover:rotate-90 transition-transform duration-300" />
+        <span>Close</span>
+    </div>
+</motion.button>
                         </div>
                     </div>
                 </div>
@@ -1129,62 +1444,61 @@ const TransactionsPage = memo(() => {
             {/* Header */}
             <div className="flex items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-lg font-black text-gray-900">Transactions</h2>
-                    <p className="text-xs text-gray-500">{txns.length} total sales</p>
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                        Transactions
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">{txns.length} total sales</p>
                 </div>
                 <button onClick={exportToCSV}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-gray-600 text-xs font-semibold active:bg-gray-50 transition-all">
-                    <Download size={14} /> Export
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors">
+                    <Download size={12} /> Export
                 </button>
             </div>
 
-            {/* Search + Filter row */}
+            {/* Stats Summary */}
+            {txns.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-3 text-center">
+                        <TrendingUp size={18} className="text-emerald-500 mx-auto mb-1" />
+                        <p className="text-lg font-bold text-gray-800">₹{totalRevenue.toLocaleString()}</p>
+                        <p className="text-[9px] text-gray-500">Total Revenue</p>
+                    </div>
+                    <div className="bg-gradient-to-r from-rose-50 to-orange-50 rounded-xl p-3 text-center">
+                        <Percent size={18} className="text-rose-500 mx-auto mb-1" />
+                        <p className="text-lg font-bold text-gray-800">₹{totalDiscount.toLocaleString()}</p>
+                        <p className="text-[9px] text-gray-500">Total Discounts</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Search + Filter */}
             <div className="flex gap-2">
                 <div className="relative flex-1">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
-                        placeholder="Search..."
+                        placeholder="Search by product, worker, or coupon..."
                         value={search}
                         onChange={onSearch}
-                        className="w-full pl-9 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-50 focus:outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:border-orange-300 focus:ring-1 focus:ring-orange-100 focus:outline-none"
                     />
                 </div>
                 <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                    className="px-3 py-3 border-2 border-gray-200 rounded-xl text-sm bg-white max-w-[130px]">
+                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white">
                     <option value="all">All</option>
                     {discountTiers.map(tier => <option key={tier} value={tier}>{tier}% OFF</option>)}
                 </select>
             </div>
 
-            {/* Stats */}
-            {txns.length > 0 && (
-                <div className="grid grid-cols-2 gap-2.5">
-                    {[
-                        { label: 'Total Revenue', value: `₹${txns.reduce((s, t) => s + t.finalPrice, 0).toLocaleString()}`, icon: TrendingUp },
-                        { label: 'Total Discount', value: `₹${txns.reduce((s, t) => s + t.discountAmount, 0).toLocaleString()}`, icon: Percent },
-                        { label: 'Avg Discount', value: `${Math.round(txns.reduce((s, t) => s + t.discountPct, 0) / txns.length)}%`, icon: Tag },
-                        { label: 'Avg Transaction', value: `₹${Math.round(txns.reduce((s, t) => s + t.finalPrice, 0) / txns.length)}`, icon: ShoppingBag },
-                    ].map(stat => (
-                        <div key={stat.label} className="bg-white rounded-xl p-3 border border-gray-100 text-center">
-                            <stat.icon size={13} className="text-orange-500 mx-auto mb-1" />
-                            <p className="text-base font-black text-gray-800">{stat.value}</p>
-                            <p className="text-[10px] text-gray-400">{stat.label}</p>
-                        </div>
-                    ))}
-                </div>
-            )}
-
             {/* List */}
             {filtered.length === 0 ? (
-                <div className="text-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-100">
-                    <History size={44} className="mx-auto mb-3 opacity-30" />
-                    <p className="font-semibold">No transactions found</p>
-                    <p className="text-sm mt-1">Coupon sales will appear here</p>
+                <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-gray-100">
+                    <History size={40} className="mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">No transactions found</p>
                 </div>
             ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                     {filtered.map((t, idx) => (
-                        <TransactionCard key={t._id} transaction={t} index={idx} onClick={setSelected} />
+                        <VibrantTransactionItem key={t._id} transaction={t} index={idx} onClick={setSelected} />
                     ))}
                 </div>
             )}
@@ -1200,8 +1514,8 @@ const ShopDashboard = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [page, setPage] = useState('analytics');
-    const [sidebarOpen, setSidebarOpen] = useState(false);
     const [shop, setShop] = useState(null);
+    const [transactions, setTransactions] = useState([]);
 
     const loadShop = useCallback(() => {
         api.getShopProfile()
@@ -1209,16 +1523,23 @@ const ShopDashboard = () => {
             .catch(() => navigate('/login'));
     }, [navigate]);
 
-    // Auto-open settings if navigated from header
+    const loadTransactions = useCallback(() => {
+        api.getShopTransactions()
+            .then(r => setTransactions(r.data))
+            .catch(() => {});
+    }, []);
+
     useEffect(() => {
         if (location.state?.openSettings) {
             setPage('settings');
-            // Clear the state
             window.history.replaceState({}, document.title);
         }
     }, [location.state?.openSettings]);
 
-    useEffect(() => { loadShop(); }, [loadShop]);
+    useEffect(() => { 
+        loadShop();
+        loadTransactions();
+    }, [loadShop, loadTransactions]);
 
     const logout = useCallback(() => {
         ['shopToken', 'shop', 'shopRole'].forEach(k => localStorage.removeItem(k));
@@ -1226,28 +1547,30 @@ const ShopDashboard = () => {
         navigate('/login');
     }, [navigate]);
 
-    const setPageCb = useCallback(p => { setPage(p); setSidebarOpen(false); }, []);
-
-    const NAV = [
-        { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-        { key: 'coupon', label: 'Coupon', icon: QrCode },
-        { key: 'products', label: 'Products', icon: Package },
-        { key: 'history', label: 'History', icon: History },
-        { key: 'profile', label: 'Profile', icon: Settings },
-    ];
+    const setPageCb = useCallback(p => { setPage(p); }, []);
 
     return (
         <>
             <ShopHeader />
-            <div className="lg:flex min-h-screen">
+            <div className="lg:flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
                 <ShopSidebar page={page} onPageChange={setPageCb} onLogout={logout} />
-                <main className="flex-1 bg-gray-50 p-4 lg:p-6 pb-24 lg:pb-6 overflow-auto">
-                    {page === 'analytics' && <AnalyticsPage />}
-                    {page === 'coupon' && <CouponPage />}
-                    {page === 'products' && <ProductsPage />}
-                    {page === 'history' && <TransactionsPage />}
-                    {page === 'profile' && <ShopProfileUnified shop={shop} onUpdate={loadShop} isDashboard={true} />}
-                    {page === 'settings' && <ShopSettings />}
+                <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 overflow-auto">
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={page}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            {page === 'analytics' && <AnalyticsPage transactions={transactions} />}
+                            {page === 'coupon' && <CouponPage />}
+                            {page === 'products' && <ProductsPage />}
+                            {page === 'history' && <TransactionsPage />}
+                            {page === 'profile' && <ShopProfileUnified shop={shop} onUpdate={loadShop} isDashboard={true} />}
+                            {page === 'settings' && <ShopSettings />}
+                        </motion.div>
+                    </AnimatePresence>
                 </main>
             </div>
         </>

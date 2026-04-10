@@ -141,9 +141,9 @@ export default function CreateGroup() {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
+      <div className="max-w-3xl mx-auto">
         {/* Header - Mobile Optimized */}
-        <div className="flex items-center gap-3 mb-5 sm:mb-6">
+        <div className="flex items-center gap-3 mb-6 sm:mb-8">
           <button
             onClick={() => navigate('/worker/my-groups')}
             className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border-2 border-orange-200 bg-white flex items-center justify-center text-gray-500 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-500 transition-all active:scale-95 flex-shrink-0"
@@ -159,20 +159,20 @@ export default function CreateGroup() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:gap-5">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5 sm:gap-7">
           {/* Card 1: Group Details */}
-          <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-4 sm:px-5 py-3 sm:py-4 border-b border-orange-100 flex items-center gap-3">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-sm">
-                <Users size={14} className="text-white" />
+          <div className="bg-white rounded-3xl border-2 border-orange-100 overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-5 sm:px-8 py-4 sm:py-5 border-b border-orange-100 flex items-center gap-4">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
+                <Users size={16} className="text-white" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-bold text-gray-900">Group Details</p>
-                <p className="text-[9px] sm:text-[10px] text-gray-400 font-medium">Name and describe your group</p>
+                <p className="text-sm sm:text-base font-bold text-gray-900">Group Details</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Name and describe your group</p>
               </div>
             </div>
             
-            <div className="p-4 sm:p-5 flex flex-col gap-4 sm:gap-5">
+            <div className="p-6 sm:p-8 flex flex-col gap-5 sm:gap-6">
               <Field 
                 label="Group Name" 
                 required 
@@ -241,18 +241,18 @@ export default function CreateGroup() {
           </div>
 
           {/* Card 2: Add Member */}
-          <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-4 sm:px-5 py-3 sm:py-4 border-b border-orange-100 flex items-center gap-3">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-sm">
-                <UserPlus size={14} className="text-white" />
+          <div className="bg-white rounded-3xl border-2 border-orange-100 overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-5 sm:px-8 py-4 sm:py-5 border-b border-orange-100 flex items-center gap-4">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
+                <UserPlus size={16} className="text-white" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-bold text-gray-900">Add Initial Member</p>
-                <p className="text-[9px] sm:text-[10px] text-gray-400 font-medium">Groups need at least 2 members</p>
+                <p className="text-sm sm:text-base font-bold text-gray-900">Add Initial Member</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Groups need at least 2 members</p>
               </div>
             </div>
             
-            <div className="p-4 sm:p-5 flex flex-col gap-4">
+            <div className="p-6 sm:p-8 flex flex-col gap-5">
               {/* Info Banner */}
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 sm:p-4 flex items-start gap-2 sm:gap-3">
                 <Shield size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
@@ -323,7 +323,7 @@ export default function CreateGroup() {
 
           {/* Preview Section - Mobile Optimized */}
           {(form.name.trim() || form.memberKarigarId.trim()) && (
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border border-orange-100 p-4 sm:p-5 shadow-sm animate-in fade-in slide-in-from-bottom">
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-3xl border-2 border-orange-100 p-6 sm:p-8 shadow-md animate-in fade-in slide-in-from-bottom">
               <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1">
                 <Sparkles size={10} /> Group Preview
               </p>
@@ -364,7 +364,7 @@ export default function CreateGroup() {
           <button
             type="submit"
             disabled={loading || success}
-            className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-2 shadow-lg shadow-orange-200 hover:shadow-orange-300 disabled:opacity-60 transition-all min-h-[52px] active:scale-[0.98] hover:scale-[1.01]"
+            className="w-full py-4 sm:py-5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-2 shadow-lg shadow-orange-200 hover:shadow-orange-300 disabled:opacity-60 transition-all min-h-[56px] active:scale-[0.98] hover:scale-[1.01]"
           >
             {loading ? (
               <>

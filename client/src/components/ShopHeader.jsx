@@ -280,16 +280,15 @@ const ShopHeader = () => {
 
                                                 {/* Logout Button */}
                                                 <div className="border-t border-gray-100 mt-2 pt-2">
-                                                    <button
-                                                        onClick={handleLogout}
-                                                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-red-50 transition-all duration-200 group cursor-pointer"
-                                                    >
-                                                        <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                            <LogOut size={16} className="text-red-500" />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <p className="font-medium text-red-600">Logout</p>
-                                                            <p className="text-xs text-gray-400">Sign out of account</p>
+                                                    <button type="button" onClick={handleLogout} className="w-full text-left">
+                                                        <div className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-red-50 transition-all duration-200 group cursor-pointer">
+                                                            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                                <LogOut size={16} className="text-red-500" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="font-medium text-red-600">Logout</p>
+                                                                <p className="text-xs text-gray-400">Sign out of account</p>
+                                                            </div>
                                                         </div>
                                                     </button>
                                                 </div>

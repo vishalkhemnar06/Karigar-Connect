@@ -126,10 +126,10 @@ export const getShopAnalytics    = ()       => API.get('/api/shop/analytics');
 // ── WORKER COUPON ─────────────────────────────────────────────────────────────
 export const generateMyCoupon = ()  => API.post('/api/worker/coupons/generate');
 export const getMyCoupons     = ()  => API.get('/api/worker/coupons/my');
+export const getCouponByCode  = (code) => API.get(`/api/worker/coupons/code/${code}`);
 
 // ── WORKER PURCHASE HISTORY ───────────────────────────────────────────────────
 export const getWorkerPurchaseHistory = () => API.get('/api/worker/purchase-history');
-
 // ── WORKER — PUBLIC SHOP BROWSING ─────────────────────────────────────────────
 export const getApprovedShops      = ()         => API.get('/api/shop/public/all');
 export const getShopPublicProducts = (shopId)   => API.get(`/api/shop/public/${shopId}/products`);
