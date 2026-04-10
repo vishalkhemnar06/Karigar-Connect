@@ -6,13 +6,13 @@ import {
     aiGenerateQuestions, getAIAdvisorReport,
     saveAIAnalysis, getClientAIHistory, getAIHistoryItem,
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
-    getImageUrl,
+    getImageUrl, getRateTableCities,
 } from '../../api/index';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
-    DollarSign, Clock, MapPin, Briefcase, User, Users,
+    IndianRupee, Clock, MapPin, Briefcase, User, Users,
     AlertCircle, CheckCircle, FileText, Image, Camera,
     Settings, TrendingUp, Award, Calendar, Download, Save,
     Trash2, Edit2, Plus, X, Loader2, Sparkles, Target,
@@ -57,6 +57,9 @@ const sanitizeNumber = (value) => {
     const parts = sanitized.split('.');
     return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized;
 };
+
+const MIN_AI_DESCRIPTION_CHARS = 60;
+const OTHER_CITY_OPTION = '__OTHER_CITY__';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Components
@@ -233,7 +236,7 @@ const CostBreakdownTable = ({ breakdown, clientBudget, grandTotal }) => {
                                 <div className="flex items-center gap-3 mt-0.5">
                                     <span className="text-xs text-gray-400">{item.hours} hours</span>
                                     <span className="text-xs text-gray-400 capitalize">{item.complexity} complexity</span>
-                                    <span className="text-xs text-gray-400">₹{item.rate}/hr</span>
+                                    <span className="text-xs text-gray-400">₹{item.baseRate || 0}/day</span>
                                 </div>
                             </div>
                             <div className="text-right">
@@ -687,6 +690,11 @@ export default function ClientAIAssist() {
     const [savedId, setSavedId] = useState(null);
     const [historyItems, setHistoryItems] = useState([]);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+    const [cityOptions, setCityOptions] = useState([]);
+    const [isOtherCityMode, setIsOtherCityMode] = useState(false);
+
+    const isKnownCity = cityOptions.some((opt) => opt.label === city);
+    const citySelectValue = (isOtherCityMode || (city && !isKnownCity)) ? OTHER_CITY_OPTION : (city || '');
     
     const imageInputRef = useRef(null);
 
@@ -709,6 +717,21 @@ export default function ClientAIAssist() {
         }
     }, [activeTab, loadHistory]);
 
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const { data } = await getRateTableCities();
+                if (!active) return;
+                setCityOptions(Array.isArray(data?.cities) ? data.cities : []);
+            } catch {
+                if (!active) return;
+                setCityOptions([]);
+            }
+        })();
+        return () => { active = false; };
+    }, []);
+
     const handleAnswerChange = (id, value) => {
         setAnswers(prev => ({ ...prev, [id]: value }));
     };
@@ -728,6 +751,10 @@ export default function ClientAIAssist() {
     const handleGenerateQuestions = async () => {
         if (!description.trim()) {
             toast.error('Please describe your project');
+            return;
+        }
+        if (description.trim().length < MIN_AI_DESCRIPTION_CHARS) {
+            toast.error(`Please enter at least ${MIN_AI_DESCRIPTION_CHARS} characters before generating questions`);
             return;
         }
 
@@ -879,6 +906,7 @@ export default function ClientAIAssist() {
         setPhase('describe');
         setDescription('');
         setCity('');
+        setIsOtherCityMode(false);
         setUrgent(false);
         setClientBudget('');
         setQuestions([]);
@@ -963,6 +991,9 @@ export default function ClientAIAssist() {
                                             <p className="text-xs text-gray-500 mt-1">
                                                 {description.length} characters
                                             </p>
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                Minimum {MIN_AI_DESCRIPTION_CHARS} characters required for AI question generation
+                                            </p>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -970,13 +1001,35 @@ export default function ClientAIAssist() {
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                                     City
                                                 </label>
-                                                <input
-                                                    type="text"
-                                                    value={city}
-                                                    onChange={(e) => setCity(e.target.value)}
-                                                    placeholder="Enter your city"
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
-                                                />
+                                                <select
+                                                    value={citySelectValue}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        if (value === OTHER_CITY_OPTION) {
+                                                            setIsOtherCityMode(true);
+                                                            if (isKnownCity) setCity('');
+                                                            return;
+                                                        }
+                                                        setIsOtherCityMode(false);
+                                                        setCity(value);
+                                                    }}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
+                                                >
+                                                    <option value="">Select city</option>
+                                                    {cityOptions.map((cityOpt) => (
+                                                        <option key={cityOpt.key} value={cityOpt.label}>{cityOpt.label}</option>
+                                                    ))}
+                                                    <option value={OTHER_CITY_OPTION}>Other (Enter Manually)</option>
+                                                </select>
+                                                {citySelectValue === OTHER_CITY_OPTION && (
+                                                    <input
+                                                        type="text"
+                                                        value={city}
+                                                        onChange={(e) => setCity(e.target.value)}
+                                                        placeholder="Enter city name"
+                                                        className="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                                                    />
+                                                )}
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -999,7 +1052,7 @@ export default function ClientAIAssist() {
 
                                         <button
                                             onClick={handleGenerateQuestions}
-                                            disabled={isLoading.questions || !description.trim()}
+                                            disabled={isLoading.questions || !description.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS}
                                             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                         >
                                             {isLoading.questions ? (
@@ -1279,7 +1332,7 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Cost Estimate Section */}
-                                        <ReportSection title="Cost Estimate" icon={DollarSign} defaultOpen badge="Detailed">
+                                        <ReportSection title="Cost Estimate" icon={IndianRupee} defaultOpen badge="Detailed">
                                             <CostBreakdownTable 
                                                 breakdown={report.budgetBreakdown} 
                                                 clientBudget={report.clientBudget}

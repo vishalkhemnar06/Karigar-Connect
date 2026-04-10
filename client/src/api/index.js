@@ -127,6 +127,9 @@ export const getShopAnalytics    = ()       => API.get('/api/shop/analytics');
 export const generateMyCoupon = ()  => API.post('/api/worker/coupons/generate');
 export const getMyCoupons     = ()  => API.get('/api/worker/coupons/my');
 
+// ── WORKER PURCHASE HISTORY ───────────────────────────────────────────────────
+export const getWorkerPurchaseHistory = () => API.get('/api/worker/purchase-history');
+
 // ── WORKER — PUBLIC SHOP BROWSING ─────────────────────────────────────────────
 export const getApprovedShops      = ()         => API.get('/api/shop/public/all');
 export const getShopPublicProducts = (shopId)   => API.get(`/api/shop/public/${shopId}/products`);
@@ -188,7 +191,7 @@ export const toggleStarWorker           = (wId)   => API.post('/api/client/star/
 export const getClientJobs              = ()                              => API.get('/api/client/jobs');
 export const postJob                    = (fd)                            => API.post('/api/client/jobs/post',              fd, mp);
 export const deleteClientJob            = (id)                            => API.delete(`/api/client/jobs/${id}`);
-export const updateJobStatus            = (id, status)                    => API.patch(`/api/client/jobs/${id}/status`,    { status });
+export const updateJobStatus            = (id, status, options = {})      => API.patch(`/api/client/jobs/${id}/status`,    { status, ...options });
 export const cancelJob                  = (id, reason)                    => API.patch(`/api/client/jobs/${id}/cancel`,    { reason });
 export const startJob                   = (id)                            => API.patch(`/api/client/jobs/${id}/start`);
 export const toggleJobApplications      = (id)                            => API.patch(`/api/client/jobs/${id}/toggle-applications`);
@@ -253,6 +256,7 @@ export const deleteAIHistoryItem  = (id)     => API.delete(`/api/client/ai/histo
 // ── AI ────────────────────────────────────────────────────────────────────────
 export const aiGenerateQuestions = (d)  => API.post('/api/ai/generate-questions',       d);
 export const aiGenerateEstimate  = (d)  => API.post('/api/ai/generate-estimate',        d);
+export const getRateTableCities  = ()   => API.get('/api/ai/rate-table-cities');
 export const startAIAssistant    = (fd) => API.post('/api/ai/assistant',                fd, mp);
 export const getAIAdvisorReport  = (fd) => API.post('/api/ai/advisor',                  fd, mp);
 export const aiGeneratePreviews  = (fd) => API.post('/api/ai/generate-preview-images',  fd, mp);

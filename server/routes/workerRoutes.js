@@ -64,6 +64,9 @@ const { respondToGroupJob } = require('../controllers/jobController');
 // ── Cloudinary uploaders ──────────────────────────────────────────────────────
 const { mixedUploader } = require('../utils/cloudinary');
 
+// --- Purchase History Controller ---
+const { getWorkerPurchaseHistory } = require('../controllers/shopController');
+
 // ═════════════════════════════════════════════════════════════════════════════
 // NEW: Password-change OTP flow — mounted FIRST to avoid any path conflicts
 // ═════════════════════════════════════════════════════════════════════════════
@@ -90,6 +93,9 @@ router.post('/jobs/:jobId/subtask/:subTaskId/apply', protect, worker, applyForSu
 // ── Bookings & analytics ──────────────────────────────────────────────────────
 router.get('/bookings',   protect, worker, getWorkerBookings);
 router.get('/analytics',  protect, worker, getWorkerAnalytics);
+
+// --- Purchase History Route ---
+router.get('/purchase-history', protect, worker, getWorkerPurchaseHistory);
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 router.get('/profile',              protect, worker, getWorkerProfile);

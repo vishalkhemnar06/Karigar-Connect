@@ -16,15 +16,25 @@ import { motion } from 'framer-motion';
 import { getImageUrl, imgError } from '../../utils/imageUrl';
 import toast from 'react-hot-toast';
 import {
-    Store, Check, X, ShieldX, Trash2, Eye, Tag,
-    History, Search, Clock, FileText, Image as ImageIcon,
-    AlertCircle, MapPin, Phone, Mail, Hash, Calendar,
-    CheckCircle, XCircle, Ban, ChevronDown, Download,
-    Filter, SortAsc, SortDesc, RefreshCw, ChevronLeft,
-    ChevronRight, Maximize2, Minimize2, ZoomIn, ZoomOut,
-    Grid3x3, List, BarChart3, Users, Percent, DollarSign,
-    TrendingUp, Star, Award, Printer
+        Store, Check, X, ShieldX, Trash2, Eye, Tag,
+        History, Search, Clock, FileText, Image as ImageIcon,
+        AlertCircle, MapPin, Phone, Mail, Hash, Calendar,
+        CheckCircle, XCircle, Ban, ChevronDown, Download,
+        Filter, SortAsc, SortDesc, RefreshCw, ChevronLeft,
+        ChevronRight, Maximize2, Minimize2, ZoomIn, ZoomOut,
+        Grid3x3, List, BarChart3, Users, Percent,
+        TrendingUp, Star, Award, Printer
 } from 'lucide-react';
+
+// Use a rupee icon SVG inline since lucide-react does not have one by default
+const RupeeIcon = (props) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <path d="M6 3h12" />
+        <path d="M6 8h12" />
+        <path d="M6 13h8a4 4 0 1 1-4 4" />
+        <path d="M6 17h8" />
+    </svg>
+);
 
 // ── FULL SCREEN IMAGE VIEWER ──────────────────────────────────────────────────
 const ImageViewer = memo(({ images, initialIndex, onClose }) => {
@@ -513,7 +523,7 @@ const ShopDetailModal = memo(({ shop, onClose, onApprove, onReject, onBlock, onD
                                         <p className="text-xs text-purple-600 font-medium">Used Coupons</p>
                                     </div>
                                     <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 text-center">
-                                        <DollarSign size={24} className="text-amber-600 mx-auto mb-2" />
+                                        <RupeeIcon width={24} height={24} className="text-amber-600 mx-auto mb-2" />
                                         <p className="text-2xl font-black text-amber-700">₹{stats.totalSales.toLocaleString()}</p>
                                         <p className="text-xs text-amber-600 font-medium">Total Sales</p>
                                     </div>

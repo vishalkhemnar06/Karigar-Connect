@@ -7,13 +7,15 @@ import {
     LayoutDashboard, PlusSquare, Briefcase, Bot,
     User, LogOut, X, Menu, ChevronRight, Sparkles,
     AlertTriangle, Users, Camera, Home, Search, Settings,
-    Bell, ChevronLeft
+    Bell, ChevronLeft, History, Heart
 } from 'lucide-react';
 
 const navItems = [
     { to: '/client/dashboard',  label: 'Dashboard',   icon: LayoutDashboard, desc: 'Overview & stats' },
     { to: '/client/job-post',   label: 'Post Job',    icon: PlusSquare,      desc: 'Create new listing' },
     { to: '/client/job-manage', label: 'Manage Jobs', icon: Briefcase,       desc: 'Track all postings' },
+    { to: '/client/history',    label: 'History',     icon: History,         desc: 'Past job records' },
+    { to: '/client/favorites',  label: 'Favorites',   icon: Heart,           desc: 'Starred workers' },
     { to: '/client/ai-assist',  label: 'AI Tool',     icon: Bot,             desc: 'Smart project planner' },
     { to: '/client/groups',     label: 'Groups',      icon: Users,           desc: 'Find worker teams' },
     { to: '/client/worker-face-verify', label: 'Face Verify', icon: Camera,  desc: 'Verify worker identity' },

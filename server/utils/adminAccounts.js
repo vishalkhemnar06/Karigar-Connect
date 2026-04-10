@@ -1,10 +1,10 @@
 const User = require('../models/userModel');
 
 const DEFAULT_ADMIN_ACCOUNTS = [
-    { name: 'Admin One', mobile: '1234', password: '1234' },
-    { name: 'Admin Two', mobile: '12345', password: '12345' },
-    { name: 'Admin Three', mobile: '123456', password: '123456' },
-    { name: 'Admin Four', mobile: '1234567', password: '1234567' },
+    { name: 'Gagan Dhanapune', mobile: '1234', password: '1234' },
+    { name: 'Vishal Khemnar', mobile: '12345', password: '12345' },
+    { name: 'Akash Shinde', mobile: '123456', password: '123456' },
+    { name: 'Ashish Vidhate', mobile: '1234567', password: '1234567' },
 ];
 
 const sanitizeMobile = (mobile) => String(mobile || '').replace(/\D/g, '').slice(-10);

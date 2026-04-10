@@ -7,7 +7,7 @@ import { getWorkerBookings, respondToGroupJob } from '../../api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
+    Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     CheckCircle, XCircle, AlertCircle, ChevronRight, RefreshCw,
     Sparkles, TrendingUp, Award, Zap, Gift, Star, 
     MessageCircle, Heart, Shield, Truck, Building
@@ -117,7 +117,7 @@ export default function WorkerProposals() {
                     >
                         <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl md:rounded-2xl p-3 md:p-4 border border-emerald-100">
                             <div className="flex items-center justify-between mb-1">
-                                <DollarSign size={16} className="md:size-5 text-emerald-600" />
+                                <IndianRupee size={16} className="md:size-5 text-emerald-600" />
                                 <Sparkles size={12} className="md:size-4 text-emerald-400" />
                             </div>
                             <p className="text-xl md:text-2xl font-black text-emerald-600">
@@ -276,7 +276,7 @@ export default function WorkerProposals() {
                                             <div className="flex flex-wrap gap-1.5 md:gap-2 mb-3 md:mb-4">
                                                 {job.payment > 0 && (
                                                     <span className="inline-flex items-center gap-0.5 md:gap-1 bg-green-50 text-green-700 px-2 md:px-3 py-0.5 md:py-1 rounded-lg text-[9px] md:text-xs font-semibold">
-                                                        <DollarSign size={10} className="md:size-3" />
+                                                        <IndianRupee size={10} className="md:size-3" />
                                                         ₹{job.payment.toLocaleString('en-IN')}
                                                     </span>
                                                 )}

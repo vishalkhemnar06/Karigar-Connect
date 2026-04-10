@@ -441,25 +441,27 @@ const Settings = () => {
 
     const handleLogout = () => {
         toast.custom((t) => (
-            <div className="bg-white rounded-xl shadow-lg p-4 max-w-sm w-full">
-                <p className="text-gray-800 mb-3">Are you sure you want to logout?</p>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => {
-                            localStorage.clear();
-                            toast.dismiss(t.id);
-                            navigate('/login');
-                        }}
-                        className="flex-1 bg-red-500 text-white py-2 rounded-lg text-sm font-bold"
-                    >
-                        Logout
-                    </button>
-                    <button
-                        onClick={() => toast.dismiss(t.id)}
-                        className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-sm font-bold"
-                    >
-                        Cancel
-                    </button>
+            <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center">
+                <div className="bg-white rounded-xl shadow-lg p-4 max-w-sm w-full">
+                    <p className="text-gray-800 mb-3">Are you sure you want to logout?</p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => {
+                                localStorage.clear();
+                                toast.dismiss(t.id);
+                                navigate('/login');
+                            }}
+                            className="flex-1 bg-red-500 text-white py-2 rounded-lg text-sm font-bold"
+                        >
+                            Logout
+                        </button>
+                        <button
+                            onClick={() => toast.dismiss(t.id)}
+                            className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-sm font-bold"
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         ), { duration: 5000 });
@@ -467,7 +469,7 @@ const Settings = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-            <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
+            <div className="max-w-4xl mx-auto px-4 py-6 pb-24" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
                 {/* Header with animation */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}

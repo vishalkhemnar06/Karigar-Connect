@@ -337,6 +337,7 @@ const AnalyticsPage = memo(() => {
                 <StatCard title="Total Discounts" value={`₹${data.totalDiscounts?.toLocaleString()}`} sub={`Avg ₹${avgDiscount}/txn`} icon={Tag} color="bg-gradient-to-br from-amber-500 to-orange-500" trend="down" trendVal="5" loading={loading} />
                 <StatCard title="Workers" value={data.totalWorkers} sub="Unique customers" icon={Users} color="bg-gradient-to-br from-blue-500 to-blue-600" trend="up" trendVal="8" loading={loading} />
                 <StatCard title="Transactions" value={data.totalTxns} sub={`${conversionRate}% conversion`} icon={ShoppingBag} color="bg-gradient-to-br from-purple-500 to-purple-600" trend="up" trendVal="15" loading={loading} />
+                <StatCard title="Used Coupons" value={data.usedCoupons ?? 0} sub="Coupons redeemed" icon={Percent} color="bg-gradient-to-br from-green-500 to-green-600" trend="up" trendVal="0" loading={loading} />
             </div>
 
             {/* Revenue Chart */}

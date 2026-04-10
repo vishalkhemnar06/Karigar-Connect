@@ -8,7 +8,7 @@ import { getWorkerBookings, workerCancelJob, getImageUrl, getJobDetails } from '
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
+    Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     Star, Shield, AlertCircle, CheckCircle, XCircle, Truck,
     Phone, Mail, ExternalLink, ChevronDown, ChevronUp,
     Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle, X, Eye
@@ -225,6 +225,7 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [previewPhoto, setPreviewPhoto] = useState('');
 
     useEffect(() => {
         let active = true;
@@ -322,13 +323,40 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                 </div>
                             )}
 
-                            <div>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <Briefcase size={12} /> About the Job
-                                </p>
-                                <div className="bg-gray-50 rounded-2xl p-4">
-                                    <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
+                            <div className={`gap-4 ${job.photos?.length > 0 ? 'lg:flex lg:items-start' : ''}`}>
+                                <div className={job.photos?.length > 0 ? 'lg:flex-1' : ''}>
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <Briefcase size={12} /> About the Job
+                                    </p>
+                                    <div className="bg-gray-50 rounded-2xl p-4">
+                                        <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
+                                    </div>
                                 </div>
+
+                                {job.photos?.length > 0 && (
+                                    <div className="mt-3 lg:mt-0 lg:w-56 xl:w-64">
+                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
+                                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                                            {job.photos.slice(0, 6).map((p, i) => {
+                                                const url = getImageUrl(p);
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        type="button"
+                                                        onClick={() => setPreviewPhoto(url)}
+                                                        className="group block w-full text-left"
+                                                    >
+                                                        <img
+                                                            src={url}
+                                                            alt={`Work area ${i + 1}`}
+                                                            className="w-full aspect-square object-cover rounded-xl border border-gray-200 group-hover:border-orange-300 transition-colors"
+                                                        />
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
@@ -363,7 +391,7 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
 
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <DollarSign size={12} /> Payment Terms
+                                    <IndianRupee size={12} /> Payment Terms
                                 </p>
                                 <div className="bg-gray-50 rounded-2xl p-3 space-y-1.5">
                                     <p className="text-sm text-gray-700 break-words">
@@ -434,20 +462,43 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                 </div>
                             )}
 
-                            {job.photos?.length > 0 && (
-                                <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {job.photos.slice(0, 6).map((p, i) => (
-                                            <img key={i} src={getImageUrl(p)} alt="" className="w-full aspect-square object-cover rounded-xl border border-gray-200" />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </>
                 )}
             </motion.div>
+
+            <AnimatePresence>
+                {previewPhoto && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
+                        onClick={() => setPreviewPhoto('')}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.94, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.94, opacity: 0 }}
+                            className="relative max-w-5xl w-full"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setPreviewPhoto('')}
+                                className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full px-3 py-1.5 text-xs font-bold shadow"
+                            >
+                                Close
+                            </button>
+                            <img
+                                src={previewPhoto}
+                                alt="Work area preview"
+                                className="w-full max-h-[85vh] object-contain rounded-xl border border-white/20"
+                            />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 }
@@ -579,7 +630,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
 
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span className="flex items-center gap-1 font-bold text-green-600">
-                            <DollarSign size={11} /> ₹{job?.payment?.toLocaleString() || '0'}
+                            <IndianRupee size={11} /> ₹{job?.payment?.toLocaleString() || '0'}
                         </span>
                         {job?.scheduledDate && (
                             <span className="flex items-center gap-1">
@@ -818,20 +869,31 @@ export default function JobBookings() {
         return jobs.reduce((acc, job) => {
             try {
                 const section = getBookingSection(job);
-                if (!acc[section]) acc[section] = [];
-                acc[section].push(job);
+                // Separate 'running' jobs
+                if (job.status === 'running') {
+                    if (!acc.running) acc.running = [];
+                    acc.running.push(job);
+                } else if (section === 'completed') {
+                    // Exclude running jobs from completed
+                    if (!acc.completed) acc.completed = [];
+                    acc.completed.push(job);
+                } else {
+                    if (!acc[section]) acc[section] = [];
+                    acc[section].push(job);
+                }
             } catch {
                 if (!acc.others) acc.others = [];
                 acc.others.push(job);
             }
             return acc;
-        }, { open: [], in_progress: [], completed: [], cancelled: [], others: [] });
+        }, { open: [], running: [], in_progress: [], completed: [], cancelled: [], others: [] });
     }, [jobs, getBookingSection]);
 
     // Section metadata with translations
     const sectionMeta = [
-        { key: 'in_progress', title: t('job_bookings.sections.in_progress', 'In Progress'), icon: Truck,        color: 'orange', empty: t('job_bookings.empty.in_progress', 'No jobs in progress') },
-        { key: 'open',        title: t('job_bookings.sections.open', 'Open'),        icon: Zap,          color: 'green',  empty: t('job_bookings.empty.open', 'No open jobs') },
+        { key: 'running',     title: t('job_bookings.sections.running', 'Running'),     icon: Truck,        color: 'yellow', empty: t('job_bookings.empty.running', 'No running jobs') },
+        { key: 'in_progress', title: t('job_bookings.sections.in_progress', 'In Progress'), icon: Zap,          color: 'orange', empty: t('job_bookings.empty.in_progress', 'No jobs in progress') },
+        { key: 'open',        title: t('job_bookings.sections.open', 'Open'),        icon: Award,         color: 'green',  empty: t('job_bookings.empty.open', 'No open jobs') },
         { key: 'completed',   title: t('job_bookings.sections.completed', 'Completed'),   icon: CheckCircle,  color: 'emerald',empty: t('job_bookings.empty.completed', 'No completed jobs') },
         { key: 'cancelled',   title: t('job_bookings.sections.cancelled', 'Cancelled'),   icon: XCircle,      color: 'red',    empty: t('job_bookings.empty.cancelled', 'No cancelled jobs') },
         { key: 'others',      title: t('job_bookings.sections.others', 'Others'),      icon: AlertCircle,  color: 'gray',   empty: t('job_bookings.empty.others', 'No other jobs') },
@@ -859,7 +921,7 @@ export default function JobBookings() {
 
     if (error && jobs.length === 0) {
         return (
-            <div className="max-w-3xl mx-auto p-4">
+            <div className="max-w-5xl mx-auto p-4" style={{ fontFamily: 'Inter, sans-serif', fontSize: '4.13rem' }}>
                 <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
                     <AlertCircle size={40} className="text-red-500 mx-auto mb-3" />
                     <h2 className="text-base font-bold text-red-700 mb-2">Error Loading Bookings</h2>
@@ -878,7 +940,7 @@ export default function JobBookings() {
     return (
         <ErrorBoundary>
             <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 pb-20">
-                <div className="max-w-3xl mx-auto px-4 pt-4 md:pt-8 space-y-4">
+                <div className="max-w-5xl mx-auto px-4 pt-4 md:pt-8 space-y-4" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
 
                     {/* Header - Mobile optimized */}
                     <motion.div

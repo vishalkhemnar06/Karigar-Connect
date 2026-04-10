@@ -338,6 +338,36 @@ const enrichClientJobsWithRatings = async (jobs = []) => {
     }));
 };
 
+const attachClientSubmittedRatings = async (jobs = [], clientId) => {
+    const jobIds = jobs
+        .map((job) => job?._id)
+        .filter(Boolean);
+
+    if (!jobIds.length) {
+        return jobs.map((job) => ({ ...job, submittedRatings: [] }));
+    }
+
+    const ratings = await Rating.find({
+        client: clientId,
+        jobId: { $in: jobIds },
+    })
+        .populate('worker', 'name photo karigarId mobile')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    const byJob = new Map();
+    for (const rating of ratings) {
+        const key = String(rating.jobId);
+        if (!byJob.has(key)) byJob.set(key, []);
+        byJob.get(key).push(rating);
+    }
+
+    return jobs.map((job) => ({
+        ...job,
+        submittedRatings: byJob.get(String(job._id)) || [],
+    }));
+};
+
 const buildSmartWorkerSuggestions = async (job, { limit = 3, withinRadiusOnly = false } = {}) => {
     const skillSet = getJobSkillSet(job);
     const jobLat = toFiniteNumber(job.location?.lat);
@@ -465,6 +495,60 @@ const runAutoMaintenance = async (jobs) => {
     for (const job of jobs) {
         let changed = false;
 
+        // 0. No-applicant guardrail for open/scheduled jobs:
+        // warn once before start, then auto-cancel at/after 30 min threshold.
+        if (
+            ['open', 'scheduled'].includes(job.status) &&
+            job.scheduledDate &&
+            job.scheduledTime
+        ) {
+            const [h, m] = job.scheduledTime.split(':').map(Number);
+            const sched = new Date(job.scheduledDate);
+            sched.setHours(h, m, 0, 0);
+            const minsLeft = (sched.getTime() - now) / 60000;
+
+            const hasAnyApplicant = Array.isArray(job.applicants) && job.applicants.length > 0;
+            const hasAcceptedApplicant = (job.applicants || []).some(a => a?.status === 'accepted');
+            const hasAssignedWorker = Array.isArray(job.assignedTo) && job.assignedTo.length > 0;
+            const hasFilledSlots = (job.workerSlots || []).some(s => s?.status === 'filled' && s?.assignedWorker);
+            const hasAnyWorkerCommitment = hasAnyApplicant || hasAcceptedApplicant || hasAssignedWorker || hasFilledSlots;
+
+            if (!hasAnyWorkerCommitment) {
+                // Notify once in the 60->30 min window.
+                if (minsLeft <= 60 && minsLeft > 30 && !job.noApplicantWarningSent) {
+                    await createNotification({
+                        userId: job.postedBy,
+                        type: 'job_update',
+                        title: 'No Applications Yet - Action Needed',
+                        message: 'You have not received or accepted any application, so please delete the post or we are going to delete it. Repost again if you want.',
+                        jobId: job._id,
+                    });
+                    job.noApplicantWarningSent = true;
+                    changed = true;
+                }
+
+                // Auto-delete post from active flow at 30 min before start (or later if stale).
+                if (minsLeft <= 30) {
+                    job.status = 'cancelled';
+                    job.cancelledBy = null;
+                    job.cancellationReason = 'Auto-cancelled: no worker applications before scheduled start window.';
+                    job.cancelledAt = new Date();
+                    job.applicationsOpen = false;
+                    job.visibility = false;
+
+                    await createNotification({
+                        userId: job.postedBy,
+                        type: 'job_update',
+                        title: 'Job Post Auto-Deleted',
+                        message: `Your post "${job.title}" was auto-deleted because no worker applied or was accepted before the start window. Repost again if needed.`,
+                        jobId: job._id,
+                    });
+
+                    changed = true;
+                }
+            }
+        }
+
         // 1. Auto-start when scheduled time reached
         if (job.status === 'scheduled' && job.scheduledDate && job.scheduledTime) {
             const [h, m] = job.scheduledTime.split(':').map(Number);
@@ -521,6 +605,38 @@ const runAutoMaintenance = async (jobs) => {
             if (endMs && now >= endMs + 30 * 60 * 1000) {
                 await createNotification({ userId: job.postedBy, type: 'reminder', title: 'Please Complete the Job ⏰', message: `Estimated work time for "${job.title}" has passed. Upload photos, rate workers, and mark complete.` });
                 job.clientNotifiedCompletion = true; changed = true;
+            }
+        }
+
+        // 5. Auto-close stale running jobs so old jobs don't remain stuck in running forever.
+        if (job.status === 'running') {
+            const endMs = job.estimatedJobEndMs ? job.estimatedJobEndMs() : null;
+            const allSlotsDone = job.allSlotsCompleted ? job.allSlotsCompleted() : false;
+            const staleByTimeout = !!endMs && now >= endMs + 2 * 60 * 60 * 1000;
+            const readyBySlots = allSlotsDone && (!!endMs ? now >= endMs : true);
+
+            if (readyBySlots || staleByTimeout) {
+                job.status = 'completed';
+                job.actualEndTime = new Date();
+                job.applicationsOpen = false;
+                job.clientNotifiedCompletion = true;
+
+                await createNotification({
+                    userId: job.postedBy,
+                    type: 'job_update',
+                    title: 'Job Auto-Completed',
+                    message: `"${job.title}" has been auto-completed because the scheduled work window has ended.`,
+                });
+
+                for (const wId of job.assignedTo || []) {
+                    await createNotification({
+                        userId: wId,
+                        type: 'job_update',
+                        title: 'Job Completed',
+                        message: `"${job.title}" has been marked completed.`,
+                    });
+                }
+                changed = true;
             }
         }
 
@@ -858,7 +974,8 @@ exports.getClientJobs = async (req, res) => {
         try { await runAutoMaintenance(jobs); } catch (e) { console.error('Auto-maintenance error:', e.message); }
         const jobsWithSubTasks = await attachSubTasksToParents(jobs, req.user.id);
         const jobsWithRatings = await enrichClientJobsWithRatings(jobsWithSubTasks);
-        return res.json(jobsWithRatings);
+        const jobsWithSubmittedRatings = await attachClientSubmittedRatings(jobsWithRatings, req.user.id);
+        return res.json(jobsWithSubmittedRatings);
     } catch { return res.status(500).json({ message: 'Failed to fetch jobs.' }); }
 };
 
@@ -980,11 +1097,19 @@ exports.deleteJob = async (req, res) => {
         const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (job.status !== 'open') return res.status(403).json({ message: 'Only open jobs can be deleted.' });
-        await job.deleteOne();
-        removeJobById(req.params.id).catch((err) => {
-            console.error('semantic removeJobById(deleteJob):', err.message);
+        job.status = 'cancelled';
+        job.cancelledBy = 'client';
+        job.cancellationReason = 'Deleted by client before assignment.';
+        job.cancelledAt = new Date();
+        job.applicationsOpen = false;
+        job.visibility = false;
+        job.archivedByClient = true;
+        job.archivedAt = new Date();
+        await job.save();
+        upsertJobById(job._id).catch((err) => {
+            console.error('semantic upsertJobById(deleteJob archive):', err.message);
         });
-        return res.json({ message: 'Deleted.' });
+        return res.json({ message: 'Job moved to history.', job });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
@@ -1434,15 +1559,27 @@ exports.submitRating = async (req, res) => {
 
 exports.updateJobStatus = async (req, res) => {
     try {
-        const { status } = req.body;
+        const { status, manualComplete = false } = req.body;
         const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (status === 'completed') {
             if (job.status !== 'running') return res.status(400).json({ message: 'Only running jobs can be marked complete.' });
-            if (!job.completionPhotos?.length) return res.status(400).json({ message: 'Upload completion photos first.' });
-            const unrated = job.workerSlots.filter(s => s.assignedWorker && !['cancelled','open','reposted'].includes(s.status) && !s.ratingSubmitted);
-            if (unrated.length > 0) return res.status(400).json({ message: `Rate all workers first. Unrated: ${[...new Set(unrated.map(s => s.skill))].join(', ')}.` });
+            if (!manualComplete) {
+                if (!job.completionPhotos?.length) return res.status(400).json({ message: 'Upload completion photos first.' });
+                const unrated = job.workerSlots.filter(s => s.assignedWorker && !['cancelled','open','reposted'].includes(s.status) && !s.ratingSubmitted);
+                if (unrated.length > 0) return res.status(400).json({ message: `Rate all workers first. Unrated: ${[...new Set(unrated.map(s => s.skill))].join(', ')}.` });
+            } else {
+                job.workerSlots.forEach((slot) => {
+                    if (slot.assignedWorker && ['filled', 'scheduled', 'running'].includes(slot.status)) {
+                        slot.status = 'task_completed';
+                        slot.completedAt = slot.completedAt || new Date();
+                        slot.actualEndTime = slot.actualEndTime || new Date();
+                    }
+                });
+                job.clientNotifiedCompletion = true;
+            }
             job.actualEndTime = new Date();
+            job.applicationsOpen = false;
         }
         job.status = status;
         await job.save();

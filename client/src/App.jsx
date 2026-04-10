@@ -81,6 +81,8 @@ import ClientJobPost      from './pages/client/ClientJobPost';
 import ClientAIAssist     from './pages/client/ClientAIAssist';
 import ClientProfile      from './pages/client/ClientProfile';
 import ClientJobManage    from './pages/client/ClientJobManage';
+import ClientHistory      from './pages/client/ClientHistory';
+import ClientFavorites    from './pages/client/ClientFavorites';
 import ClientSettings     from './pages/client/Settings';
 import ClientComplaints   from './pages/client/ClientComplaints';
 import ClientGroups       from './pages/client/ClientGroups';
@@ -164,6 +166,8 @@ function App() {
                         <Route path="dashboard"            element={<ClientDashboard />} />
                         <Route path="ai-assist"            element={<ClientAIAssist />} />
                         <Route path="job-manage"           element={<ClientJobManage />} />
+                        <Route path="history"              element={<ClientHistory />} />
+                        <Route path="favorites"            element={<ClientFavorites />} />
                         <Route path="job-post"             element={<ClientJobPost />} />
                         <Route path="profile"              element={<ClientProfile />} />
                         <Route path="settings"             element={<ClientSettings />} />

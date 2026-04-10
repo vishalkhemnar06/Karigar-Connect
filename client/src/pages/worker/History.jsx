@@ -7,7 +7,7 @@ import { getWorkerBookings, getMyFeedback, getImageUrl } from '../../api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Star, MapPin, Calendar, DollarSign, User,
+    Star, MapPin, Calendar, IndianRupee, User,
     Search, Filter, TrendingUp, Briefcase, Award,
     ChevronDown, Clock, CheckCircle2, XCircle, RefreshCw,
     Sparkles, Trophy, Heart, ThumbsUp, Smile, Frown,
@@ -172,7 +172,7 @@ function JobCard({ job, index }) {
                 <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs sm:text-sm text-gray-500">
                     {job.payment > 0 && (
                         <span className="flex items-center gap-1 font-bold text-green-600">
-                            <DollarSign size={12} /> ₹{fmt(job.payment)}
+                            <IndianRupee size={12} /> ₹{fmt(job.payment)}
                         </span>
                     )}
                     {job.location?.city && (
@@ -456,7 +456,7 @@ export default function History() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-24">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-24" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
                 {/* Page header with animation */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}

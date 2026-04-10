@@ -490,7 +490,7 @@ const Feedback = () => {
     const totalPoints = feedback.reduce((s, f) => s + (f.points || 0), 0);
 
     return (
-        <div className="max-w-3xl mx-auto px-3 md:px-4 py-4 md:py-6 pb-20 md:pb-24">
+        <div className="max-w-5xl mx-auto px-3 md:px-4 py-4 md:py-6 pb-20 md:pb-24" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
             {/* Enhanced Header */}
             <motion.div 
                 initial={{ opacity: 0, y: -20 }}

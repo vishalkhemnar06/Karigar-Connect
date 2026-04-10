@@ -9,14 +9,14 @@
 
 const Groq = require('groq-sdk');
 const User = require('../models/userModel');
-const { calculateStructuredBudget } = require('../utils/rateTable');
+const { calculateStructuredBudget, BASE_RATES } = require('../utils/rateTable');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ── SYSTEM PROMPT: Question Generation ────────────────────────────────────────
 const QUESTIONS_SYSTEM_PROMPT = `You are KarigarConnect's smart job intake assistant for India.
 
-Given a work description and optional city, generate 3-5 targeted clarifying questions to accurately estimate.
+Given a work description and optional city, generate 6-8 targeted clarifying questions to accurately estimate labour, material and total budget.
 
 Output ONLY a valid JSON object (NOT an array at root level):
 {
@@ -39,12 +39,57 @@ Examples of opinion questions:
 - Plumbing: "Which fixture brand do you prefer?" (Hindware/Cera/Jaquar/Any)
 
 Rules:
-- Work questions: 3-5, SPECIFIC to the described work
+- Work questions: 6-8, SPECIFIC to the described work
+- Ensure at least 3 questions are directly about cost drivers (area/quantity, material quality, urgency/timeline, access constraints, worker count)
 - Opinion questions: 1-3, ONLY if relevant to the work type described
 - Do NOT ask opinion questions for purely repair/maintenance work (e.g., "fix a leak" needs no opinion questions)
 - Keep questions short and practical
 - Use "color" type for colour preference questions
 - Output ONLY valid JSON, NO markdown`;
+
+const titleCase = (v = '') =>
+    String(v)
+        .split('_')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+const getRateTableCities = () =>
+    Object.keys(BASE_RATES)
+        .filter((key) => key !== 'default')
+        .map((key) => ({ key, label: titleCase(key) }));
+
+const MIN_WORK_QUESTIONS = 6;
+
+const ensureQuestionShape = (q, index) => ({
+    id: q?.id || `q${index + 1}`,
+    question: String(q?.question || '').trim(),
+    type: ['select', 'number', 'text'].includes(q?.type) ? q.type : 'text',
+    options: Array.isArray(q?.options) ? q.options.filter(Boolean).map((opt) => String(opt).trim()) : [],
+});
+
+const fallbackWorkQuestions = [
+    { id: 'q1', question: 'What is the exact work scope and area size (sq ft)?', type: 'text' },
+    { id: 'q2', question: 'How many workers do you want for this job?', type: 'number' },
+    { id: 'q3', question: 'What material quality do you prefer?', type: 'select', options: ['Economy', 'Standard', 'Premium'] },
+    { id: 'q4', question: 'What is the target completion timeline?', type: 'select', options: ['1 day', '2-3 days', '4-7 days', 'More than 1 week'] },
+    { id: 'q5', question: 'Is this work urgent?', type: 'select', options: ['Yes', 'No'] },
+    { id: 'q6', question: 'Are there any site access constraints affecting effort or transport cost?', type: 'text' },
+];
+
+const ensureMinimumWorkQuestions = (questions = []) => {
+    const cleaned = (Array.isArray(questions) ? questions : [])
+        .map((q, idx) => ensureQuestionShape(q, idx))
+        .filter((q) => q.question);
+
+    if (cleaned.length >= MIN_WORK_QUESTIONS) return cleaned.slice(0, 8);
+
+    const existing = new Set(cleaned.map((q) => q.question.toLowerCase()));
+    for (const q of fallbackWorkQuestions) {
+        if (!existing.has(q.question.toLowerCase())) cleaned.push(q);
+        if (cleaned.length >= MIN_WORK_QUESTIONS) break;
+    }
+    return cleaned.slice(0, 8);
+};
 
 // ── SYSTEM PROMPT: Full Estimate ──────────────────────────────────────────────
 const ESTIMATE_SYSTEM_PROMPT = `You are KarigarConnect's job estimation engine for India.
@@ -317,6 +362,9 @@ const generatePreviewImage = async ({ sourceImageUrl, prompt, style = '' }) => {
 exports.generateQuestions = async (req, res) => {
     const { workDescription, city = '' } = req.body;
     if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
+    if (String(workDescription).trim().length < 60) {
+        return res.status(400).json({ message: 'Please enter at least 60 characters in work description.' });
+    }
     try {
         const completion = await groq.chat.completions.create({
             model: 'llama-3.3-70b-versatile',
@@ -332,17 +380,19 @@ exports.generateQuestions = async (req, res) => {
         let opinionQuestions = parsed.opinionQuestions || [];
         if (!Array.isArray(questions)) questions = [];
         if (!Array.isArray(opinionQuestions)) opinionQuestions = [];
+        questions = ensureMinimumWorkQuestions(questions);
         return res.status(200).json({ questions, opinionQuestions });
     } catch (err) {
         console.error('generateQuestions error:', err.message);
         return res.status(200).json({
-            questions: [
-                { id: 'q1', question: 'How many rooms or areas need this work?', type: 'number' },
-                { id: 'q2', question: 'Complexity?', type: 'select', options: ['Simple repair', 'Normal work', 'Full renovation'] },
-            ],
+            questions: ensureMinimumWorkQuestions([]),
             opinionQuestions: [],
         });
     }
+};
+
+exports.getRateTableCities = async (_req, res) => {
+    return res.status(200).json({ cities: getRateTableCities() });
 };
 
 // ══════════════════════════════════════════════════════════════════════════════

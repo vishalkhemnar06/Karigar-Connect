@@ -7,7 +7,7 @@ import { getWorkerBookings, respondToGroupJob } from '../../api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
+    Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     CheckCircle, XCircle, AlertCircle, ChevronRight, RefreshCw,
     Sparkles, TrendingUp, Award, Zap, Gift, Star, 
     MessageCircle, Heart, Shield, Truck, Building,
@@ -147,7 +147,7 @@ export default function ActiveGroupJobs() {
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center">
-                                    <DollarSign size={14} className="md:size-5 text-white" />
+                                    <IndianRupee size={14} className="md:size-5 text-white" />
                                 </div>
                                 <div>
                                     <p className="text-[9px] md:text-xs text-gray-500 font-medium">Total Value</p>
@@ -309,7 +309,7 @@ export default function ActiveGroupJobs() {
                                             <div className="flex flex-wrap gap-1.5 md:gap-2 mb-3 md:mb-4">
                                                 {job.payment > 0 && (
                                                     <span className="inline-flex items-center gap-0.5 md:gap-1 bg-green-50 text-green-700 px-2 md:px-3 py-0.5 md:py-1 rounded-lg text-[9px] md:text-xs font-semibold">
-                                                        <DollarSign size={10} className="md:size-3" />
+                                                        <IndianRupee size={10} className="md:size-3" />
                                                         ₹{job.payment.toLocaleString('en-IN')}
                                                     </span>
                                                 )}

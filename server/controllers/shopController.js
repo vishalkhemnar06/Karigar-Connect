@@ -236,9 +236,10 @@ exports.getShopAnalytics = async (req, res) => {
     try {
         const shopId = req.shop.id;
 
-        const [shop, txns] = await Promise.all([
+        const [shop, txns, usedCoupons] = await Promise.all([
             Shop.findById(shopId).select('totalSales totalDiscounts totalWorkers'),
             Transaction.find({ shop: shopId }).populate('product', 'name'),
+            Coupon.countDocuments({ usedBy: shopId })
         ]);
 
         const productCount = {};
@@ -258,9 +259,26 @@ exports.getShopAnalytics = async (req, res) => {
             totalWorkers:   shop.totalWorkers,
             totalTxns:      txns.length,
             mostSold,
+            usedCoupons
         });
     } catch (err) {
         console.error('getShopAnalytics:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+}
+// ── WORKER PURCHASE HISTORY ─────────────────────────────────────────────
+// Returns all transactions for a worker (purchase history)
+exports.getWorkerPurchaseHistory = async (req, res) => {
+    try {
+        const workerId = req.user.id; // assuming req.user is set by auth middleware
+        const txns = await Transaction.find({ worker: workerId })
+            .populate('shop', 'shopName address city category')
+            .populate('product', 'name price description image')
+            .populate('coupon', 'code discountPct')
+            .sort({ createdAt: -1 });
+        return res.json(txns);
+    } catch (err) {
+        console.error('getWorkerPurchaseHistory:', err);
         return res.status(500).json({ message: 'Failed.' });
     }
 };

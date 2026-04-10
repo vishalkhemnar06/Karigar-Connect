@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    MapPin, Clock, DollarSign, Users, Phone,
+    MapPin, Clock, IndianRupee, Users, Phone,
     CheckCircle, XCircle, AlertCircle, RefreshCw,
     Sparkles, Calendar, Briefcase, Zap
 } from 'lucide-react';
@@ -87,7 +87,7 @@ export default function DirectInvites() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 pb-20">
-            <div className="max-w-3xl mx-auto px-4 pt-4 md:pt-8 space-y-4">
+            <div className="max-w-5xl mx-auto px-4 pt-4 md:pt-8 space-y-4" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
                 {/* Header */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
@@ -191,7 +191,7 @@ export default function DirectInvites() {
 
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                                             <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                                                <DollarSign size={11} /> ₹{Number(invite.payment).toLocaleString()}
+                                                <IndianRupee size={11} /> ₹{Number(invite.payment).toLocaleString()}
                                             </div>
                                             <div className="flex items-center gap-1 text-[11px] text-gray-600">
                                                 <Clock size={11} /> {invite.duration}
@@ -266,7 +266,7 @@ export default function DirectInvites() {
                                     </div>
 
                                     <div className="flex items-start gap-2">
-                                        <DollarSign size={13} className="text-gray-500 mt-0.5 flex-shrink-0" />
+                                        <IndianRupee size={13} className="text-gray-500 mt-0.5 flex-shrink-0" />
                                         <div>
                                             <p className="text-[11px] text-gray-500">Budget</p>
                                             <p className="text-xs font-semibold text-gray-800">₹{Number(selectedInvite.payment).toLocaleString()}</p>

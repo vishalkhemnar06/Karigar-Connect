@@ -149,28 +149,29 @@ const Lightbox = ({ mediaUrl, mediaType, onClose }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // MEDIA THUMBNAIL — Enhanced with better overlay (Mobile Optimized)
 // ─────────────────────────────────────────────────────────────────────────────
-const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox }) => {
+const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox, compact }) => {
     if (!mediaUrl) return null;
 
     if (mediaType === 'video') {
         return (
             <motion.div
                 whileTap={{ scale: 0.98 }}
-                className="mx-4 mb-3 rounded-xl overflow-hidden border border-gray-100 bg-gray-900 relative cursor-pointer group"
+                className={`rounded-xl overflow-hidden border border-gray-100 bg-gray-900 relative cursor-pointer group ${compact ? 'w-28 h-28 mb-0 mx-0' : 'mx-4 mb-3 w-full'}`}
+                style={compact ? { minWidth: 80, minHeight: 80, maxWidth: 112, maxHeight: 112 } : {}}
                 onClick={() => onOpenLightbox(mediaUrl, 'video')}
             >
                 <video
                     src={mediaUrl}
-                    className="w-full max-h-64 object-cover"
+                    className={`object-cover ${compact ? 'w-full h-full' : 'w-full max-h-64'}`}
                     preload="metadata"
                     playsInline
                 />
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/60 transition-all duration-300">
                     <motion.div
                         whileTap={{ scale: 0.9 }}
-                        className="w-12 h-12 sm:w-14 sm:h-14 bg-white/95 rounded-full flex items-center justify-center shadow-2xl"
+                        className="w-10 h-10 bg-white/95 rounded-full flex items-center justify-center shadow-2xl"
                     >
-                        <Play size={20} className="text-orange-500 ml-0.5" fill="currentColor" />
+                        <Play size={18} className="text-orange-500 ml-0.5" fill="currentColor" />
                     </motion.div>
                 </div>
                 <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
@@ -184,13 +185,15 @@ const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox }) => {
     return (
         <motion.div
             whileTap={{ scale: 0.98 }}
-            className="mx-4 mb-3 rounded-xl overflow-hidden border border-gray-100 cursor-pointer group relative"
+            className={`rounded-xl overflow-hidden border border-gray-100 cursor-pointer group relative ${compact ? 'w-28 h-28 mb-0 mx-0' : 'mx-4 mb-3 w-full'}`}
+            style={compact ? { minWidth: 80, minHeight: 80, maxWidth: 112, maxHeight: 112 } : {}}
             onClick={() => onOpenLightbox(mediaUrl, 'image')}
         >
             <img
                 src={mediaUrl}
                 alt="post media"
-                className="w-full max-h-64 object-cover transition-transform duration-500 group-hover:scale-105"
+                className={`object-contain transition-transform duration-500 group-hover:scale-105 ${compact ? 'w-full h-full' : ''}`}
+                style={compact ? { background: '#222', width: '100%', height: '100%', display: 'block', margin: 0 } : { maxHeight: '500px', background: '#222', width: '100%', display: 'block', margin: '0 auto' }}
                 onError={e => { e.target.style.display = 'none'; }}
                 loading="lazy"
             />
@@ -198,9 +201,9 @@ const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox }) => {
                 <motion.div
                     initial={{ scale: 0 }}
                     whileTap={{ scale: 0.9 }}
-                    className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow-xl"
+                    className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-xl"
                 >
-                    <ZoomIn size={16} className="text-gray-700" />
+                    <ZoomIn size={14} className="text-gray-700" />
                 </motion.div>
             </div>
         </motion.div>
@@ -531,17 +534,22 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                 )}
             </div>
 
-            {/* Content */}
-            <div className="px-4 pb-2">
-                <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
+            {/* Two-column layout: left message, right image */}
+            <div className="flex flex-row items-stretch gap-4 px-4 pb-2">
+                <div className="flex-1 flex items-center">
+                    <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
+                </div>
+                {post.mediaUrl && (
+                    <div className="flex-shrink-0 flex items-center justify-center">
+                        <MediaDisplay
+                            mediaUrl={post.mediaUrl}
+                            mediaType={post.mediaType}
+                            onOpenLightbox={onOpenLightbox}
+                            compact
+                        />
+                    </div>
+                )}
             </div>
-
-            {/* Media */}
-            <MediaDisplay
-                mediaUrl={post.mediaUrl}
-                mediaType={post.mediaType}
-                onOpenLightbox={onOpenLightbox}
-            />
 
             {/* Stats */}
             {(likeCount > 0 || post.comments?.length > 0) && (
@@ -803,7 +811,7 @@ export default function Community() {
                 {deleteId && <DeleteModal onConfirm={handleDelete} onClose={() => setDeleteId(null)} />}
             </AnimatePresence>
 
-            <div className="max-w-2xl mx-auto px-4 pt-4 md:pt-8">
+            <div className="max-w-5xl mx-auto px-4 pt-4 md:pt-8" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
                 {/* Enhanced Header - Mobile Optimized */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}

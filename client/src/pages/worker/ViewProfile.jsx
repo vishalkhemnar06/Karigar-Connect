@@ -93,7 +93,7 @@ const ViewProfile = () => {
     const currencyLabel = (value) => {
         const n = Number(value);
         if (!Number.isFinite(n) || n <= 0) return 'Not specified';
-        return `Rs. ${n.toLocaleString('en-IN')}`;
+        return `₹${n.toLocaleString('en-IN')}`;
     };
 
     const downloadPortfolioPdf = async () => {

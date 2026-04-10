@@ -58,6 +58,26 @@ const Home = () => {
         }
     ];
 
+    {/* IVR Callout for Workers */}
+    {role === 'worker' && (
+        <div className="max-w-2xl mx-auto mt-10 mb-8">
+            <div className="bg-gradient-to-r from-orange-100 to-orange-200 border-2 border-orange-300 rounded-2xl p-6 flex flex-col items-center shadow-lg">
+                <div className="flex items-center gap-3 mb-2">
+                    <span className="text-3xl">📞</span>
+                    <span className="text-lg font-bold text-orange-700">IVR Worker Helpline</span>
+                </div>
+                <a href="tel:+18147403875" className="text-2xl font-extrabold text-orange-600 underline hover:text-orange-800 transition-colors mb-2">+1 814-740-3875</a>
+                <ul className="text-sm text-gray-700 list-disc pl-5 text-left">
+                    <li>Call to get update on your availability</li>
+                    <li>Know about nearby jobs</li>
+                    <li>Registration process guidance</li>
+                    <li>Profile summary and status</li>
+                </ul>
+                <div className="mt-2 text-xs text-gray-500">This number is for workers only.</div>
+            </div>
+        </div>
+    )}
+
     return (
         <div className="min-h-screen bg-gradient-to-b from-white to-orange-50">
             {/* Hero Section */}
@@ -153,164 +173,7 @@ const Home = () => {
                     </div>
                 </div>
             </section>
-            
-            {/* Testimonials Section */}
-            <section className="py-16 bg-gradient-to-b from-orange-50 to-orange-100 px-4 sm:px-6 lg:px-8">
-                <div className="max-w-7xl mx-auto">
-                    <div className="text-center mb-16">
-                        <h2 className="text-3xl font-extrabold text-gray-900">What Our Users Say</h2>
-                        <p className="mt-4 text-xl text-gray-600">Hear from karigars and clients who use our platform</p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <div className="bg-white rounded-2xl p-6 shadow-md">
-                            <div className="flex items-center mb-4">
-                                <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-xl mr-4">
-                                    R
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold">Rajesh Kumar</h4>
-                                    <p className="text-orange-600 text-sm">Carpenter</p>
-                                </div>
-                            </div>
-                            <p className="text-gray-600">"KarigarConnect has helped me find consistent work and build my reputation. My income has doubled since joining!"</p>
-                        </div>
-                        
-                        <div className="bg-white rounded-2xl p-6 shadow-md">
-                            <div className="flex items-center mb-4">
-                                <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-xl mr-4">
-                                    P
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold">Priya Sharma</h4>
-                                    <p className="text-orange-600 text-sm">Client</p>
-                                </div>
-                            </div>
-                            <p className="text-gray-600">"I found the perfect electrician for my home renovation through KarigarConnect. The process was smooth and hassle-free."</p>
-                        </div>
-                        
-                        <div className="bg-white rounded-2xl p-6 shadow-md">
-                            <div className="flex items-center mb-4">
-                                <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-xl mr-4">
-                                    A
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold">Amit Patel</h4>
-                                    <p className="text-orange-600 text-sm">Plumber</p>
-                                </div>
-                            </div>
-                            <p className="text-gray-600">"The platform is easy to use and has helped me grow my customer base significantly. Highly recommend to all karigars!"</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* About Us Section */}
-            <section id="about-us" className="py-16 px-4 sm:px-6 lg:px-8 bg-white">
-                <div className="max-w-7xl mx-auto">
-                    <div className="text-center mb-16">
-                        <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900">About KarigarConnect</h2>
-                        <p className="mt-4 text-xl text-gray-600 max-w-3xl mx-auto">
-                            Bridging the gap between skilled professionals and those who need their services
-                        </p>
-                    </div>
-
-                    {/* About Us Overview */}
-                    <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl p-8 md:p-12 mb-12 border border-orange-100">
-                        <p className="text-lg text-gray-700 leading-relaxed">
-                            KarigarConnect is India's trusted platform dedicated to connecting skilled karigars (craftspeople) with clients 
-                            who need their services. We believe in creating transparent, reliable, and fair opportunities for everyone on our platform.
-                        </p>
-                    </div>
-
-                    {/* Platform Features for Different User Types */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {/* For Workers */}
-                        <div className="bg-white rounded-2xl p-8 shadow-lg border border-orange-100 hover:shadow-xl transition-all">
-                            <div className="text-5xl mb-4">👷‍♂️</div>
-                            <h3 className="text-2xl font-bold text-gray-900 mb-4">For Workers</h3>
-                            <ul className="space-y-3 text-gray-700">
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Build Your Profile</strong> - Showcase your skills and earn recognition</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Get More Opportunities</strong> - Access consistent work and grow your income</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Verified Reviews</strong> - Build trust through genuine client feedback</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Secure Payments</strong> - Get paid on time through our secure payment system</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Digital ID</strong> - Download your KarigarID for professional credibility</span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        {/* For Clients */}
-                        <div className="bg-white rounded-2xl p-8 shadow-lg border border-orange-100 hover:shadow-xl transition-all">
-                            <div className="text-5xl mb-4">👨‍💼</div>
-                            <h3 className="text-2xl font-bold text-gray-900 mb-4">For Clients</h3>
-                            <ul className="space-y-3 text-gray-700">
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Find Verified Professionals</strong> - Access a pool of trusted and verified karigars</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Transparent Pricing</strong> - No hidden charges, fair and competitive rates</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Easy Booking</strong> - Simple and hassle-free appointment scheduling</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Share Reviews</strong> - Help others by sharing your experience</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>24/7 Support</strong> - Get help whenever you need it</span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        {/* For Shops */}
-                        <div className="bg-white rounded-2xl p-8 shadow-lg border border-orange-100 hover:shadow-xl transition-all">
-                            <div className="text-5xl mb-4">🏪</div>
-                            <h3 className="text-2xl font-bold text-gray-900 mb-4">For Shops</h3>
-                            <ul className="space-y-3 text-gray-700">
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Attract More Customers</strong> - Increase visibility and grow your business</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Manage Services</strong> - Easily list and manage your services and offerings</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Build Reputation</strong> - Receive customer feedback and build trust</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Integrated Payments</strong> - Streamlined payment processing</span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="text-orange-500 font-bold mt-1">✓</span>
-                                    <span><strong>Analytics & Insights</strong> - Track your performance and growth</span>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </section>
+           
 
             {/* Contact Us Section */}
             <section id="contact" className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white to-orange-50">

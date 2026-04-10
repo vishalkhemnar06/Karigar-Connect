@@ -141,7 +141,7 @@ export default function CreateGroup() {
         </div>
       )}
 
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-3xl mx-auto" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
         {/* Header - Mobile Optimized */}
         <div className="flex items-center gap-3 mb-5 sm:mb-6">
           <button

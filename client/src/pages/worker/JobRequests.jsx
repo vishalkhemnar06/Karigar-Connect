@@ -16,7 +16,7 @@ import {
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
+    Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     Star, Shield, AlertCircle, CheckCircle, XCircle, Truck,
     Phone, Mail, ExternalLink, ChevronDown, ChevronUp,
     Navigation, Loader2, Award, TrendingUp, Zap, Gift, 
@@ -339,6 +339,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [showSkillPicker, setShowSkillPicker] = useState(false);
+    const [previewPhoto, setPreviewPhoto] = useState('');
 
     useEffect(() => {
         (async () => {
@@ -503,14 +504,41 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                             </div>
                         )}
 
-                        {/* Description */}
-                        <div>
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <Briefcase size={12} /> About the Job
-                            </p>
-                            <div className="bg-gray-50 rounded-2xl p-4">
-                                <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
+                        {/* Description + right-side photos */}
+                        <div className={`gap-4 ${job.photos?.length > 0 ? 'lg:flex lg:items-start' : ''}`}>
+                            <div className={job.photos?.length > 0 ? 'lg:flex-1' : ''}>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <Briefcase size={12} /> About the Job
+                                </p>
+                                <div className="bg-gray-50 rounded-2xl p-4">
+                                    <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
+                                </div>
                             </div>
+
+                            {job.photos?.length > 0 && (
+                                <div className="mt-3 lg:mt-0 lg:w-56 xl:w-64">
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
+                                    <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                                        {job.photos.slice(0, 6).map((p, i) => {
+                                            const url = getImageUrl(p);
+                                            return (
+                                                <button
+                                                    key={i}
+                                                    type="button"
+                                                    onClick={() => setPreviewPhoto(url)}
+                                                    className="group block w-full text-left"
+                                                >
+                                                    <img
+                                                        src={url}
+                                                        alt={`Work area ${i + 1}`}
+                                                        className="w-full aspect-square object-cover rounded-xl border border-gray-200 group-hover:border-orange-300 transition-colors"
+                                                    />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Open Positions - Mobile optimized grid */}
@@ -548,7 +576,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                                                     )}
                                                     {perW && (
                                                         <span className="text-green-600 font-bold flex items-center gap-1">
-                                                            <DollarSign size={10} /> ₹{perW.toLocaleString()}
+                                                            <IndianRupee size={10} /> ₹{perW.toLocaleString()}
                                                         </span>
                                                     )}
                                                 </div>
@@ -563,7 +591,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                         {(job.relevantBudgetBlocks || []).length > 0 && (
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <DollarSign size={12} /> Cost Details
+                                    <IndianRupee size={12} /> Cost Details
                                 </p>
                                 <div className="border border-gray-200 rounded-2xl overflow-hidden">
                                     {job.relevantBudgetBlocks.map((b, i) => {
@@ -602,7 +630,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                         {/* Payment method + negotiation terms */}
                         <div>
                             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                <DollarSign size={12} /> Payment Terms
+                                <IndianRupee size={12} /> Payment Terms
                             </p>
                             <div className="bg-gray-50 rounded-2xl p-3 space-y-1.5">
                                 <p className="text-sm text-gray-700 break-words">
@@ -691,18 +719,6 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                             </div>
                         )}
 
-                        {/* Photos */}
-                        {job.photos?.length > 0 && (
-                            <div>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {job.photos.slice(0, 6).map((p, i) => (
-                                        <img key={i} src={getImageUrl(p)} alt="" className="w-full aspect-square object-cover rounded-xl border border-gray-200" />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
                         <div className="bg-gray-50 rounded-2xl px-3 sm:px-4 py-3 text-xs text-gray-500 flex flex-wrap items-center justify-between gap-2">
                             <span className="flex items-center gap-1"><Users size={12} /> {job.applicantCount || 0} applied</span>
                             <span className="flex items-center gap-1"><Briefcase size={12} /> {job.workersRequired} worker{job.workersRequired !== 1 ? 's' : ''} needed</span>
@@ -743,6 +759,39 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                     )}
                 </motion.div>
             </motion.div>
+
+            <AnimatePresence>
+                {previewPhoto && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
+                        onClick={() => setPreviewPhoto('')}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.94, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.94, opacity: 0 }}
+                            className="relative max-w-5xl w-full"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setPreviewPhoto('')}
+                                className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full px-3 py-1.5 text-xs font-bold shadow"
+                            >
+                                Close
+                            </button>
+                            <img
+                                src={previewPhoto}
+                                alt="Work area preview"
+                                className="w-full max-h-[85vh] object-contain rounded-xl border border-white/20"
+                            />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }
@@ -986,7 +1035,7 @@ export default function JobRequests() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-3 sm:p-4 md:p-8">
-            <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6 pb-20">
+            <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 pb-20">
                 {/* Header - Mobile Optimized */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}

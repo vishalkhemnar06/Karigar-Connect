@@ -136,11 +136,14 @@ const WorkerDashboard = () => {
   };
 
   return (
-    <div className="bg-orange-50/30 min-h-screen p-3 pt-0 pb-32 lg:pb-10 lg:pt-0">
+    <div
+      className="bg-orange-50/30 min-h-screen p-3 pt-0 pb-32 lg:pb-10 lg:pt-0"
+      style={{ fontFamily: 'Inter, sans-serif', fontSize: '2.13rem' }}
+    >
       <ToastList toasts={toast.toasts} />
       
       {/* ── COMPACT STICKY HEADER ── */}
-      <div className="flex items-center justify-between py-3 sticky top-0 bg-orange-50/90 backdrop-blur-md z-40 border-b border-orange-100">
+      <div className="flex items-center justify-between py-3 sticky top-0 bg-orange-50/90 backdrop-blur-md z-40 border-b border-orange-100" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-white font-black shadow-lg shadow-orange-200">
             {profile?.photo 
@@ -170,7 +173,7 @@ const WorkerDashboard = () => {
       )}
 
       {/* STATS GRID */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-6 mt-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-6 mt-4" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
         {loading ? [1,2,3,4].map(i => <Skel key={i} h="h-24" />) : (
           <>
             <StatCard title="Points" value={profile?.points} icon={Star} grad="linear-gradient(135deg, #FFD700, #FFA500)" subtitle="Reputation" />
@@ -182,9 +185,9 @@ const WorkerDashboard = () => {
       </div>
 
       {/* NEAR CLIENTS */}
-      <div className="flex items-center justify-between mb-3 px-1">
-        <h2 className="text-sm font-black text-gray-900 uppercase">Near Clients <span className="text-orange-500">({nearClients.length})</span></h2>
-        <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase"><MapPin size={10} /> {profile?.address?.city}</div>
+      <div className="flex items-center justify-between mb-3 px-1" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
+        <h2 className="text-lg font-black text-gray-900 uppercase">Near Clients <span className="text-orange-500">({nearClients.length})</span></h2>
+        <div className="flex items-center gap-1 text-xs font-bold text-gray-400 uppercase"><MapPin size={10} /> {profile?.address?.city}</div>
       </div>
 
       {loading ? (

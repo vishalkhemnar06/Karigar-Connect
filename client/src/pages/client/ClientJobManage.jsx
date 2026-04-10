@@ -26,7 +26,7 @@ import {
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Briefcase, MapPin, Calendar, Clock, DollarSign, Users,
+    Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     Star, AlertCircle, CheckCircle, XCircle, Truck,
     Phone, Mail, ChevronDown, ChevronUp,
     Navigation, Loader2, Award, Zap,
@@ -515,7 +515,7 @@ const RepostModal = ({ job, slot, onClose, onRepost }) => {
 const JobCard = ({
     job, isExpanded, alert, suggestions, loadingSuggestions, invitingWorkers,
     starredWorkers, onToggle, onSelectWorker, onRatingJob, onCancelJob,
-    onRemoveWorker, onRepostData, onClearAlert, handlers, navigate,
+    onRemoveWorker, onRepostData, onClearAlert, onOpenPhoto, handlers, navigate,
 }) => {
     const startInfo = useStartCountdown(job);
 
@@ -551,7 +551,7 @@ const JobCard = ({
                         </div>
 
                         <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
-                            <span className="flex items-center gap-1"><DollarSign size={11}/>{fmtINR(job.payment)}</span>
+                            <span className="flex items-center gap-1"><IndianRupee size={11}/>{fmtINR(job.payment)}</span>
                             {job.location?.city && <span className="flex items-center gap-1"><MapPin size={11}/>{job.location.city}</span>}
                             {job.scheduledDate && <span className="flex items-center gap-1"><Calendar size={11}/>{fmtDate(job.scheduledDate)}{job.scheduledTime && ` · ${job.scheduledTime}`}</span>}
                         </div>
@@ -567,10 +567,47 @@ const JobCard = ({
                             </div>
                         )}
                     </div>
-                    <div className="text-gray-300 flex-shrink-0">
-                        {isExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
+                    <div className="flex items-start gap-3 flex-shrink-0">
+                        {job.photos?.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenPhoto(getImageUrl(job.photos[0]));
+                                }}
+                                className="hidden sm:block"
+                                title="Open job photo"
+                            >
+                                <img
+                                    src={getImageUrl(job.photos[0])}
+                                    alt="Job photo"
+                                    className="w-20 h-16 object-cover rounded-xl border border-gray-200 hover:border-orange-300 transition-colors"
+                                />
+                            </button>
+                        )}
+                        <div className="text-gray-300">
+                            {isExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
+                        </div>
                     </div>
                 </div>
+
+                {job.photos?.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenPhoto(getImageUrl(job.photos[0]));
+                        }}
+                        className="sm:hidden mt-3 block"
+                        title="Open job photo"
+                    >
+                        <img
+                            src={getImageUrl(job.photos[0])}
+                            alt="Job photo"
+                            className="w-full max-w-[220px] h-28 object-cover rounded-xl border border-gray-200 hover:border-orange-300 transition-colors"
+                        />
+                    </button>
+                )}
             </div>
 
             {/* Expanded content */}
@@ -586,7 +623,23 @@ const JobCard = ({
                             {alert && <InlineAlert msg={alert.message} type={alert.type} onDismiss={()=>onClearAlert(job._id)}/>}
 
                             {/* Description */}
-                            <p className="text-sm text-gray-600 leading-relaxed">{job.description}</p>
+                            <div>
+                                <p className="text-sm text-gray-600 leading-relaxed">{job.description}</p>
+                            </div>
+
+                            {(job.qaAnswers || []).length > 0 && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5">
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Posted Questions & Answers</p>
+                                    <div className="space-y-2">
+                                        {job.qaAnswers.map((qa, idx) => (
+                                            <div key={idx}>
+                                                <p className="text-xs font-semibold text-gray-700">Q: {qa.question}</p>
+                                                <p className="text-xs text-gray-600">A: {qa.answer}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Cancellation reason */}
                             {isCancelled(job.status) && job.cancellationReason && (
@@ -636,7 +689,7 @@ const JobCard = ({
                                                             <p className="text-[10px] text-gray-400">{slot.hoursEstimated}h est.</p>
                                                         </div>
                                                         {w ? (
-                                                            <button onClick={()=>onSelectWorker(wId)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                                                            <button onClick={()=>onSelectWorker(w)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                                                                 <img src={getImageUrl(w?.photo)} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" onError={e=>{e.target.src='/admin.png';}}/>
                                                                 <span className="text-sm font-semibold text-gray-800 truncate max-w-[100px]">{w?.name}</span>
                                                             </button>
@@ -678,7 +731,7 @@ const JobCard = ({
                                             const w = app.workerId;
                                             return (
                                                 <div key={i} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
-                                                    <button onClick={()=>onSelectWorker((w?._id||w)?.toString())} className="flex items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity">
+                                                    <button onClick={()=>onSelectWorker(w)} className="flex items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity">
                                                         <img src={getImageUrl(w?.photo)} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" onError={e=>{e.target.src='/admin.png';}}/>
                                                         <div className="min-w-0">
                                                             <p className="text-sm font-bold text-gray-800 truncate">{w?.name||'Worker'}</p>
@@ -726,7 +779,7 @@ const JobCard = ({
                                                     <div key={w._id} className="bg-white border border-indigo-100 rounded-xl p-3 flex items-center gap-3">
                                                         <img src={getImageUrl(w.photo)} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 border-2 border-white shadow-sm" onError={e=>{e.target.src='/admin.png';}}/>
                                                         <div className="flex-1 min-w-0">
-                                                            <button onClick={()=>onSelectWorker(w._id)} className="font-bold text-gray-900 text-sm hover:text-indigo-600 transition-colors">{w.name}</button>
+                                                            <button onClick={()=>onSelectWorker(w)} className="font-bold text-gray-900 text-sm hover:text-indigo-600 transition-colors">{w.name}</button>
                                                             <div className="flex items-center gap-2 text-[10px] text-gray-500 mt-0.5">
                                                                 <span className="flex items-center gap-0.5"><Star size={9}/>{(w.avgStars||0).toFixed(1)}</span>
                                                                 <span className="flex items-center gap-0.5"><Award size={9}/>{w.points} pts</span>
@@ -777,6 +830,12 @@ const JobCard = ({
                                         <Truck size={13}/>{startInfo.canStart?'Start Job':`Starts in ${startInfo.remaining}`}
                                     </button>
                                 )}
+                                {job.status === 'running' && (
+                                    <button onClick={()=>handlers.completeJob(job._id)}
+                                        className="px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-all active:scale-95">
+                                        <CheckCircle size={13}/> Complete Job
+                                    </button>
+                                )}
                                 {['scheduled','running'].includes(job.status) && (job.assignedTo||[]).length>0 && (
                                     <button onClick={()=>navigate(`/client/live-tracking/${job._id}`)}
                                         className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all active:scale-95">
@@ -824,7 +883,6 @@ export default function ClientJobManage() {
     const [expandedId,     setExpandedId]    = useState(null);
     const [starredWorkers, setStarred]       = useState([]);
     const [alerts,         setAlerts]        = useState({});
-    const [selectedWorker, setSelectedWorker]= useState(null);
     const [ratingJob,      setRatingJob]     = useState(null);
     const [cancelJob_,     setCancelJob]     = useState(null);
     const [removeWorker,   setRemoveWorker]  = useState(null);
@@ -832,6 +890,7 @@ export default function ClientJobManage() {
     const [suggestions,    setSuggestions]   = useState({});
     const [loadingSugg,    setLoadingSugg]   = useState({});
     const [inviting,       setInviting]      = useState({});
+    const [previewPhoto,   setPreviewPhoto]  = useState('');
 
     // ── Fetch jobs ────────────────────────────────────────────────────────────
     const fetchJobs = useCallback(async () => {
@@ -863,6 +922,34 @@ export default function ClientJobManage() {
         } catch { toast.error('Unable to update favourite'); }
     };
 
+    const handleOpenWorkerProfile = async (workerRef) => {
+        const directKarigarId = workerRef?.karigarId || workerRef?.workerKarigarId;
+        if (directKarigarId) {
+            navigate(`/profile/public/${directKarigarId}`);
+            return;
+        }
+
+        const workerMongoId = typeof workerRef === 'string'
+            ? workerRef
+            : (workerRef?._id || workerRef?.workerId || workerRef?.id);
+
+        if (!workerMongoId) {
+            toast.error('Worker profile is not available');
+            return;
+        }
+
+        try {
+            const { data } = await getWorkerFullProfile(workerMongoId);
+            if (!data?.karigarId) {
+                toast.error('Public profile is not available for this worker');
+                return;
+            }
+            navigate(`/profile/public/${data.karigarId}`);
+        } catch {
+            toast.error('Unable to open worker profile');
+        }
+    };
+
     const handleRespondApplicant = async (jId, wId, status, skill) => {
         try {
             const { data } = await respondToApplicant(jId, { workerId:wId, status, skill });
@@ -892,6 +979,15 @@ export default function ClientJobManage() {
             const { data } = await startJob(jId);
             setJobs(p=>p.map(j=>j._id===jId?data.job:j));
             setAlert(jId, 'Job started! Workers notified.', 'success');
+        } catch (e) { setAlert(jId, e?.response?.data?.message||'Failed.', 'error'); }
+    };
+
+    const handleCompleteJob = async (jId) => {
+        if (!window.confirm('Mark this running job as completed?')) return;
+        try {
+            const { data } = await updateJobStatus(jId, 'completed', { manualComplete: true });
+            setJobs(p=>p.map(j=>j._id===jId?data.job:j));
+            setAlert(jId, 'Job marked as completed.', 'success');
         } catch (e) { setAlert(jId, e?.response?.data?.message||'Failed.', 'error'); }
     };
 
@@ -955,6 +1051,7 @@ export default function ClientJobManage() {
                 const w = r.worker||{};
                 return {
                     _id:          r.workerId||r._id||w._id,
+                    karigarId:    w.karigarId||r.karigarId||'',
                     name:         w.name||r.name||'',
                     photo:        w.photo||r.photo||'',
                     points:       Number(w.points||r.points||0),
@@ -1086,16 +1183,18 @@ export default function ClientJobManage() {
                                 invitingWorkers={inviting}
                                 starredWorkers={starredWorkers}
                                 onToggle={setExpandedId}
-                                onSelectWorker={setSelectedWorker}
+                                onSelectWorker={handleOpenWorkerProfile}
                                 onRatingJob={setRatingJob}
                                 onCancelJob={setCancelJob}
                                 onRemoveWorker={setRemoveWorker}
                                 onRepostData={setRepostData}
                                 onClearAlert={clearAlert}
+                                onOpenPhoto={setPreviewPhoto}
                                 handlers={{
                                     respondApplicant: handleRespondApplicant,
                                     markSlotDone:     handleMarkSlotDone,
                                     startJob:         handleStartJob,
+                                    completeJob:      handleCompleteJob,
                                     deleteJob:        handleDeleteJob,
                                     dismissSkill:     handleDismissSkill,
                                     uploadPhotos:     handleUploadPhotos,
@@ -1113,14 +1212,6 @@ export default function ClientJobManage() {
 
             {/* ── MODALS ── */}
             <AnimatePresence>
-                {selectedWorker && (
-                    <WorkerProfileModal key="wp"
-                        workerId={selectedWorker}
-                        onClose={()=>setSelectedWorker(null)}
-                        onStar={handleStarWorker}
-                        starredIds={starredWorkers}
-                    />
-                )}
                 {ratingJob && (
                     <RatingModal key="rate"
                         job={ratingJob}
@@ -1149,6 +1240,37 @@ export default function ClientJobManage() {
                         onClose={()=>setRepostData(null)}
                         onRepost={(jId,updatedJob)=>setJobs(p=>p.map(j=>j._id===jId?updatedJob:j))}
                     />
+                )}
+                {previewPhoto && (
+                    <motion.div
+                        key="photo-preview"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4"
+                        onClick={() => setPreviewPhoto('')}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.94, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.94, opacity: 0 }}
+                            className="relative max-w-5xl w-full"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setPreviewPhoto('')}
+                                className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full px-3 py-1.5 text-xs font-bold shadow"
+                            >
+                                Close
+                            </button>
+                            <img
+                                src={previewPhoto}
+                                alt="Job preview"
+                                className="w-full max-h-[85vh] object-contain rounded-xl border border-white/20"
+                            />
+                        </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>
 

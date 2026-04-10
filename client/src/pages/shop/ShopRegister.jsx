@@ -747,7 +747,7 @@ const ShopRegister = () => {
                                         className="flex-1 border-2 border-orange-200 text-orange-600 py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 hover:bg-orange-50 transition-all">
                                         <ChevronLeft size={20} /> Back
                                     </button>
-                                    <button onClick={handleSubmit} disabled={loading}
+                                    <button onClick={handleSubmit} disabled={loading || !termsAgreed}
                                         className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 hover:shadow-lg transition-all disabled:opacity-50">
                                         {loading ? (
                                             <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Submitting...</>

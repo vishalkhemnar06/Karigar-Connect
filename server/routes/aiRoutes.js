@@ -5,6 +5,7 @@ const { protect } = require('../middleware/authMiddleware');
 const {
     generateQuestions,
     generateEstimate,
+    getRateTableCities,
     generateAdvisorReport,   // NEW
     generatePreviewImages,
     startConversation,
@@ -14,6 +15,10 @@ const { aiImageUploader } = require('../utils/cloudinary');
 // Stage 1: Generate clarifying questions based on work description
 // POST /api/ai/generate-questions
 router.post('/generate-questions', protect, generateQuestions);
+
+// Shared city options used by AI and job post forms
+// GET /api/ai/rate-table-cities
+router.get('/rate-table-cities', protect, getRateTableCities);
 
 // Stage 2: Full structured estimate with component-based budget
 // POST /api/ai/generate-estimate

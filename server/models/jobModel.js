@@ -104,6 +104,9 @@ const jobSchema = new mongoose.Schema({
     // ── Notification flags ────────────────────────────────────────────────────
     preStartNotificationSent: { type: Boolean, default: false },
     clientNotifiedCompletion: { type: Boolean, default: false },
+    noApplicantWarningSent:   { type: Boolean, default: false },
+    archivedByClient:         { type: Boolean, default: false },
+    archivedAt:               { type: Date, default: null },
 
     status: {
         type: String,
