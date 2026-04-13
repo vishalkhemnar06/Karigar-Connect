@@ -12,10 +12,16 @@ const sanitizeMobile = (mobile) => String(mobile || '').replace(/\D/g, '').slice
 const getConfiguredAdminAccounts = () => {
     try {
         const raw = process.env.ADMIN_ACCOUNTS_JSON;
-        if (!raw) return DEFAULT_ADMIN_ACCOUNTS;
+
+        if (!raw) {
+            throw new Error('ADMIN_ACCOUNTS_JSON not found in .env');
+        }
 
         const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed) || parsed.length !== 4) return DEFAULT_ADMIN_ACCOUNTS;
+
+        if (!Array.isArray(parsed) || parsed.length !== 4) {
+            throw new Error('Exactly 4 admin accounts required');
+        }
 
         const normalized = parsed.map((acc, idx) => ({
             name: String(acc?.name || `Admin ${idx + 1}`),
@@ -23,23 +29,53 @@ const getConfiguredAdminAccounts = () => {
             password: String(acc?.password || ''),
         }));
 
-        const valid = normalized.every(acc => acc.mobile.length === 10 && acc.password.length >= 6);
-        const uniqueMobiles = new Set(normalized.map(acc => acc.mobile)).size === 4;
-        if (!valid || !uniqueMobiles) return DEFAULT_ADMIN_ACCOUNTS;
+        // ✅ UPDATED VALIDATION (for your short credentials)
+        const valid = normalized.every(
+            acc => acc.mobile.length >= 4 && acc.password.length >= 4
+        );
+
+        const uniqueMobiles =
+            new Set(normalized.map(acc => acc.mobile)).size === 4;
+
+        if (!valid || !uniqueMobiles) {
+            throw new Error('Invalid admin data in .env');
+        }
 
         return normalized;
-    } catch {
-        return DEFAULT_ADMIN_ACCOUNTS;
+    } catch (err) {
+        console.error('❌ Admin config error:', err.message);
+        return [];
     }
 };
 
 const ensureAdminAccounts = async () => {
     const accounts = getConfiguredAdminAccounts();
 
-    for (let i = 0; i < accounts.length; i += 1) {
+    if (accounts.length === 0) {
+        console.log("⚠️ No admin accounts created");
+        return [];
+    }
+
+    for (let i = 0; i < accounts.length; i++) {
         const acc = accounts[i];
-        const existing = await User.findOne({ role: 'admin', mobile: acc.mobile });
-        if (existing) continue;
+
+        const existing = await User.findOne({
+            role: 'admin',
+            mobile: acc.mobile,
+        });
+
+        if (existing) {
+            // Update existing admin name if it has changed in .env file
+            if (existing.name !== acc.name) {
+                await User.findByIdAndUpdate(
+                    existing._id,
+                    { name: acc.name },
+                    { new: true }
+                );
+                console.log(`🔄 Admin name updated: ${existing.name} → ${acc.name}`);
+            }
+            continue;
+        }
 
         await User.create({
             userId: `ADMIN-${acc.mobile.slice(-4)}`,
@@ -47,9 +83,11 @@ const ensureAdminAccounts = async () => {
             role: 'admin',
             name: acc.name,
             mobile: acc.mobile,
-            password: acc.password,
+            password: acc.password, // (plain for now)
             verificationStatus: 'approved',
         });
+
+        console.log(`✅ Admin created: ${acc.name}`);
     }
 
     return accounts;
