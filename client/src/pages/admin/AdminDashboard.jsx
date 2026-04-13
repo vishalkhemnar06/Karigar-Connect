@@ -7,7 +7,7 @@
 //   - All original functionality preserved exactly
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
 import Header from '../../components/Header';
@@ -154,8 +154,8 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[100] bg-orange-50/85 backdrop-blur-[2px] p-2 sm:p-4 lg:p-6" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl border border-orange-100 w-full max-w-6xl h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] mx-auto flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-orange-600 p-4 sm:p-6 rounded-t-xl flex justify-between items-center z-10">
                     <div className="flex items-center gap-3 sm:gap-4">
                         <img
@@ -166,10 +166,10 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                         />
                         <div className="text-white">
                             <h3 className="text-lg sm:text-xl lg:text-2xl font-bold">{user.name}</h3>
-                            <p className="text-orange-100 text-sm">{user.karigarId} | {user.role}</p>
+                            <p className="text-orange-100 text-sm">{user.userId || user.karigarId} | {user.role}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-white text-2xl sm:text-3xl hover:text-orange-200 transition-colors">&times;</button>
+                    <button onClick={onClose} className="text-white text-2xl sm:text-3xl hover:text-orange-200 transition-colors leading-none">&times;</button>
                 </div>
 
                 <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
@@ -501,18 +501,21 @@ const MobileUserCard = ({ user, currentAdminId, onViewDetails, onVerifyOpen, onC
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
+    const location = useLocation();
+    const navState = location.state || {};
+
     const [workers,        setWorkers]        = useState([]);
     const [clients,        setClients]        = useState([]);
     const [loading,        setLoading]        = useState(true);
     const [selectedUser,   setSelectedUser]   = useState(null);
     const [userToVerify,   setUserToVerify]   = useState(null);
-    const [activeFilter,   setActiveFilter]   = useState('pending');
+    const [activeFilter,   setActiveFilter]   = useState(navState.activeFilter || 'pending');
     const [searchTerm,     setSearchTerm]     = useState('');
     const [sortConfig,     setSortConfig]     = useState({ key: null, direction: 'asc' });
     const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
     const [isLoggedIn,     setIsLoggedIn]     = useState(true);
-    const [currentSection, setCurrentSection] = useState('dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops'
-    const [viewMode, setViewMode] = useState('stats'); // 'stats' or 'records'
+    const [currentSection, setCurrentSection] = useState(navState.currentSection || 'dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops'
+    const [viewMode, setViewMode] = useState(navState.viewMode || 'stats'); // 'stats' or 'records'
     const [dashboardStats, setDashboardStats] = useState({
         ivrStats: {},
         shops: 0,
@@ -569,6 +572,12 @@ const AdminDashboard = () => {
         fetchData();
         fetchDashboardStats();
     }, []);
+
+    useEffect(() => {
+        if (navState.activeFilter) setActiveFilter(navState.activeFilter);
+        if (navState.currentSection) setCurrentSection(navState.currentSection);
+        if (navState.viewMode) setViewMode(navState.viewMode);
+    }, [navState.activeFilter, navState.currentSection, navState.viewMode]);
 
     useEffect(() => {
         if (activeFilter !== 'pending') return;
@@ -706,6 +715,7 @@ const AdminDashboard = () => {
         <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white">
             {/* Modals */}
             <VerificationModal worker={userToVerify} onClose={() => setUserToVerify(null)} onConfirm={handleStatusUpdate} />
+            <UserDetailsModal user={selectedUser} onClose={() => setSelectedUser(null)} baseURL={baseURL} />
 
             {/* Header */}
             <Header />
@@ -1086,7 +1096,7 @@ const AdminDashboard = () => {
                                                                 <div className="space-y-2 pt-2">
                                                                     {/* View Button */}
                                                                     <button 
-                                                                        onClick={() => navigate(`/admin/workers/${user.karigarId || user._id}`)} 
+                                                                        onClick={() => setSelectedUser(user)} 
                                                                         className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
                                                                     >
                                                                         <Eye size={16} /> View Details

@@ -81,12 +81,15 @@ const AdminSidebar = ({
     dashboardStats = {},
     onViewModeChange = () => {},
 }) => {
-    const location  = useLocation();
+    useLocation();
 
     const handleNav = (item) => {
         if (item.isFilter) {
             onFilterChange(item.filter);
-            onSectionChange('dashboard');
+            // Avoid triggering duplicate route transitions when already on dashboard.
+            if (currentSection !== 'dashboard') {
+                onSectionChange('dashboard');
+            }
             onViewModeChange('records');
         } else if (item.isSection) {
             onSectionChange('dashboard');
@@ -238,7 +241,9 @@ const AdminSidebar = ({
                                 onClick={() => {
                                     if (item.isFilter) {
                                         onFilterChange(item.filter);
-                                        onSectionChange('dashboard');
+                                        if (currentSection !== 'dashboard') {
+                                            onSectionChange('dashboard');
+                                        }
                                         onViewModeChange('records');
                                     } else {
                                         handleNav(item);

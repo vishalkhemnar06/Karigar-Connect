@@ -192,7 +192,7 @@ export default function LiveMap({
         if (clientMarker?.lat) allPoints.push([clientMarker.lat, clientMarker.lng]);
         workerMarkers.forEach(w => { if (w.lat) allPoints.push([w.lat, w.lng]); });
         if (allPoints.length >= 2) {
-            try { map.fitBounds(allPoints, { padding: [50, 50], maxZoom: 16 }); } catch {}
+            try { map.fitBounds(allPoints, { padding: [50, 50], maxZoom: 16 }); } catch (err) { console.debug('Map fitBounds failed:', err); }
         } else if (allPoints.length === 1) {
             map.setView(allPoints[0], 15);
         }

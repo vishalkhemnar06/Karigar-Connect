@@ -1,7 +1,3 @@
-// client/src/pages/worker/WorkerComplaints.jsx
-// ENHANCED UI VERSION - Mobile Optimized
-// Enhanced with: Modern gradients, animations, glassmorphism, better spacing, micro-interactions
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
@@ -914,7 +910,7 @@ const WorkerComplaints = () => {
                             </motion.div>
                         ) : (
                             <div className="space-y-3 md:space-y-4">
-                                {filtered.map((c, index) => (
+                                {filtered.map((c) => (
                                     <RequestCard
                                         key={c._id}
                                         complaint={c}

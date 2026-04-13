@@ -11,7 +11,7 @@ import { PASSWORD_POLICY_TEXT, isStrongPassword, getPasswordStrength, getPasswor
 import {
     Store, User, Phone, Mail, Lock, MapPin, FileText,
     CheckCircle, ChevronRight, ChevronLeft, Upload, Tag,
-    Eye, EyeOff, Building2, Hash, Image as ImageIcon
+    Eye, EyeOff, Building2, Hash, Image as ImageIcon, X
 } from 'lucide-react';
 
 const SHOP_CATEGORIES = [
@@ -184,6 +184,7 @@ const ShopRegister = () => {
     const [confirmPwd, setConfirmPwd]     = useState('');
     const [showPwd, setShowPwd]           = useState(false);
     const [termsAgreed, setTermsAgreed]   = useState(false);
+    const [legalPreview, setLegalPreview] = useState({ open: false, title: '', path: '' });
 
     // Shop details state
     const [ownerName, setOwnerName]       = useState('');
@@ -325,6 +326,15 @@ const ShopRegister = () => {
     }, []);
 
     const togglePwd = useCallback(() => setShowPwd(v => !v), []);
+
+    const openLegalPreview = useCallback((title, path) => {
+        const previewPath = path.includes('?') ? `${path}&embed=1` : `${path}?embed=1`;
+        setLegalPreview({ open: true, title, path: previewPath });
+    }, []);
+
+    const closeLegalPreview = useCallback(() => {
+        setLegalPreview({ open: false, title: '', path: '' });
+    }, []);
 
     // OTP actions
     const sendMobileOtp = useCallback(async () => {
@@ -716,23 +726,21 @@ const ShopRegister = () => {
                                         />
                                         <span className="text-sm text-gray-700 leading-relaxed">
                                             I agree to the{' '}
-                                            <a 
-                                                href="/terms-and-conditions" 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
+                                            <button 
+                                                type="button"
+                                                onClick={() => openLegalPreview('Terms & Conditions', '/terms-and-conditions')}
                                                 className="text-orange-600 font-bold hover:underline"
                                             >
                                                 Terms & Conditions
-                                            </a>
+                                            </button>
                                             {' '}and{' '}
-                                            <a 
-                                                href="/privacy-policy" 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
+                                            <button 
+                                                type="button"
+                                                onClick={() => openLegalPreview('Privacy Policy', '/privacy-policy')}
                                                 className="text-orange-600 font-bold hover:underline"
                                             >
                                                 Privacy Policy
-                                            </a>
+                                            </button>
                                             {' '}of KarigarConnect. <span className="text-red-500 font-bold">*</span>
                                         </span>
                                     </label>
@@ -766,6 +774,20 @@ const ShopRegister = () => {
                     </div>
                 </div>
             </div>
+
+            {legalPreview.open && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={closeLegalPreview}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="h-14 border-b border-orange-100 px-4 sm:px-5 flex items-center justify-between bg-orange-50">
+                            <h3 className="text-sm sm:text-base font-black text-orange-700 truncate">{legalPreview.title}</h3>
+                            <button type="button" onClick={closeLegalPreview} className="w-9 h-9 rounded-full bg-white border border-orange-200 text-orange-700 hover:bg-orange-100 flex items-center justify-center" aria-label="Close legal preview">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <iframe title={legalPreview.title} src={legalPreview.path} className="w-full h-[calc(85vh-56px)] border-0 bg-white" />
+                    </div>
+                </div>
+            )}
         </>
     );
 };

@@ -192,7 +192,7 @@ exports.getAllClients = async (req, res) => {
 
 exports.getUserByIdOrKarigarId = async (req, res) => {
     try {
-        const idOrKarigarId = req.params.id;
+        const idOrKarigarId = String(req.params.id || '').trim();
         let user = null;
 
         const isObjectId = idOrKarigarId.match(/^[0-9a-fA-F]{24}$/);
@@ -202,7 +202,12 @@ exports.getUserByIdOrKarigarId = async (req, res) => {
         }
 
         if (!user) {
-            user = await User.findOne({ karigarId: idOrKarigarId }).select('-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry');
+            user = await User.findOne({
+                $or: [
+                    { userId: idOrKarigarId },
+                    { karigarId: idOrKarigarId },
+                ],
+            }).select('-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry');
         }
 
         if (!user) return res.status(404).json({ message: 'User not found.' });

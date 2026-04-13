@@ -187,7 +187,11 @@ export default function FaceVerification({
     const processLoop = useCallback(() => {
         const tick = async () => {
             if (fmRef.current && videoRef.current && videoRef.current.readyState >= 2) {
-                try { await fmRef.current.send({ image: videoRef.current }); } catch {}
+                try {
+                    await fmRef.current.send({ image: videoRef.current });
+                } catch (err) {
+                    console.debug('Face mesh frame processing failed:', err);
+                }
             }
             rafRef.current = requestAnimationFrame(tick);
         };

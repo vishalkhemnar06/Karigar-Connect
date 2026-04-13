@@ -5,7 +5,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import LiveMap from '../../components/LiveMap';
 import { getJobLocationData, initClientLocation } from '../../api';
-import { MapPin, Navigation, RefreshCw, AlertCircle, CheckCircle, Clock, User, Phone } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { MapPin, Navigation, AlertCircle, CheckCircle, Clock, User, Phone } from 'lucide-react';
 
 const POLL_INTERVAL = 5000; // ms — refresh worker positions
 
@@ -173,7 +174,7 @@ export default function ClientLiveTracking() {
             setIsManualLocation(false);
             fetchSnapshot();
             toast.success('Location saved successfully!');
-        } catch (err) {
+        } catch {
             setError('Failed to save location. Please try again.');
         } finally {
             setSavingManual(false);

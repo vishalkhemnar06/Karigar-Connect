@@ -271,7 +271,6 @@ return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
     // Face verification badge
     const fvStatus  = user.faceVerificationStatus;
     const fvPassed  = fvStatus === 'passed';
-    const fvScore   = user.faceVerificationScore;
 
     return (
         <div style={{

@@ -42,7 +42,7 @@ const ensureAdminAccounts = async () => {
         if (existing) continue;
 
         await User.create({
-            karigarId: `ADMIN-${acc.mobile.slice(-4)}`,
+            userId: `ADMIN-${acc.mobile.slice(-4)}`,
             email: `admin-${acc.mobile}@karigarconnect.local`,
             role: 'admin',
             name: acc.name,

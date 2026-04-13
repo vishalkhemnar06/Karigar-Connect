@@ -11,7 +11,7 @@ import {
     User, Edit, Save, X, Mail, Phone, MapPin, Calendar,
     Shield, Camera, FileText, CheckCircle, Globe,
     Facebook, Twitter, Instagram, Linkedin,
-    Briefcase, Star, Award, TrendingUp, Clock,
+    Briefcase, Award, TrendingUp, Clock,
     Home, Building2, ChevronRight, Users,
     Trash2, Upload, AlertCircle
 } from 'lucide-react';
@@ -26,6 +26,7 @@ const getFileKind = (url = '') => isImageFile(url) ? 'image' : isPdfFile(url) ? 
 
 const ClientProfile = () => {
     const [profile, setProfile]     = useState(null);
+    const [profileStats, setProfileStats] = useState({ jobsPosted: 0, hiresMade: 0, activeJobs: 0 });
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData]   = useState({});
     const [loading, setLoading]     = useState(true);
@@ -47,11 +48,48 @@ const ClientProfile = () => {
 
     // ── Fetch ────────────────────────────────────────────────────────────────
 
+    const deriveStatsFromJobs = (jobs = []) => {
+        const rows = Array.isArray(jobs) ? jobs : [];
+        const activeStatuses = new Set(['open', 'proposal', 'scheduled', 'running']);
+
+        const jobsPosted = rows.length;
+        const activeJobs = rows.filter((job) => activeStatuses.has(String(job?.status || '').toLowerCase())).length;
+
+        let hiresMade = 0;
+        rows.forEach((job) => {
+            const slotHires = Array.isArray(job?.workerSlots)
+                ? job.workerSlots.filter((slot) => slot?.assignedWorker).length
+                : 0;
+
+            const directAssigned = Array.isArray(job?.assignedTo)
+                ? job.assignedTo.length
+                : (job?.assignedTo ? 1 : 0);
+
+            hiresMade += Math.max(slotHires, directAssigned);
+        });
+
+        return { jobsPosted, hiresMade, activeJobs };
+    };
+
     const fetchProfile = async () => {
         setLoading(true);
         try {
-            const { data } = await api.getClientProfile();
-            setProfile(data);
+            const [profileRes, jobsRes] = await Promise.allSettled([
+                api.getClientProfile(),
+                api.getClientJobs(),
+            ]);
+
+            if (profileRes.status !== 'fulfilled') {
+                throw new Error('PROFILE_FETCH_FAILED');
+            }
+
+            setProfile(profileRes.value.data);
+
+            if (jobsRes.status === 'fulfilled') {
+                setProfileStats(deriveStatsFromJobs(jobsRes.value?.data));
+            } else {
+                setProfileStats({ jobsPosted: 0, hiresMade: 0, activeJobs: 0 });
+            }
         } catch { toast.error('Could not load profile.'); }
         finally { setLoading(false); }
     };
@@ -297,7 +335,7 @@ const ClientProfile = () => {
 
     // ── EDIT FORM ────────────────────────────────────────────────────────────
 
-    const EditForm = () => (
+    const renderEditForm = () => (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             className="bg-white rounded-2xl shadow-sm border border-orange-200 overflow-hidden">
             <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 sm:p-6 text-white">
@@ -509,14 +547,13 @@ const ClientProfile = () => {
                     </div>
                 </motion.div>
 
-                {isEditing ? <EditForm /> : (
+                {isEditing ? renderEditForm() : (
                     <div className="space-y-4 sm:space-y-6">
                         {/* Stats */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                            <StatCard title="Jobs Posted"  value={profile.jobsPosted  || 0} icon={Briefcase} gradient="from-orange-500 to-amber-500"   delay={0} />
-                            <StatCard title="Hires Made"   value={profile.hiresMade   || 0} icon={CheckCircle} gradient="from-green-500 to-emerald-600" delay={0.1} />
-                            <StatCard title="Active Jobs"  value={profile.activeJobs  || 0} icon={Clock}      gradient="from-blue-500 to-cyan-600"      delay={0.2} />
-                            <StatCard title="Rating"       value={profile.rating       ? `${profile.rating}★` : 'N/A'} icon={Star} gradient="from-purple-500 to-pink-600" delay={0.3} />
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                            <StatCard title="Jobs Posted" value={profileStats.jobsPosted} icon={Briefcase} gradient="from-orange-500 to-amber-500" delay={0} />
+                            <StatCard title="Hires Made" value={profileStats.hiresMade} icon={CheckCircle} gradient="from-green-500 to-emerald-600" delay={0.1} />
+                            <StatCard title="Active Jobs" value={profileStats.activeJobs} icon={Clock} gradient="from-blue-500 to-cyan-600" delay={0.2} />
                         </div>
 
                         {/* Section nav */}

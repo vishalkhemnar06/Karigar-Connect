@@ -1,10 +1,3 @@
-// client/src/pages/worker/WorkerShops.jsx
-// ULTRA MODERN VERSION - Premium design with animations and professional layout
-// Enhanced with: Glassmorphism, smooth animations, gradient borders, particle effects
-// Professional shop details with contact info, location, business hours, and social links
-// Mobile-first with responsive breakpoints and touch-optimized interactions
-// FIXED: Leaflet map initialization error in Location tab
-
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
@@ -43,10 +36,6 @@ const fadeInUp = {
 
 const staggerContainer = {
     animate: { transition: { staggerChildren: 0.05 } }
-};
-
-const scaleOnTap = {
-    whileTap: { scale: 0.98 }
 };
 
 // ── ERROR BOUNDARY ──────────────────────────────────────────────────────────────

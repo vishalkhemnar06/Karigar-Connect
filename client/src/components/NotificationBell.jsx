@@ -5,7 +5,7 @@
 //  - No toast popups — all results shown inline
 //  - Unread dot on bell, count badge
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     getClientNotifications,
     markClientNotificationRead,
@@ -47,39 +47,42 @@ export default function NotificationBell({ role = 'client' }) {
     const dropdownRef = useRef(null);
 
     // API functions based on role
-    let api;
-    if (role === 'admin') {
-        api = {
-            get: getAdminNotifications,
-            markOne: markAdminNotificationRead,
-            markAll: markAllAdminNotificationsRead,
-            delOne: deleteAdminNotification,
-            clearAll: clearAllAdminNotifications,
-        };
-    } else if (role === 'worker') {
-        api = {
-            get: getWorkerNotifications,
-            markOne: markWorkerNotificationRead,
-            markAll: markAllWorkerNotificationsRead,
-            delOne: deleteWorkerNotification,
-            clearAll: clearAllWorkerNotifications,
-        };
-    } else {
-        api = {
+    const api = useMemo(() => {
+        if (role === 'admin') {
+            return {
+                get: getAdminNotifications,
+                markOne: markAdminNotificationRead,
+                markAll: markAllAdminNotificationsRead,
+                delOne: deleteAdminNotification,
+                clearAll: clearAllAdminNotifications,
+            };
+        }
+
+        if (role === 'worker') {
+            return {
+                get: getWorkerNotifications,
+                markOne: markWorkerNotificationRead,
+                markAll: markAllWorkerNotificationsRead,
+                delOne: deleteWorkerNotification,
+                clearAll: clearAllWorkerNotifications,
+            };
+        }
+
+        return {
             get: getClientNotifications,
             markOne: markClientNotificationRead,
             markAll: markAllClientNotificationsRead,
             delOne: deleteClientNotification,
             clearAll: clearAllClientNotifications,
         };
-    }
+    }, [role]);
 
     const showStatus = (msg) => {
         setStatusMsg(msg);
         setTimeout(() => setStatusMsg(''), 2500);
     };
 
-    const fetchNotifications = async () => {
+    const fetchNotifications = useCallback(async () => {
         try {
             setLoading(true);
             const { data } = await api.get();
@@ -87,13 +90,13 @@ export default function NotificationBell({ role = 'client' }) {
             setUnreadCount(data.unreadCount   || 0);
         } catch { /* silent */ }
         finally { setLoading(false); }
-    };
+    }, [api]);
 
     useEffect(() => {
         fetchNotifications();
         const interval = setInterval(fetchNotifications, 60_000);
         return () => clearInterval(interval);
-    }, [role]);
+    }, [fetchNotifications]);
 
     // Close on outside click
     useEffect(() => {

@@ -21,7 +21,9 @@ const skillSchema = new mongoose.Schema({
 });
 
 const userSchema = new mongoose.Schema({
-    karigarId: { type: String, required: true, unique: true },
+    userId: { type: String, required: true, unique: true },
+    // Legacy field kept for backward compatibility during migration.
+    karigarId: { type: String, unique: true, sparse: true },
     role: { type: String, required: true, enum: ['worker', 'client', 'admin'] },
     name: { type: String, required: true },
     age: { type: Number, min: 0 },
@@ -172,6 +174,13 @@ userSchema.virtual('leaderboardDiscount').get(function () {
     if (pts >= 50)  return 10;
     if (pts >= 25)  return 5;
     return 0;
+});
+
+// Keep userId and legacy karigarId in sync while migration is in progress.
+userSchema.pre('validate', function (next) {
+    if (!this.userId && this.karigarId) this.userId = this.karigarId;
+    if (!this.karigarId && this.userId) this.karigarId = this.userId;
+    next();
 });
 
 // CRITICAL: Hash password before saving to DB

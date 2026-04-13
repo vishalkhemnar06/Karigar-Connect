@@ -264,7 +264,7 @@ export const aiGeneratePreviews  = (fd) => API.post('/api/ai/generate-preview-im
 // ── GROUPS ────────────────────────────────────────────────────────────────────
 export const createGroupAPI = (d)        => API.post('/api/groups',              d);
 export const getMyGroupsAPI = ()         => API.get('/api/groups/my');
-export const addMemberAPI   = (gId, kId) => API.put(`/api/groups/${gId}/add`,   { karigarId: kId });
+export const addMemberAPI   = (gId, userId) => API.put(`/api/groups/${gId}/add`,   { userId });
 export const deleteGroupAPI = (gId)      => API.delete(`/api/groups/${gId}`);
 export const leaveGroupAPI  = (gId)      => API.put(`/api/groups/${gId}/leave`, {});
 export const hireGroupJob   = (d)        => API.post('/api/jobs/group/hire',     d);

@@ -1,5 +1,5 @@
 // src/pages/worker/WorkerDashboard.jsx
-import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
 import * as api from '../../api';
 import {
   MapPin, Briefcase,
@@ -42,7 +42,6 @@ const ToastList = ({ toasts }) => (
 );
 
 const safeNum = v => (v === null || v === undefined ? 0 : Number(v));
-const safeArray = v => (Array.isArray(v) ? v : []);
 
 const Skel = ({ h = 'h-24', r = 'rounded-2xl' }) => (
   <div className={`${h} ${r} bg-gradient-to-r from-orange-50 via-orange-100 to-orange-50 animate-pulse`} />
@@ -182,7 +181,7 @@ const AnalyticsSection = memo(({ analytics, profile, loading }) => {
   const jobsTrendData = useMemo(() => {
     if (analytics.completed === 0) return [];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days.map((day, idx) => ({
+    return days.map((day) => ({
       label: day,
       value: Math.max(1, Math.floor(analytics.completed * Math.random() * 0.3))
     }));
@@ -476,6 +475,9 @@ const ClientDetailModal = memo(({ client, onClose }) => {
 ClientDetailModal.displayName = 'ClientDetailModal';
 
 const WorkerDashboard = () => {
+  const DASHBOARD_PROFILE_CACHE_KEY = 'workerDashboard.profile.v1';
+  const DASHBOARD_ANALYTICS_CACHE_KEY = 'workerDashboard.analytics.v1';
+
   const [profile, setProfile] = useState(null);
   const [analytics, setAnalytics] = useState({ completed: 0, pending: 0, running: 0 });
   const [loading, setLoading] = useState(true);
@@ -486,6 +488,8 @@ const WorkerDashboard = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
+
+  const didInitialLoadRef = useRef(false);
   
   const toast = useToast();
 
@@ -497,15 +501,23 @@ const WorkerDashboard = () => {
         api.getWorkerAnalytics(),
         api.getWorkerProfile()
       ]);
-      if (resAnalytic?.data) setAnalytics(resAnalytic.data.data || resAnalytic.data);
-      if (resProfile?.data) setProfile(resProfile.data.data || resProfile.data);
+      if (resAnalytic?.data) {
+        const nextAnalytics = resAnalytic.data.data || resAnalytic.data;
+        setAnalytics(nextAnalytics);
+        sessionStorage.setItem(DASHBOARD_ANALYTICS_CACHE_KEY, JSON.stringify(nextAnalytics));
+      }
+      if (resProfile?.data) {
+        const nextProfile = resProfile.data.data || resProfile.data;
+        setProfile(nextProfile);
+        sessionStorage.setItem(DASHBOARD_PROFILE_CACHE_KEY, JSON.stringify(nextProfile));
+      }
     } catch (error) {
       console.error("Dashboard Load Error:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [DASHBOARD_ANALYTICS_CACHE_KEY, DASHBOARD_PROFILE_CACHE_KEY]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
@@ -530,7 +542,35 @@ const WorkerDashboard = () => {
     }
   }, [searchQuery, toast]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    if (didInitialLoadRef.current) return;
+    didInitialLoadRef.current = true;
+
+    let hasCache = false;
+    try {
+      const cachedProfile = sessionStorage.getItem(DASHBOARD_PROFILE_CACHE_KEY);
+      const cachedAnalytics = sessionStorage.getItem(DASHBOARD_ANALYTICS_CACHE_KEY);
+
+      if (cachedProfile) {
+        setProfile(JSON.parse(cachedProfile));
+        hasCache = true;
+      }
+      if (cachedAnalytics) {
+        setAnalytics(JSON.parse(cachedAnalytics));
+        hasCache = true;
+      }
+    } catch {
+      // Ignore cache parse errors and continue with live fetch.
+    }
+
+    if (hasCache) {
+      setLoading(false);
+      loadData(true);
+      return;
+    }
+
+    loadData(false);
+  }, [loadData, DASHBOARD_ANALYTICS_CACHE_KEY, DASHBOARD_PROFILE_CACHE_KEY]);
 
   const greet = () => {
     const h = new Date().getHours();
@@ -556,7 +596,7 @@ const WorkerDashboard = () => {
           <div>
             <h1 className="text-sm font-black text-gray-900 leading-tight">{greet()}, {profile?.name?.split(' ')[0]}!</h1>
             <div className="flex items-center gap-1.5">
-               <span className="text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold">ID: {profile?.karigarId || '...'}</span>
+               <span className="text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold">ID: {profile?.userId || profile?.karigarId || '...'}</span>
                <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">{profile?.address?.city || 'Local'}</span>
             </div>
           </div>

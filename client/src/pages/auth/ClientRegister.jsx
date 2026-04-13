@@ -21,6 +21,7 @@ import {
     Camera,
     ArrowLeft,
     CheckCircle,
+    X,
 } from 'lucide-react';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 
@@ -74,6 +75,7 @@ const ClientRegister = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [locationError, setLocationError] = useState('');
+    const [legalPreview, setLegalPreview] = useState({ open: false, title: '', path: '' });
 
     const navigate = useNavigate();
     const strength = getPasswordStrength(formData.password);
@@ -219,6 +221,15 @@ const ClientRegister = () => {
         if (!formData.emergencyContactName?.trim()) return toast.error('Enter emergency contact name.');
         if (!formData.emergencyContactMobile?.trim() || formData.emergencyContactMobile.length !== 10) return toast.error('Enter valid 10-digit emergency contact mobile.');
         setActiveSection(1);
+    };
+
+    const openLegalPreview = (title, path) => {
+        const previewPath = path.includes('?') ? `${path}&embed=1` : `${path}?embed=1`;
+        setLegalPreview({ open: true, title, path: previewPath });
+    };
+
+    const closeLegalPreview = () => {
+        setLegalPreview({ open: false, title: '', path: '' });
     };
 
     const goToProfileSection = () => {
@@ -907,7 +918,7 @@ const ClientRegister = () => {
                                             onChange={e => setFormData({ ...formData, termsPaymentAccepted: e.target.checked })}
                                             className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Payment Terms & Conditions</a></span>
+                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Payment Terms & Conditions', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Payment Terms & Conditions</button></span>
                                     </label>
                                     <label className="flex items-start gap-3 cursor-pointer">
                                         <input
@@ -916,7 +927,7 @@ const ClientRegister = () => {
                                             onChange={e => setFormData({ ...formData, termsDisputePolicyAccepted: e.target.checked })}
                                             className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Dispute Resolution Policy</a></span>
+                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Dispute Resolution Policy', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Dispute Resolution Policy</button></span>
                                     </label>
                                     <label className="flex items-start gap-3 cursor-pointer">
                                         <input
@@ -925,7 +936,7 @@ const ClientRegister = () => {
                                             onChange={e => setFormData({ ...formData, termsDataPrivacyAccepted: e.target.checked })}
                                             className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Data Privacy Policy</a></span>
+                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Data Privacy Policy', '/privacy-policy')} className="text-orange-600 underline font-bold">Data Privacy Policy</button></span>
                                     </label>
                                     <label className="flex items-start gap-3 cursor-pointer">
                                         <input
@@ -934,7 +945,7 @@ const ClientRegister = () => {
                                             onChange={e => setFormData({ ...formData, termsWorkerProtectionAccepted: e.target.checked })}
                                             className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <a href="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline font-bold">Worker Protection & Safety Terms</a></span>
+                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Worker Protection & Safety Terms', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Worker Protection & Safety Terms</button></span>
                                     </label>
                                 </div>
 
@@ -960,6 +971,20 @@ const ClientRegister = () => {
                     </div>
                 </div>
             </div>
+
+            {legalPreview.open && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={closeLegalPreview}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="h-14 border-b border-orange-100 px-4 sm:px-5 flex items-center justify-between bg-orange-50">
+                            <h3 className="text-sm sm:text-base font-black text-orange-700 truncate">{legalPreview.title}</h3>
+                            <button type="button" onClick={closeLegalPreview} className="w-9 h-9 rounded-full bg-white border border-orange-200 text-orange-700 hover:bg-orange-100 flex items-center justify-center" aria-label="Close legal preview">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <iframe title={legalPreview.title} src={legalPreview.path} className="w-full h-[calc(85vh-56px)] border-0 bg-white" />
+                    </div>
+                </div>
+            )}
 
             {/* Face Verification Modal */}
             {showFaceVerif && (

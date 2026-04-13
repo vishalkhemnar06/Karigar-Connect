@@ -93,7 +93,7 @@ function AnalyticsBar({ bookings, feedback }) {
 
     return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {stats.map(({ icon: Icon, label, value, color, gradient }, idx) => (
+            {stats.map(({ icon: Icon, label, value, gradient }, idx) => (
                 <motion.div
                     key={label}
                     initial={{ opacity: 0, y: 20 }}
@@ -328,7 +328,7 @@ function FeedbackCard({ item, index }) {
 }
 
 // ── Empty State Component ─────────────────────────────────────────────────────
-function EmptyState({ type, onClear, icon: Icon, message, suggestion }) {
+function EmptyState({ onClear, icon: Icon, message, suggestion }) {
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -366,7 +366,6 @@ export default function History() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [sortBy, setSortBy] = useState('date-desc');
     const [showSort, setShowSort] = useState(false);
-    const [showFilters, setShowFilters] = useState(false);
     const sortRef = useRef(null);
 
     const load = async () => {

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getClientJobs, getImageUrl } from '../../api/index';
 import { Calendar, Clock, MapPin, Users, Briefcase, IndianRupee, CheckCircle, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -14,7 +14,6 @@ const statusBadge = (status) => {
 };
 
 export default function ClientHistory() {
-    const navigate = useNavigate();
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [previewPhoto, setPreviewPhoto] = useState('');
@@ -172,11 +171,7 @@ export default function ClientHistory() {
                                                             <button
                                                                 type="button"
                                                                 className="text-sm font-bold text-gray-900 hover:text-orange-600 transition-colors"
-                                                                onClick={() => {
-                                                                    if (worker?.karigarId) {
-                                                                        navigate(`/profile/public/${worker.karigarId}`);
-                                                                    }
-                                                                }}
+                                                                onClick={() => openWorkerProfilePreview(worker?._id || worker?.karigarId)}
                                                             >
                                                                 {worker?.name || 'Worker'}
                                                             </button>

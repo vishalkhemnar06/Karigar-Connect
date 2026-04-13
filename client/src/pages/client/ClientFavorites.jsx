@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getClientProfile, getWorkerFullProfile, getImageUrl } from '../../api/index';
 import { Star, Phone, MapPin, Award, Briefcase } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
 
 const openMap = (lat, lng) => {
     const nLat = Number(lat);
@@ -17,16 +17,6 @@ const openMap = (lat, lng) => {
 export default function ClientFavorites() {
     const [loading, setLoading] = useState(true);
     const [workers, setWorkers] = useState([]);
-    const navigate = useNavigate();
-
-    const openPublicProfile = (worker) => {
-        const publicId = worker?.karigarId;
-        if (!publicId) {
-            toast.error('Worker public profile is unavailable right now.');
-            return;
-        }
-        navigate(`/profile/public/${publicId}`);
-    };
 
     useEffect(() => {
         let active = true;
@@ -113,7 +103,7 @@ export default function ClientFavorites() {
 
                             <button
                                 type="button"
-                                onClick={() => openPublicProfile(worker)}
+                                onClick={() => openWorkerProfilePreview(worker._id || worker.karigarId)}
                                 className="mt-2 w-full inline-flex items-center justify-center px-3 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50"
                             >
                                 View Profile

@@ -101,7 +101,7 @@ const CheckStatus = () => {
         const input = identifier.trim();
 
         if (!input) {
-            setError('Please enter your phone number or KarigarID.');
+            setError('Please enter your phone number or User ID.');
             setResult(null);
             return;
         }
@@ -116,7 +116,7 @@ const CheckStatus = () => {
             if (data.registered) {
                 setResult(data);
             } else {
-                setError('No application found. Please check your phone number or KarigarID.');
+                setError('No application found. Please check your phone number or User ID.');
                 setResult(null);
             }
         } catch (err) {
@@ -145,7 +145,7 @@ const CheckStatus = () => {
                         <span className="text-orange-600 text-xs font-black uppercase tracking-widest" style={{ fontFamily: 'Inter, sans-serif' }}>KarigarConnect</span>
                     </div>
                     <h1 className="text-4xl lg:text-5xl font-black text-gray-900 tracking-tight" style={{ fontFamily: 'Inter, sans-serif' }}>Check Your Status 🔍</h1>
-                    <p className="text-gray-600 text-base mt-2" style={{ fontFamily: 'Inter, sans-serif' }}>Know your application status using your phone number or KarigarID</p>
+                    <p className="text-gray-600 text-base mt-2" style={{ fontFamily: 'Inter, sans-serif' }}>Know your application status using your phone number or User ID</p>
                 </div>
 
                 {/* Form card */}
@@ -158,9 +158,9 @@ const CheckStatus = () => {
                     <div className="p-6">
                         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
                             <TextInput
-                                label="Phone Number or KarigarID"
+                                label="Phone Number or User ID"
                                 type="text"
-                                placeholder="Enter 10-digit phone or KarigarID"
+                                placeholder="Enter 10-digit phone or User ID"
                                 value={identifier}
                                 onChange={onIdentifierChange}
                                 required
@@ -190,8 +190,8 @@ const CheckStatus = () => {
                                             <p className="text-lg font-bold text-gray-900">{result.worker?.name || 'N/A'}</p>
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">KarigarID</p>
-                                            <p className="text-lg font-mono font-bold text-gray-800">{result.worker?.karigarId || result.identifier}</p>
+                                            <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">User ID</p>
+                                            <p className="text-lg font-mono font-bold text-gray-800">{result.worker?.userId || result.worker?.karigarId || result.identifier}</p>
                                         </div>
                                         {result.worker?.phone && (
                                             <div>

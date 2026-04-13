@@ -8,6 +8,7 @@ import {
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
     getImageUrl, getRateTableCities,
 } from '../../api/index';
+import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -58,8 +59,37 @@ const sanitizeNumber = (value) => {
     return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized;
 };
 
-const MIN_AI_DESCRIPTION_CHARS = 60;
+const MIN_AI_DESCRIPTION_CHARS = 10;
 const OTHER_CITY_OPTION = '__OTHER_CITY__';
+
+const SUPPORTED_UI_LANGUAGES = new Set(['en', 'hi', 'mr']);
+
+const getPreferredUiLanguage = () => {
+    const match = document.cookie.match(/(?:^|;\s*)googtrans=\/en\/([a-z]{2})/i);
+    const lang = (match?.[1] || 'en').toLowerCase();
+    return SUPPORTED_UI_LANGUAGES.has(lang) ? lang : 'en';
+};
+
+const normalizeQuestionList = (items = [], prefix = 'q') => {
+    const list = Array.isArray(items) ? items : [];
+    return list
+        .filter((item) => item && typeof item === 'object')
+        .map((item, index) => {
+            const rawId = item.id ? String(item.id).trim() : `${prefix}${index + 1}`;
+            const id = rawId || `${prefix}${index + 1}`;
+            const type = ['select', 'number', 'text', 'color'].includes(item.type) ? item.type : 'text';
+            const options = Array.isArray(item.options)
+                ? item.options.map((opt) => String(opt || '').trim()).filter(Boolean)
+                : [];
+            return {
+                id,
+                question: String(item.question || '').trim(),
+                type,
+                options,
+            };
+        })
+        .filter((item) => item.question);
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Components
@@ -119,9 +149,9 @@ const QuestionField = ({ question, value, onChange }) => {
                     {question.question}
                 </label>
                 <div className="flex flex-wrap gap-2">
-                    {question.options.map(option => (
+                    {question.options.map((option, idx) => (
                         <button
-                            key={option}
+                            key={`${question.id}-${idx}-${option}`}
                             type="button"
                             onClick={() => onChange(question.id, option)}
                             className={`
@@ -167,10 +197,6 @@ const QuestionField = ({ question, value, onChange }) => {
     );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enhanced Report Components
-// ─────────────────────────────────────────────────────────────────────────────
-
 const ReportSection = ({ title, icon: Icon, children, defaultOpen = true, badge }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
 
@@ -210,169 +236,141 @@ const ReportSection = ({ title, icon: Icon, children, defaultOpen = true, badge 
     );
 };
 
-const CostBreakdownTable = ({ breakdown, clientBudget, grandTotal }) => {
+const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreakdown = [], clientBudget, grandTotal }) => {
     if (!breakdown?.breakdown?.length) return null;
+
+    const labourTotal = breakdown.breakdown.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+    const materialsTotal = materialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
+    const equipmentTotal = equipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
+    const combinedTotal = Number(grandTotal) || labourTotal + materialsTotal + equipmentTotal;
 
     return (
         <div className="space-y-4">
-            {/* Labour Costs */}
-            <div>
-                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                    <HardHat size={16} className="text-orange-500" />
-                    Labour Costs
-                </h4>
-                <div className="space-y-2">
-                    {breakdown.breakdown.map((item, index) => (
-                        <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-medium text-gray-900 capitalize">
-                                        {item.skill}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                        {item.count} worker{item.count > 1 ? 's' : ''}
-                                    </span>
+            <div className="rounded-2xl border border-orange-100 bg-white overflow-hidden">
+                <div className="px-4 py-3 bg-orange-50 border-b border-orange-100">
+                    <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <IndianRupee size={16} className="text-orange-500" />
+                        Combined Cost Estimate
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">Labour, materials and equipment shown together, with one final total.</p>
+                </div>
+
+                <div className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="rounded-xl bg-orange-50 border border-orange-100 p-3">
+                            <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider">Labour</p>
+                            <p className="text-lg font-black text-gray-900">{formatCurrency(labourTotal)}</p>
+                        </div>
+                        <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
+                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Materials</p>
+                            <p className="text-lg font-black text-gray-900">{formatCurrency(materialsTotal)}</p>
+                        </div>
+                        <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Equipment</p>
+                            <p className="text-lg font-black text-gray-900">{formatCurrency(equipmentTotal)}</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                            <HardHat size={16} className="text-orange-500" />
+                            Labour Breakdown
+                        </h4>
+                        <div className="space-y-2">
+                            {breakdown.breakdown.map((item, index) => (
+                                <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium text-gray-900 capitalize">{item.skill}</span>
+                                            <span className="text-xs text-gray-500">{item.count} worker{item.count > 1 ? 's' : ''}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-0.5">
+                                            <span className="text-xs text-gray-400">{item.hours} hours</span>
+                                            <span className="text-xs text-gray-400 capitalize">{item.complexity} complexity</span>
+                                            <span className="text-xs text-gray-400">₹{item.baseRate || 0}/day</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-sm font-semibold text-gray-900">{formatCurrency(item.subtotal)}</span>
+                                        {item.count > 1 && (
+                                            <p className="text-xs text-gray-400">₹{Math.round(item.subtotal / item.count)}/worker</p>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3 mt-0.5">
-                                    <span className="text-xs text-gray-400">{item.hours} hours</span>
-                                    <span className="text-xs text-gray-400 capitalize">{item.complexity} complexity</span>
-                                    <span className="text-xs text-gray-400">₹{item.baseRate || 0}/day</span>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <span className="text-sm font-semibold text-gray-900">
-                                    {formatCurrency(item.subtotal)}
-                                </span>
-                                {item.count > 1 && (
-                                    <p className="text-xs text-gray-400">₹{Math.round(item.subtotal / item.count)}/worker</p>
-                                )}
+                            ))}
+                        </div>
+                    </div>
+
+                    {materialsBreakdown?.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                <Palette size={16} className="text-orange-500" />
+                                Material Breakdown
+                            </h4>
+                            <div className="space-y-2">
+                                {materialsBreakdown.map((item, index) => (
+                                    <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                        <div>
+                                            <span className="text-sm font-medium text-gray-900 capitalize">{item.item}</span>
+                                            {item.quantity && <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>}
+                                            {item.note && <p className="text-xs text-orange-600 mt-0.5">{item.note}</p>}
+                                        </div>
+                                        <span className="text-sm font-semibold text-gray-900">{formatCurrency(item.estimatedCost)}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                    ))}
-                </div>
-            </div>
+                    )}
 
-            {/* Materials Breakdown */}
-            {breakdown.materialsBreakdown?.length > 0 && (
-                <div>
-                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <Palette size={16} className="text-orange-500" />
-                        Materials
-                    </h4>
-                    <div className="space-y-2">
-                        {breakdown.materialsBreakdown.map((item, index) => (
-                            <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
-                                <div>
-                                    <span className="text-sm font-medium text-gray-900 capitalize">
-                                        {item.item}
-                                    </span>
-                                    {item.quantity && (
-                                        <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>
-                                    )}
-                                    {item.note && (
-                                        <p className="text-xs text-orange-600 mt-0.5">{item.note}</p>
-                                    )}
-                                </div>
-                                <span className="text-sm font-semibold text-gray-900">
-                                    {formatCurrency(item.estimatedCost)}
-                                </span>
+                    {equipmentBreakdown?.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                <Wrench size={16} className="text-orange-500" />
+                                Equipment & Tools
+                            </h4>
+                            <div className="space-y-2">
+                                {equipmentBreakdown.map((item, index) => (
+                                    <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                        <div>
+                                            <span className="text-sm font-medium text-gray-900 capitalize">{item.item}</span>
+                                            {item.quantity && <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>}
+                                        </div>
+                                        <span className="text-sm font-semibold text-gray-900">{formatCurrency(item.estimatedCost)}</span>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+                        </div>
+                    )}
 
-            {/* Equipment & Tools */}
-            {breakdown.equipmentBreakdown?.length > 0 && (
-                <div>
-                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <Wrench size={16} className="text-orange-500" />
-                        Equipment & Tools
-                    </h4>
-                    <div className="space-y-2">
-                        {breakdown.equipmentBreakdown.map((item, index) => (
-                            <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
-                                <div>
-                                    <span className="text-sm font-medium text-gray-900 capitalize">
-                                        {item.item}
-                                    </span>
-                                    {item.quantity && (
-                                        <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>
-                                    )}
-                                </div>
-                                <span className="text-sm font-semibold text-gray-900">
-                                    {formatCurrency(item.estimatedCost)}
-                                </span>
+                    {breakdown.additionalCosts?.length > 0 && (
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                <Truck size={16} className="text-orange-500" />
+                                Additional Costs
+                            </h4>
+                            <div className="space-y-2">
+                                {breakdown.additionalCosts.map((item, index) => (
+                                    <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
+                                        <span className="text-sm font-medium text-gray-900 capitalize">{item.description || item.item}</span>
+                                        <span className="text-sm font-semibold text-gray-900">{formatCurrency(item.cost)}</span>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+                        </div>
+                    )}
 
-            {/* Additional Costs */}
-            {breakdown.additionalCosts?.length > 0 && (
-                <div>
-                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <Truck size={16} className="text-orange-500" />
-                        Additional Costs
-                    </h4>
-                    <div className="space-y-2">
-                        {breakdown.additionalCosts.map((item, index) => (
-                            <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
-                                <span className="text-sm font-medium text-gray-900 capitalize">
-                                    {item.description || item.item}
-                                </span>
-                                <span className="text-sm font-semibold text-gray-900">
-                                    {formatCurrency(item.cost)}
-                                </span>
-                            </div>
-                        ))}
+                    <div className="flex justify-between items-center px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl">
+                        <span className="text-white font-black">Total Estimated Cost</span>
+                        <span className="text-white font-black text-lg">{formatCurrency(combinedTotal)}</span>
                     </div>
-                </div>
-            )}
 
-            {/* Urgency Surcharge */}
-            {breakdown.urgent && (
-                <div className="flex items-center justify-between py-2 border-t border-orange-200 mt-3 pt-3">
-                    <div>
-                        <span className="text-sm font-medium text-orange-700">Urgency Surcharge</span>
-                        <p className="text-xs text-orange-600 mt-0.5">+{Math.round((breakdown.urgencyMult - 1) * 100)}% for urgent completion</p>
-                    </div>
-                    <span className="text-sm font-semibold text-orange-700">
-                        +{formatCurrency(breakdown.totalEstimated - (breakdown.subtotal + (breakdown.materialsTotal || 0) + (breakdown.equipmentTotal || 0)))}
-                    </span>
+                    {clientBudget ? (
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>Client budget</span>
+                            <span>{formatCurrency(clientBudget)}</span>
+                        </div>
+                    ) : null}
                 </div>
-            )}
-
-            {/* Total */}
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-4 mt-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <span className="text-white font-semibold text-lg">Total Estimated Cost</span>
-                        {clientBudget > 0 && (
-                            <p className="text-orange-100 text-sm mt-1">
-                                Your budget: {formatCurrency(clientBudget)}
-                            </p>
-                        )}
-                    </div>
-                    <div className="text-right">
-                        <span className="text-white font-bold text-2xl">
-                            {formatCurrency(grandTotal || breakdown.totalEstimated)}
-                        </span>
-                        {clientBudget > 0 && grandTotal > clientBudget && (
-                            <p className="text-orange-200 text-xs mt-1">
-                                Over budget by {formatCurrency(grandTotal - clientBudget)}
-                            </p>
-                        )}
-                    </div>
-                </div>
-                {clientBudget > 0 && grandTotal < clientBudget && (
-                    <div className="mt-2 pt-2 border-t border-orange-400">
-                        <p className="text-orange-100 text-sm">
-                            ✓ Within budget. You have {formatCurrency(clientBudget - grandTotal)} remaining.
-                        </p>
-                    </div>
-                )}
             </div>
         </div>
     );
@@ -650,7 +648,11 @@ const WorkerRecommendations = ({ workers, projectSkills }) => {
                             <div className="text-sm font-bold text-orange-600">
                                 {formatCurrency(worker.rate)}/day
                             </div>
-                            <button className="mt-1 text-xs text-orange-600 hover:text-orange-700 font-medium">
+                            <button
+                                type="button"
+                                onClick={() => openWorkerProfilePreview(worker?._id || worker?.karigarId)}
+                                className="mt-1 text-xs text-orange-600 hover:text-orange-700 font-medium"
+                            >
                                 View Profile
                             </button>
                         </div>
@@ -762,14 +764,15 @@ export default function ClientAIAssist() {
         try {
             const { data } = await aiGenerateQuestions({
                 workDescription: description,
-                city: city
+                city: city,
+                preferredLanguage: getPreferredUiLanguage(),
             });
-            setQuestions(data.questions || []);
-            setPreferenceQuestions(data.opinionQuestions || []);
+            setQuestions(normalizeQuestionList(data.questions, 'q'));
+            setPreferenceQuestions(normalizeQuestionList(data.opinionQuestions, 'op'));
             setPhase('questions');
         } catch (error) {
             console.error('Failed to generate questions:', error);
-            toast.error('Unable to generate questions. You can proceed without them.');
+            toast.error(error?.response?.data?.message || 'Unable to generate questions. You can proceed without them.');
             setPhase('budget');
         } finally {
             setIsLoading(prev => ({ ...prev, questions: false }));
@@ -797,6 +800,7 @@ export default function ClientAIAssist() {
             formData.append('opinions', JSON.stringify(preferencesMap));
             formData.append('city', city);
             formData.append('urgent', String(urgent));
+            formData.append('preferredLanguage', getPreferredUiLanguage());
             if (clientBudget && Number(clientBudget) > 0) {
                 formData.append('clientBudget', clientBudget);
             }
@@ -917,6 +921,7 @@ export default function ClientAIAssist() {
         setImagePreview(null);
         setReport(null);
         setSavedId(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handlePrint = () => {
@@ -938,7 +943,10 @@ export default function ClientAIAssist() {
                         </div>
                         <div className="flex gap-2">
                             <button
-                                onClick={() => setActiveTab('advisor')}
+                                onClick={() => {
+                                    handleReset();
+                                    setActiveTab('advisor');
+                                }}
                                 className={`
                                     px-4 py-2 rounded-lg font-medium transition-all
                                     ${activeTab === 'advisor'
@@ -969,7 +977,7 @@ export default function ClientAIAssist() {
                     {/* Main Content */}
                     <div className="lg:col-span-2">
                         {activeTab === 'advisor' ? (
-                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                            <div key={`advisor-${phase}`} className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6" translate="yes">
                                 {phase !== 'report' && phase !== 'loading' && (
                                     <PhaseIndicator currentPhase={phase} />
                                 )}
@@ -1055,17 +1063,8 @@ export default function ClientAIAssist() {
                                             disabled={isLoading.questions || !description.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS}
                                             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                         >
-                                            {isLoading.questions ? (
-                                                <>
-                                                    <Loader2 size={18} className="animate-spin" />
-                                                    Analyzing...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Sparkles size={18} />
-                                                    Continue
-                                                </>
-                                            )}
+                                            <Sparkles size={18} className={isLoading.questions ? 'animate-pulse' : ''} />
+                                            Continue
                                         </button>
                                     </div>
                                 )}
@@ -1083,9 +1082,9 @@ export default function ClientAIAssist() {
                                             <p className="text-center text-gray-500 py-8">No additional questions needed.</p>
                                         ) : (
                                             <div className="space-y-4">
-                                                {questions.map(q => (
+                                                {questions.map((q, idx) => (
                                                     <QuestionField
-                                                        key={q.id}
+                                                        key={`${q.id}-${idx}`}
                                                         question={q}
                                                         value={answers[q.id]}
                                                         onChange={handleAnswerChange}
@@ -1175,9 +1174,9 @@ export default function ClientAIAssist() {
                                         </div>
 
                                         <div className="space-y-4">
-                                            {preferenceQuestions.map(q => (
+                                            {preferenceQuestions.map((q, idx) => (
                                                 <QuestionField
-                                                    key={q.id}
+                                                    key={`${q.id}-${idx}`}
                                                     question={q}
                                                     value={preferences[q.id]}
                                                     onChange={handlePreferenceChange}
@@ -1259,14 +1258,8 @@ export default function ClientAIAssist() {
                                                 disabled={isLoading.report}
                                                 className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
                                             >
-                                                {isLoading.report ? (
-                                                    <>
-                                                        <Loader2 size={18} className="animate-spin" />
-                                                        Analyzing...
-                                                    </>
-                                                ) : (
-                                                    'Generate Analysis'
-                                                )}
+                                                <Loader2 size={18} className={isLoading.report ? 'animate-spin' : 'opacity-0'} />
+                                                Generate Analysis
                                             </button>
                                         </div>
                                     </div>
@@ -1335,6 +1328,8 @@ export default function ClientAIAssist() {
                                         <ReportSection title="Cost Estimate" icon={IndianRupee} defaultOpen badge="Detailed">
                                             <CostBreakdownTable 
                                                 breakdown={report.budgetBreakdown} 
+                                                materialsBreakdown={report.materialsBreakdown}
+                                                equipmentBreakdown={report.equipmentBreakdown}
                                                 clientBudget={report.clientBudget}
                                                 grandTotal={report.grandTotal}
                                             />
@@ -1396,7 +1391,7 @@ export default function ClientAIAssist() {
 
                                         {/* Materials & Specifications */}
                                         {report.materialsBreakdown?.length > 0 && (
-                                            <ReportSection title="Materials & Specifications" icon={Layers} defaultOpen badge={`${report.materialsBreakdown.length} items`}>
+                                            <ReportSection title="Material Specifications" icon={Layers} defaultOpen badge={`${report.materialsBreakdown.length} items`}>
                                                 <MaterialSpecification materials={report.materialsBreakdown} />
                                             </ReportSection>
                                         )}
@@ -1408,16 +1403,6 @@ export default function ClientAIAssist() {
                                                     colourAdvice={report.colourAndStyleAdvice}
                                                     designSuggestions={report.designSuggestions}
                                                     improvementIdeas={report.improvementIdeas}
-                                                />
-                                            </ReportSection>
-                                        )}
-
-                                        {/* Visual Preview */}
-                                        {report.visualizationDescription && (
-                                            <ReportSection title="After Completion Preview" icon={Image} defaultOpen>
-                                                <VisualPreview 
-                                                    description={report.visualizationDescription}
-                                                    imageUrl={report.visualizationImage}
                                                 />
                                             </ReportSection>
                                         )}

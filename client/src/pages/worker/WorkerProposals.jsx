@@ -220,7 +220,6 @@ export default function WorkerProposals() {
                         <AnimatePresence>
                             {filteredProposals.map((job, index) => {
                                 const isExpanded = expandedId === job._id;
-                                const isResponding = responding === job._id + 'accepted' || responding === job._id + 'rejected';
                                 
                                 return (
                                     <motion.div

@@ -7,16 +7,28 @@ const Group = require("../models/Group");
 const User  = require("../models/userModel");
 const generateGroupId = require("../utils/generateGroupId");
 
+const findUserByIdentifier = (identifier) => {
+  const value = String(identifier || '').trim();
+  if (!value) return null;
+  return User.findOne({
+    $or: [
+      { userId: value },
+      { karigarId: value },
+    ],
+  });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // EXISTING — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 const createGroup = async (req, res) => {
   try {
-    const { name, description, memberKarigarId } = req.body;
+    const { name, description, memberUserId, memberKarigarId } = req.body;
     const creatorId = req.user.id;
+    const memberIdentifier = memberUserId || memberKarigarId;
 
-    const secondMember = await User.findOne({ karigarId: memberKarigarId });
+    const secondMember = await findUserByIdentifier(memberIdentifier);
     if (!secondMember) return res.status(404).json({ msg: "Member not found" });
 
     if (secondMember._id.toString() === creatorId) {
@@ -43,7 +55,7 @@ const getMyGroups = async (req, res) => {
   try {
     const userId = req.user.id;
     const groups = await Group.find({ members: userId })
-      .populate("members", "name karigarId photo skills overallExperience mobile email")
+      .populate("members", "name userId karigarId photo skills overallExperience mobile email")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -62,7 +74,8 @@ const getMyGroups = async (req, res) => {
 const addMember = async (req, res) => {
   try {
     const { groupId } = req.params;
-    const { karigarId } = req.body;
+    const { userId, karigarId } = req.body;
+    const memberIdentifier = userId || karigarId;
 
     const group = await Group.findOne({ groupId });
     if (!group) return res.status(404).json({ msg: "Group not found" });
@@ -71,14 +84,14 @@ const addMember = async (req, res) => {
       return res.status(403).json({ msg: "Only the creator can add members" });
     }
 
-    const worker = await User.findOne({ karigarId });
+    const worker = await findUserByIdentifier(memberIdentifier);
     if (!worker) return res.status(404).json({ msg: "Worker not found" });
 
     const updatedGroup = await Group.findOneAndUpdate(
       { groupId, members: { $ne: worker._id } },
       { $push: { members: worker._id } },
       { new: true }
-    ).populate("members", "name karigarId photo skills overallExperience mobile email");
+    ).populate("members", "name userId karigarId photo skills overallExperience mobile email");
 
     if (!updatedGroup) return res.status(400).json({ msg: "Worker already in group" });
 
@@ -182,12 +195,12 @@ const getAllGroupsPublic = async (req, res) => {
     const groups = await Group.find(groupQuery)
       .populate({
         path:   'members',
-        select: 'name karigarId photo skills overallExperience experience verificationStatus',
+        select: 'name userId karigarId photo skills overallExperience experience verificationStatus',
         // Do NOT include mobile/email in the member list — privacy
       })
       .populate({
         path:   'creator',
-        select: 'name karigarId photo mobile email', // Admin contact info for client
+        select: 'name userId karigarId photo mobile email', // Admin contact info for client
       })
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
@@ -213,11 +226,11 @@ const getGroupByIdPublic = async (req, res) => {
     const group = await Group.findOne({ groupId: req.params.groupId })
       .populate({
         path:   'members',
-        select: 'name karigarId photo skills overallExperience experience verificationStatus address',
+        select: 'name userId karigarId photo skills overallExperience experience verificationStatus address',
       })
       .populate({
         path:   'creator',
-        select: 'name karigarId photo mobile email',
+        select: 'name userId karigarId photo mobile email',
       })
       .lean();
 
