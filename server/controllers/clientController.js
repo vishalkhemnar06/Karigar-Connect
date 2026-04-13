@@ -640,7 +640,14 @@ const runAutoMaintenance = async (jobs) => {
             }
         }
 
-        if (changed) { try { await job.save(); } catch (e) { console.error('Auto-maintenance:', e.message); } }
+        if (changed) {
+            try {
+                await job.save();
+            } catch (e) {
+                console.error('Auto-maintenance save failed:', e.message);
+                throw e;
+            }
+        }
     }
 };
 

@@ -272,7 +272,7 @@ exports.getWorkerPurchaseHistory = async (req, res) => {
     try {
         const workerId = req.user.id; // assuming req.user is set by auth middleware
         const txns = await Transaction.find({ worker: workerId })
-            .populate('shop', 'shopName address city category')
+            .populate('shop', 'shopName address city category mobile shopLogo shopPhoto ownerName')
             .populate('product', 'name price description image')
             .populate('coupon', 'code discountPct')
             .sort({ createdAt: -1 });

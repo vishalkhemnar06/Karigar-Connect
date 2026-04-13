@@ -296,9 +296,11 @@ exports.deleteAccountPermanently = async (req, res) => {
         });
 
         await User.findByIdAndDelete(req.user.id);
-        removeWorkerById(req.user.id).catch((err) => {
+        try {
+            await removeWorkerById(req.user.id);
+        } catch (err) {
             console.error('semantic removeWorkerById(deleteAccountPermanently):', err.message);
-        });
+        }
         return res.json({ message: 'Your account has been permanently deleted.' });
     } catch (err) {
         console.error('deleteAccountPermanently:', err);
@@ -793,9 +795,11 @@ exports.updateWorkerProfile = async (req, res) => {
             w.portfolioPhotos = next;
         }
         await w.save();
-        upsertWorkerById(w._id).catch((err) => {
+        try {
+            await upsertWorkerById(w._id);
+        } catch (err) {
             console.error('semantic upsertWorkerById(updateWorkerProfile):', err.message);
-        });
+        }
         await logAuditEvent({ userId: w._id, role: 'worker', action: 'profile_update', req, metadata: { fields: Object.keys(req.body || {}) } });
         const updated = await User.findById(w._id).select('-password -resetPasswordToken -resetPasswordExpire');
         const normalized = await normalizeWorkerDocumentUrls(updated);
@@ -810,9 +814,11 @@ exports.toggleAvailability = async (req, res) => {
         if (!w) return res.status(404).json({ message: 'Not found.' });
         w.availability = typeof req.body.available === 'boolean' ? req.body.available : !w.availability;
         await w.save();
-        upsertWorkerById(w._id).catch((err) => {
+        try {
+            await upsertWorkerById(w._id);
+        } catch (err) {
             console.error('semantic upsertWorkerById(toggleAvailability):', err.message);
-        });
+        }
         await logAuditEvent({ userId: w._id, role: 'worker', action: 'availability_toggle', req, metadata: { available: w.availability } });
         return res.json({ availability: w.availability });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
@@ -821,9 +827,11 @@ exports.toggleAvailability = async (req, res) => {
 exports.deleteAccount = async (req, res) => {
     try {
         await User.findByIdAndDelete(req.user.id);
-        removeWorkerById(req.user.id).catch((err) => {
+        try {
+            await removeWorkerById(req.user.id);
+        } catch (err) {
             console.error('semantic removeWorkerById(deleteAccount):', err.message);
-        });
+        }
         return res.json({ message: 'Deleted.' });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };

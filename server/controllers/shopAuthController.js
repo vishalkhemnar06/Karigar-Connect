@@ -92,8 +92,8 @@ exports.sendMobileOtp = async (req, res) => {
         await Shop.findOneAndUpdate(
             { mobile },
             { mobileOtp: hashed, mobileOtpExpiry: expiry, mobileVerified: false },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-        ).catch(() => {});   // ignore validation on incomplete doc
+            { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: false }
+        );
 
         await sendSms(mobile, `KarigarConnect Shop: Your OTP is ${otp}. Valid for 10 minutes. Do not share.`);
         return res.json({ message: 'OTP sent to mobile.' });

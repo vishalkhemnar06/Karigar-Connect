@@ -80,13 +80,17 @@ export default function CreateGroup() {
 
   const validate = () => {
     const e = {};
+    const localUser = (() => {
+      try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+      catch { return {}; }
+    })();
     if (!form.name.trim()) e.name = 'Group name is required';
     else if (form.name.trim().length < 3) e.name = 'Name must be at least 3 characters';
     else if (form.name.trim().length > 60) e.name = 'Name cannot exceed 60 characters';
     
     if (!form.memberKarigarId.trim()) e.memberKarigarId = "Second member's Karigar ID is required";
     else if (!/^K\d+$/i.test(form.memberKarigarId.trim())) e.memberKarigarId = 'Format: K followed by digits (e.g., K123456)';
-    else if (form.memberKarigarId.trim().toUpperCase() === localStorage.getItem('user')?.karigarId?.toUpperCase()) {
+    else if (form.memberKarigarId.trim().toUpperCase() === String(localUser.karigarId || '').toUpperCase()) {
       e.memberKarigarId = 'You cannot add yourself as a member';
     }
     return e;

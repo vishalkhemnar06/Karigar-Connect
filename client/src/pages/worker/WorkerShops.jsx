@@ -1175,6 +1175,9 @@ const WorkerShops = () => {
     const [tab, setTab] = useState('shops');
     const [shops, setShops] = useState([]);
     const [myCoupons, setMyCoupons] = useState([]);
+    const [purchaseHistory, setPurchaseHistory] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    const [historyLoaded, setHistoryLoaded] = useState(false);
     const [selectedShop, setSelectedShop] = useState(null);
     const [showMapModal, setShowMapModal] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -1217,6 +1220,23 @@ const WorkerShops = () => {
         finally { setGenerating(false); }
     };
 
+    const loadPurchaseHistory = useCallback(async () => {
+        setLoadingHistory(true);
+        try {
+            const { data } = await api.getWorkerPurchaseHistory();
+            setPurchaseHistory(Array.isArray(data) ? data : []);
+            setHistoryLoaded(true);
+        } catch {
+            toast.error('Failed to load shopping history');
+        } finally {
+            setLoadingHistory(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (tab === 'shopping-history' && !historyLoaded) loadPurchaseHistory();
+    }, [tab, historyLoaded, loadPurchaseHistory]);
+
     return (
         <ErrorBoundary>
             <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
@@ -1245,6 +1265,7 @@ const WorkerShops = () => {
                             { key: 'shops', label: 'Browse Shops', icon: Store, count: shops.length },
                             { key: 'maps', label: 'View Map', icon: MapPin, count: shops.filter(s => s.shopLocation?.latitude).length },
                             { key: 'coupons', label: 'My Coupons', icon: Ticket, count: myCoupons.length },
+                            { key: 'shopping-history', label: 'Bought History', icon: ShoppingBag, count: historyLoaded ? purchaseHistory.length : null },
                             { key: 'coupon-history', label: 'Coupon History', icon: History, count: null },
                         ].map(({ key, label, icon: Icon, count }) => (
                             <motion.button
@@ -1348,6 +1369,107 @@ const WorkerShops = () => {
                             <div><div className="flex items-center justify-between mb-4"><h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><History size={18} className="text-orange-500" /> Coupon History</h3><span className="text-xs text-gray-400">{myCoupons.length} total</span></div>
                                 {myCoupons.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-gray-100"><Ticket size={48} className="mx-auto text-gray-300 mb-2" /><p className="text-gray-400 font-medium">No coupons yet</p><p className="text-sm text-gray-400 mt-1">Complete jobs to earn your first coupon!</p></div>) : (<div className="space-y-3">{myCoupons.map(c => <CouponCard key={c._id} coupon={c} onCopyCode={() => toast.success('Coupon code copied!')} />)}</div>)}
                             </div>
+                        </motion.div>
+                    )}
+
+                    {/* Shopping History Tab */}
+                    {tab === 'shopping-history' && (
+                        <motion.div initial="initial" animate="animate" variants={staggerContainer} className="space-y-4 pb-16">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                        <ShoppingBag size={18} className="text-orange-500" /> Bought / Shopping History
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-1">Your previous purchases with coupon and shop details</p>
+                                </div>
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={loadPurchaseHistory}
+                                    className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:border-orange-300"
+                                >
+                                    <RefreshCw size={13} className={loadingHistory ? 'animate-spin' : ''} /> Refresh
+                                </motion.button>
+                            </div>
+
+                            {loadingHistory ? (
+                                <div className="grid grid-cols-1 gap-3">
+                                    {[...Array(4)].map((_, i) => <ShopCardSkeleton key={`history-skel-${i}`} />)}
+                                </div>
+                            ) : purchaseHistory.length === 0 ? (
+                                <div className="text-center py-14 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                    <ShoppingBag size={48} className="mx-auto text-gray-300 mb-2" />
+                                    <p className="text-gray-500 font-semibold">No shopping history yet</p>
+                                    <p className="text-sm text-gray-400 mt-1">Your purchases will appear here after using coupons at partner shops.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {purchaseHistory.map((txn) => {
+                                        const productImage = txn.productPhoto || txn.product?.image;
+                                        const boughtAt = txn.createdAt ? new Date(txn.createdAt) : null;
+                                        return (
+                                            <motion.div
+                                                key={txn._id}
+                                                initial={{ opacity: 0, y: 18 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+                                            >
+                                                <div className="p-4 border-b bg-gradient-to-r from-orange-50 to-amber-50">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <p className="font-black text-gray-800 text-sm">{txn.product?.name || 'Product'}</p>
+                                                        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+                                                            {txn.coupon?.discountPct ?? txn.discountPct ?? 0}% OFF
+                                                        </span>
+                                                    </div>
+                                                    {txn.product?.description && (
+                                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{txn.product.description}</p>
+                                                    )}
+                                                </div>
+
+                                                <div className="p-4 space-y-3">
+                                                    <div className="flex gap-3">
+                                                        <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 border">
+                                                            {productImage ? (
+                                                                <img src={imgSrc(productImage)} alt="Product" className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center text-gray-400"><Package size={18} /></div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex-1 space-y-1 text-xs">
+                                                            <p className="font-semibold text-gray-700 flex items-center gap-1"><Store size={12} /> {txn.shop?.shopName || 'Unknown shop'}</p>
+                                                            <p className="text-gray-500">{txn.shop?.category || 'General Tools'}</p>
+                                                            <p className="text-gray-500 line-clamp-2">{[txn.shop?.address, txn.shop?.city].filter(Boolean).join(', ') || 'Address unavailable'}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        <div className="bg-gray-50 rounded-lg p-2">
+                                                            <p className="text-gray-400">Original Price</p>
+                                                            <p className="font-bold text-gray-800">₹{Number(txn.originalPrice || 0).toLocaleString('en-IN')}</p>
+                                                        </div>
+                                                        <div className="bg-green-50 rounded-lg p-2">
+                                                            <p className="text-green-600">Discount</p>
+                                                            <p className="font-bold text-green-700">-₹{Number(txn.discountAmount || 0).toLocaleString('en-IN')}</p>
+                                                        </div>
+                                                        <div className="bg-orange-50 rounded-lg p-2">
+                                                            <p className="text-orange-600">Final Price</p>
+                                                            <p className="font-black text-orange-700">₹{Number(txn.finalPrice || 0).toLocaleString('en-IN')}</p>
+                                                        </div>
+                                                        <div className="bg-purple-50 rounded-lg p-2">
+                                                            <p className="text-purple-600">Coupon</p>
+                                                            <p className="font-mono font-bold text-purple-700">{txn.coupon?.code || 'N/A'}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-1 border-t text-xs text-gray-500 flex items-center justify-between gap-2">
+                                                        <span className="flex items-center gap-1"><Calendar size={12} /> {boughtAt ? boughtAt.toLocaleDateString('en-IN') : 'N/A'}</span>
+                                                        <span className="flex items-center gap-1"><Clock3 size={12} /> {boughtAt ? boughtAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}</span>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </motion.div>
                     )}
 

@@ -357,9 +357,11 @@ exports.registerWorker = async (req, res) => {
             faceVerificationStatus: 'pending_review',
         });
 
-        upsertWorkerById(user._id).catch((err) => {
+        try {
+            await upsertWorkerById(user._id);
+        } catch (err) {
             console.error('semantic upsertWorkerById(registerWorker):', err.message);
-        });
+        }
 
         // ── Face verification (non-blocking) ─────────────────────────────────
         if (livePhotoFile) {

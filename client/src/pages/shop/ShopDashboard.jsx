@@ -264,17 +264,27 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
             <div className="relative bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100/80">
                 
                 {/* Image Section with Curved Bottom Edge */}
-                <div className="relative h-44 bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
+                <button
+                    type="button"
+                    onClick={() => onView(product)}
+                    className="relative h-36 w-full bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden text-left"
+                    aria-label={`Open preview for ${product.name}`}
+                >
                     {getImageUrl(product.image, null) ? (
                         <>
-                            <img
-                                src={getImageUrl(product.image)}
-                                onError={imgError()}
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                                alt={product.name}
-                            />
+                            <div className="w-full h-full flex items-center justify-center p-2">
+                                <img
+                                    src={getImageUrl(product.image)}
+                                    onError={imgError()}
+                                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                                    alt={product.name}
+                                />
+                            </div>
                             {/* Overlay gradient for better text readability */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                            <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/55 text-white text-[10px] font-semibold backdrop-blur-sm">
+                                Click image to open
+                            </div>
                         </>
                     ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50">
@@ -322,28 +332,28 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
                     
                     {/* Curved Bottom Edge Decoration */}
                     <div className="absolute -bottom-1 left-0 right-0 h-6 bg-white rounded-t-3xl transform scale-x-105" />
-                </div>
+                </button>
                 
                 {/* Content Section with Organic Padding */}
-                <div className="p-4 relative">
+                <div className="p-3.5 relative">
                     {/* Product Name with Elegant Underline */}
                     <div className="mb-2">
-                        <h4 className="font-bold text-gray-800 text-base group-hover:text-orange-500 transition-colors duration-300 line-clamp-1">
+                        <h4 className="font-bold text-gray-800 text-sm group-hover:text-orange-500 transition-colors duration-300 line-clamp-1">
                             {product.name}
                         </h4>
                         <div className="w-12 h-0.5 bg-gradient-to-r from-orange-400 to-amber-400 rounded-full mt-1.5 group-hover:w-20 transition-all duration-300" />
                     </div>
                     
                     {/* Description */}
-                    <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2 min-h-[2.2rem] mb-3">
+                    <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-2 min-h-[2rem] mb-2.5">
                         {product.description || 'No description available'}
                     </p>
                     
                     {/* Price and Stock Row */}
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-3">
                         <div className="flex items-baseline gap-1">
                             <span className="text-xs text-gray-400 font-medium">₹</span>
-                            <span className="text-xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                            <span className="text-lg font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
                                 {product.price.toLocaleString()}
                             </span>
                         </div>
@@ -365,7 +375,7 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
                     </div>
                     
                     {/* Enhanced Action Buttons - Vibrant Gradients */}
-                    <div className="flex gap-2 pt-2 border-t border-gray-100">
+                    <div className="flex gap-2 pt-1.5 border-t border-gray-100">
                         {/* View Button - Dynamic Gradient based on color scheme */}
                         <motion.button
                             whileHover={{ scale: 1.03, y: -1 }}
@@ -1128,8 +1138,8 @@ const ProductsPage = memo(() => {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md overflow-hidden">
                         {getImageUrl(selected.image, null) && (
-                            <div className="relative h-48 overflow-hidden">
-                                <img src={getImageUrl(selected.image)} onError={imgError()} className="w-full h-full object-cover" alt="" />
+                            <div className="relative h-48 overflow-hidden bg-gray-50 flex items-center justify-center p-2">
+                                <img src={getImageUrl(selected.image)} onError={imgError()} className="w-full h-full object-contain" alt="" />
                                 <button onClick={() => setSelected(null)}
                                     className="absolute top-3 right-3 bg-black/50 text-white p-2 rounded-full">
                                     <X size={16} />
@@ -1284,7 +1294,7 @@ const ProductsPage = memo(() => {
                     <p className="font-medium">No products found</p>
                 </div>
             ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                     {filteredProducts.map((p, idx) => (
                         <VibrantProductCard 
                             key={p._id} 
