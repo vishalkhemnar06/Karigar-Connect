@@ -54,6 +54,19 @@ const ensureNonNeg = (v, fb = 0) => { const n = Number(v); return isNaN(n) || n 
 const MIN_AI_DESC_CHARS = 10;
 const OTHER_CITY_OPTION = '__OTHER_CITY__';
 
+const inferDurationFromBudget = (bd) => {
+    const days = Math.max(0, Number(bd?.durationDays) || 0);
+    if (days > 0) return `${days} day${days > 1 ? 's' : ''}`;
+    const maxHours = Array.isArray(bd?.breakdown)
+        ? bd.breakdown.reduce((m, b) => Math.max(m, Number(b?.hours) || 0), 0)
+        : 0;
+    if (maxHours > 0) {
+        const computedDays = Math.max(1, Math.ceil(maxHours / 8));
+        return `${computedDays} day${computedDays > 1 ? 's' : ''}`;
+    }
+    return '';
+};
+
 const buildThreeLineTitleDraft = ({
     skills = [],
     workersRequired = 1,
@@ -142,14 +155,14 @@ function StepBar({ current }) {
 
 function QWidget({ q, value, onChange }) {
     if (q.type === 'select') return (
-        <div><label className="block text-sm font-semibold text-gray-700 mb-2">{q.question}</label>
+        <div><label className="block text-sm font-semibold text-gray-700 mb-2">{q.question} {q.required ? <span className="text-red-500">*</span> : null}</label>
         <div className="flex flex-wrap gap-2">{(q.options||[]).map(opt => (
             <button key={opt} type="button" onClick={() => onChange(q.id, opt)}
                 className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${value === opt ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-700 border-gray-200 hover:border-orange-300'}`}>{opt}</button>
         ))}</div></div>
     );
     return (
-        <div><label className="block text-sm font-semibold text-gray-700 mb-2">{q.question}</label>
+        <div><label className="block text-sm font-semibold text-gray-700 mb-2">{q.question} {q.required ? <span className="text-red-500">*</span> : null}</label>
         <input type={q.type === 'number' ? 'number' : 'text'} min={0} value={value||''} onChange={e => onChange(q.id, e.target.value)} placeholder="Your answer..." className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-400 transition-colors" /></div>
     );
 }
@@ -162,6 +175,10 @@ function BudgetTable({ breakdown, skillBlocks = [] }) {
             {breakdown.breakdown.map((b, bi) => {
                 const count     = b.count || 1;
                 const perWorker = count > 1 ? Math.round(b.subtotal / count) : b.subtotal;
+                const ratePerHour = Number(b.ratePerHour) || 0;
+                const ratePerDay = Number(b.ratePerDay) || (ratePerHour ? ratePerHour * 8 : 0);
+                const ratePerVisit = Number(b.ratePerVisit) || Number(b.perWorkerCost) || perWorker;
+                const priceSource = b.priceSource || 'base_rate';
                 return (
                     <div key={bi} className="border border-gray-200 rounded-xl overflow-hidden">
                         {/* Skill header */}
@@ -170,8 +187,15 @@ function BudgetTable({ breakdown, skillBlocks = [] }) {
                                 <span className="font-bold text-gray-800 text-sm capitalize">{b.skill}</span>
                                 <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">{count} worker{count > 1 ? 's' : ''}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${b.complexity === 'heavy' ? 'bg-red-100 text-red-600' : b.complexity === 'normal' ? 'bg-yellow-100 text-yellow-600' : 'bg-green-100 text-green-600'}`}>{b.complexity}</span>
+                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold uppercase">{String(priceSource).replace(/_/g, ' ')}</span>
                             </div>
-                            <span className="text-xs text-gray-400">{b.hours}h total · {b.baseRate?.toLocaleString()}/day</span>
+                            <span className="text-xs text-gray-400">{b.hours}h per worker</span>
+                        </div>
+
+                        <div className="px-4 py-2 bg-white border-b border-gray-50 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                            <span>Hour: <strong className="text-gray-800">{ratePerHour > 0 ? `${ratePerHour.toLocaleString()}/hr` : '—'}</strong></span>
+                            <span>Day: <strong className="text-gray-800">{ratePerDay > 0 ? `${ratePerDay.toLocaleString()}/day` : '—'}</strong></span>
+                            <span>Visit: <strong className="text-gray-800">{ratePerVisit > 0 ? `${ratePerVisit.toLocaleString()}/visit` : '—'}</strong></span>
                         </div>
 
                         {/* Individual worker rows */}
@@ -378,6 +402,8 @@ export default function ClientJobPost() {
             const total = data.budgetBreakdown?.totalEstimated || 0;
             setCustomBudget(String(total));
             setMinBudget(String(Math.round(total * 0.8)));
+            const inferredDuration = inferDurationFromBudget(data.budgetBreakdown);
+            if (inferredDuration) setDuration(inferredDuration);
             // Only update workersRequired from AI if the user did NOT manually change it
             if (!workerCountChanged && data.budgetBreakdown?.totalWorkers) setWorkersRequired(data.budgetBreakdown.totalWorkers);
             setSkillsChanged(false);
@@ -417,6 +443,7 @@ export default function ClientJobPost() {
     // Step transitions
     const go0to1 = async () => {
         if (!description.trim()) return toast.error('Please describe the work.');
+        if (!city.trim()) return toast.error('City is required for accurate budget calculation.');
         if (description.trim().length < MIN_AI_DESC_CHARS) {
             return toast.error(`Please enter at least ${MIN_AI_DESC_CHARS} characters to generate AI questions.`);
         }
@@ -434,6 +461,11 @@ export default function ClientJobPost() {
 
     const go1to2 = async () => {
         try {
+            if (!city.trim()) return toast.error('City is required for accurate budget calculation.');
+            const unansweredRequired = questions.filter(q => q.required && !String(answers[q.id] || '').trim());
+            if (unansweredRequired.length) {
+                return toast.error('Please answer the required condition questions before calculating the estimate.');
+            }
             setLoadingE(true);
             const at = {}; questions.forEach(q => { if (answers[q.id]) at[q.question] = answers[q.id]; });
             const { data } = await aiGenerateEstimate({ workDescription: description, answers: at, city, urgent });
@@ -445,7 +477,9 @@ export default function ClientJobPost() {
             const total = data.budgetBreakdown?.totalEstimated || 0;
             setCustomBudget(String(total)); setMinBudget(String(Math.round(total * 0.8)));
             if (!title) setTitle(data.jobTitle || description.slice(0, 60).trim());
-            if (!duration && data.durationDays) setDuration(`${data.durationDays} day${data.durationDays > 1 ? 's' : ''}`);
+            const inferredDuration = inferDurationFromBudget(data.budgetBreakdown) ||
+                (data.durationDays ? `${data.durationDays} day${data.durationDays > 1 ? 's' : ''}` : '');
+            if (inferredDuration) setDuration(inferredDuration);
             if (data.budgetBreakdown?.totalWorkers) setWorkersRequired(data.budgetBreakdown.totalWorkers);
             setTitleDraft(buildThreeLineTitleDraft({
                 skills: aiSkills,
@@ -462,6 +496,9 @@ export default function ClientJobPost() {
 
     const go2to3 = () => {
         if (!title.trim())   return toast.error('Job title required.');
+        if (!editableSkills.length) return toast.error('At least one skill is required for budget calculation.');
+        if (!workersRequired || Number(workersRequired) < 1) return toast.error('Workers needed must be at least 1.');
+        if (!duration.trim()) return toast.error('Duration is required.');
         if (!customBudget || Number(customBudget) < 0) return toast.error('Please set a valid budget.');
         if (negotiable && (!minBudget || Number(minBudget) >= Number(customBudget))) return toast.error('Minimum budget must be less than your offer.');
         setStep(3);
@@ -500,6 +537,10 @@ export default function ClientJobPost() {
 
     const handlePost = async () => {
         if (!title.trim())  return toast.error('Title required.');
+        if (!description.trim()) return toast.error('Description required.');
+        if (!editableSkills.length) return toast.error('At least one skill is required.');
+        if (!duration.trim()) return toast.error('Duration is required.');
+        if (!workersRequired || Number(workersRequired) < 1) return toast.error('Workers needed must be at least 1.');
         if (!customBudget || Number(customBudget) <= 0) return toast.error('Budget required.');
         if (!location.city) return toast.error('City required.');
         if (!scheduledDate) return toast.error('Date required.');
@@ -560,7 +601,7 @@ export default function ClientJobPost() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-base font-semibold text-gray-700 mb-2">City</label>
+                            <label className="block text-base font-semibold text-gray-700 mb-2">City <span className="text-red-500">*</span></label>
                                 <select value={topCitySelectValue} onChange={e => {
                                     const value = e.target.value;
                                     if (value === OTHER_CITY_OPTION) {
@@ -678,6 +719,62 @@ export default function ClientJobPost() {
                                 {estimate.budgetBreakdown.urgent && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">Urgent</span>}
                             </div>
                             <BudgetTable breakdown={estimate.budgetBreakdown} skillBlocks={estimate.skillBlocks} />
+                        </div>
+                    )}
+
+                    {estimate && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                                <p className="text-xs font-semibold text-green-700 uppercase tracking-wider">Best Case</p>
+                                <p className="text-lg font-black text-gray-900">{formatCurrency(estimate.bestCaseTotal || estimate.budgetBreakdown?.totalMinEstimated || 0)}</p>
+                            </div>
+                            <div className="rounded-xl border border-orange-100 bg-orange-50 p-4">
+                                <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider">Expected</p>
+                                <p className="text-lg font-black text-gray-900">{formatCurrency(estimate.expectedTotal || estimate.budgetBreakdown?.totalEstimated || 0)}</p>
+                            </div>
+                            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+                                <p className="text-xs font-semibold text-red-700 uppercase tracking-wider">Worst Case</p>
+                                <p className="text-lg font-black text-gray-900">{formatCurrency(estimate.worstCaseTotal || estimate.budgetBreakdown?.totalMaxEstimated || 0)}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {estimate?.localMarketInsight && (
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 space-y-2">
+                            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Local Market Insight</p>
+                            <p className="text-sm text-gray-700">{estimate.localMarketInsight.city || city}: average labour {formatCurrency(estimate.localMarketInsight.avgDailyRate)} / day, demand {estimate.localMarketInsight.demandLevel || 'Normal'}, availability {estimate.localMarketInsight.availability || 'Moderate'}.</p>
+                        </div>
+                    )}
+
+                    {estimate?.negotiationRange && (
+                        <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4 flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-bold text-orange-700 uppercase tracking-wider">Negotiation Range</p>
+                                <p className="text-sm text-gray-600">Suggested bargaining band for the quoted estimate</p>
+                            </div>
+                            <p className="text-lg font-black text-gray-900">{formatCurrency(estimate.negotiationRange.min)} - {formatCurrency(estimate.negotiationRange.max)}</p>
+                        </div>
+                    )}
+
+                    {estimate?.priceReasoning?.length > 0 && (
+                        <div className="bg-white border border-orange-100 rounded-2xl p-4 space-y-2">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Why this price?</p>
+                            <div className="space-y-2">
+                                {estimate.priceReasoning.map((reason, idx) => (
+                                    <div key={idx} className="text-sm text-gray-700 bg-orange-50 border border-orange-100 rounded-lg p-3">{reason}</div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {estimate?.costSavingSuggestions?.length > 0 && (
+                        <div className="bg-white border border-green-100 rounded-2xl p-4 space-y-2">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Save Money Tips</p>
+                            <div className="space-y-2">
+                                {estimate.costSavingSuggestions.map((tip, idx) => (
+                                    <div key={idx} className="text-sm text-gray-700 bg-green-50 border border-green-100 rounded-lg p-3">{tip}</div>
+                                ))}
+                            </div>
                         </div>
                     )}
 

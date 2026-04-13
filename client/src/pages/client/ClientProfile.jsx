@@ -192,7 +192,7 @@ const ClientProfile = () => {
         const locked = ['name', 'mobile', 'idNumber', 'dob'];
         Object.keys(formData).forEach(k => { if (!locked.includes(k)) fd.append(k, formData[k]); });
         if (files.photo)    fd.append('photo', files.photo);
-        if (files.document) fd.append('document', files.document);
+        if (files.document) fd.append('proofOfResidence', files.document); // Changed from 'document' to 'proofOfResidence'
         const tid = toast.loading('Updating profile...');
         try {
             await api.updateClientProfile(fd);
@@ -225,8 +225,28 @@ const ClientProfile = () => {
             setViewerKind(kind);
         } catch {
             const k = getFileKind(doc.url);
-            if (k !== 'other') setViewerKind(k);
-            else setViewerError('Preview unavailable for this file type.');
+            if (k === 'pdf') {
+                try {
+                    const signed = await api.getClientDocumentPreviewUrl(resolved);
+                    const signedUrl = signed?.data?.url;
+                    if (signedUrl) {
+                        setSelectedDoc({ label: doc.label, url: signedUrl });
+                        setViewerKind('pdf');
+                    } else {
+                        setViewerError('Preview unavailable for this PDF. Please re-upload once.');
+                    }
+                } catch {
+                    const fallbackUrl = resolved.includes('/image/upload/')
+                        ? resolved.replace('/image/upload/', '/raw/upload/')
+                        : resolved;
+                    setSelectedDoc({ label: doc.label, url: fallbackUrl });
+                    setViewerKind('pdf');
+                }
+            } else if (k !== 'other') {
+                setViewerKind(k);
+            } else {
+                setViewerError('Preview unavailable for this file type.');
+            }
         } finally { setViewerLoading(false); }
     };
 
@@ -292,8 +312,8 @@ const ClientProfile = () => {
                     {!viewerLoading && viewerError && <div className="w-full h-full flex items-center justify-center px-4 text-center"><p className="text-sm text-gray-600">{viewerError}</p></div>}
                     {!viewerLoading && !viewerError && viewerKind === 'image' && (viewerBlobUrl || selectedDoc?.url) &&
                         <img src={viewerBlobUrl || selectedDoc.url} alt={selectedDoc.label} className="w-full h-full object-contain bg-white" />}
-                    {!viewerLoading && !viewerError && viewerKind === 'pdf' && viewerBlobUrl &&
-                        <iframe title={selectedDoc.label} src={`${viewerBlobUrl}#toolbar=0`} className="w-full h-full border-0 bg-white" />}
+                    {!viewerLoading && !viewerError && viewerKind === 'pdf' && (viewerBlobUrl || selectedDoc?.url) &&
+                        <iframe title={selectedDoc.label} src={`${viewerBlobUrl || selectedDoc.url}#toolbar=0`} className="w-full h-full border-0 bg-white" />}
                     {!viewerLoading && !viewerError && !['image','pdf'].includes(viewerKind) &&
                         <div className="w-full h-full flex items-center justify-center px-4 text-center"><p className="text-sm text-gray-600">Preview only for PDF and image files.</p></div>}
                 </div>
@@ -323,7 +343,12 @@ const ClientProfile = () => {
     );
 
     // Derive document list (excluding ID card)
-    const profileDocs = (profile.documents || []).filter(d => d.url && d.category !== 'idProof');
+    // Derive document list from individual document fields
+    const profileDocs = [
+        profile?.proofOfResidence ? { url: profile.proofOfResidence, category: 'proofOfResidence', label: 'Proof of Residence' } : null,
+        profile?.secondaryIdProof ? { url: profile.secondaryIdProof, category: 'secondaryIdProof', label: 'Secondary ID Proof' } : null,
+        profile?.professionalCertification ? { url: profile.professionalCertification, category: 'professionalCertification', label: 'Professional Certification' } : null,
+    ].filter(Boolean);
 
     const sections = [
         { id: 'personal',      label: 'Personal Info',  icon: User },

@@ -9,7 +9,9 @@ const dotenv   = require('dotenv');
 const path     = require('path');
 const fs       = require('fs');
 const axios    = require('axios');
+const cron     = require('node-cron');
 const { cloudinary } = require('./utils/cloudinary');
+const { runWeeklyUpdate } = require('./cron/updateRates');
 
 dotenv.config();
 
@@ -285,8 +287,26 @@ const shouldRebuildSemanticOnStartup = () => {
     return process.env.NODEMON !== 'true';
 };
 
+const shouldRunPricingCron = () => {
+    const disable = String(process.env.DISABLE_PRICING_CRON || '').toLowerCase() === 'true';
+    return !disable;
+};
+
 const server = app.listen(PORT, HOST, () => {
     console.log(`🚀  Server running on port ${PORT}`);
+
+    if (shouldRunPricingCron()) {
+        cron.schedule('0 2 * * 0', () => {
+            console.log('🔄  Starting weekly pricing engine update...');
+            runWeeklyUpdate().catch((err) => {
+                console.error('❌  Weekly pricing update failed:', err.message);
+            });
+        }, { timezone: 'UTC' });
+        console.log('✅  Pricing engine cron scheduled: every Sunday 02:00 UTC');
+    } else {
+        console.log('ℹ️   Pricing engine cron disabled by DISABLE_PRICING_CRON=true');
+    }
+
     // Auto-rebuild semantic index on startup (non-blocking)
     if (!shouldRebuildSemanticOnStartup()) {
         console.log('ℹ️   Semantic startup rebuild skipped (nodemon detected or disabled by env).');

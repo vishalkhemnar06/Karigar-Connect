@@ -15,16 +15,18 @@ const {
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
     deleteClientAccount,
     verifyAssignedWorkerFace,
+    getClientDocumentPreviewUrl,
     sendClientPasswordChangeOtp,
     verifyClientPasswordChangeOtp,
     changeClientPasswordWithOtp,
 } = require('../controllers/clientController');
 const { getNotifications, markRead, markAllRead, deleteNotification, clearAllNotifications } = require('../controllers/notificationController');
-const { jobPhotoUploader, profilePhotoUploader } = require('../utils/cloudinary');
+const { jobPhotoUploader, profilePhotoUploader, mixedUploader } = require('../utils/cloudinary');
 const faceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/profile',        protect, client, getClientProfile);
-router.put('/profile/update', protect, client, profilePhotoUploader.fields([
+router.get('/profile/document-preview-url', protect, client, getClientDocumentPreviewUrl);
+router.put('/profile/update', protect, client, mixedUploader.fields([
     { name: 'photo', maxCount: 1 },
     { name: 'proofOfResidence', maxCount: 1 },
     { name: 'secondaryIdProof', maxCount: 1 },

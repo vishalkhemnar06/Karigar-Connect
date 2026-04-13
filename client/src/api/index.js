@@ -17,7 +17,8 @@ API.interceptors.request.use((req) => {
     if (token) req.headers.Authorization = `Bearer ${token}`;
     return req;
 });
-const mp = { headers: { 'Content-Type': 'multipart/form-data' } };
+// For FormData, let axios auto-detect and set Content-Type with boundary
+const mp = {};
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 export const sendOtp               = (d)      => API.post('/api/auth/send-otp',               d);
@@ -181,6 +182,7 @@ export const searchClientForComplaint = (q)      => API.get('/api/worker/complai
 
 // ── CLIENT ────────────────────────────────────────────────────────────────────
 export const getClientProfile           = ()      => API.get('/api/client/profile');
+export const getClientDocumentPreviewUrl = (url)  => API.get('/api/client/profile/document-preview-url', { params: { url } });
 export const verifyAssignedWorkerFace   = (fd)    => API.post('/api/client/face/verify-assigned-worker', fd, mp);
 export const updateClientProfile        = (fd)    => API.put('/api/client/profile/update',          fd, mp);
 export const deleteClientAccount        = ()      => API.delete('/api/client/account/delete');

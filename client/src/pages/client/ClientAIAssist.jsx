@@ -86,6 +86,7 @@ const normalizeQuestionList = (items = [], prefix = 'q') => {
                 question: String(item.question || '').trim(),
                 type,
                 options,
+                required: !!item.required,
             };
         })
         .filter((item) => item.question);
@@ -146,7 +147,7 @@ const QuestionField = ({ question, value, onChange }) => {
         return (
             <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                    {question.question}
+                    {question.question} {question.required ? <span className="text-red-500">*</span> : null}
                 </label>
                 <div className="flex flex-wrap gap-2">
                     {question.options.map((option, idx) => (
@@ -173,7 +174,7 @@ const QuestionField = ({ question, value, onChange }) => {
     return (
         <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">
-                {question.question}
+                {question.question} {question.required ? <span className="text-red-500">*</span> : null}
             </label>
             {question.type === 'number' ? (
                 <input
@@ -236,12 +237,26 @@ const ReportSection = ({ title, icon: Icon, children, defaultOpen = true, badge 
     );
 };
 
-const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreakdown = [], clientBudget, grandTotal }) => {
+const CostBreakdownTable = ({
+    breakdown,
+    materialsBreakdown = [],
+    equipmentBreakdown = [],
+    requiredMaterialsBreakdown = [],
+    optionalMaterialsBreakdown = [],
+    requiredEquipmentBreakdown = [],
+    optionalEquipmentBreakdown = [],
+    clientBudget,
+    grandTotal,
+}) => {
     if (!breakdown?.breakdown?.length) return null;
 
     const labourTotal = breakdown.breakdown.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
     const materialsTotal = materialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const equipmentTotal = equipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
+    const requiredMaterialsTotal = requiredMaterialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
+    const optionalMaterialsTotal = optionalMaterialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
+    const requiredEquipmentTotal = requiredEquipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
+    const optionalEquipmentTotal = optionalEquipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const combinedTotal = Number(grandTotal) || labourTotal + materialsTotal + equipmentTotal;
 
     return (
@@ -264,10 +279,16 @@ const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreak
                         <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
                             <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Materials</p>
                             <p className="text-lg font-black text-gray-900">{formatCurrency(materialsTotal)}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Required {formatCurrency(requiredMaterialsTotal)} + Optional {formatCurrency(optionalMaterialsTotal)}
+                            </p>
                         </div>
                         <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
                             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Equipment</p>
                             <p className="text-lg font-black text-gray-900">{formatCurrency(equipmentTotal)}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Required {formatCurrency(requiredEquipmentTotal)} + Optional {formatCurrency(optionalEquipmentTotal)}
+                            </p>
                         </div>
                     </div>
 
@@ -283,11 +304,24 @@ const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreak
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-medium text-gray-900 capitalize">{item.skill}</span>
                                             <span className="text-xs text-gray-500">{item.count} worker{item.count > 1 ? 's' : ''}</span>
+                                            {item.priceSource ? (
+                                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold uppercase">
+                                                    {String(item.priceSource).replace(/_/g, ' ')}
+                                                </span>
+                                            ) : null}
                                         </div>
                                         <div className="flex items-center gap-3 mt-0.5">
                                             <span className="text-xs text-gray-400">{item.hours} hours</span>
                                             <span className="text-xs text-gray-400 capitalize">{item.complexity} complexity</span>
-                                            <span className="text-xs text-gray-400">₹{item.baseRate || 0}/day</span>
+                                            <span className="text-xs text-gray-400">
+                                                ₹{Number(item.ratePerHour || 0).toLocaleString()}/hr
+                                            </span>
+                                            <span className="text-xs text-gray-400">
+                                                ₹{Number(item.ratePerDay || 0).toLocaleString()}/day
+                                            </span>
+                                            <span className="text-xs text-gray-400">
+                                                ₹{Number(item.ratePerVisit || item.perWorkerCost || 0).toLocaleString()}/visit
+                                            </span>
                                         </div>
                                     </div>
                                     <div className="text-right">
@@ -295,6 +329,9 @@ const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreak
                                         {item.count > 1 && (
                                             <p className="text-xs text-gray-400">₹{Math.round(item.subtotal / item.count)}/worker</p>
                                         )}
+                                        {Number(item.confidence || 0) > 0 ? (
+                                            <p className="text-[10px] text-gray-400">conf {Math.round(Number(item.confidence) * 100)}%</p>
+                                        ) : null}
                                     </div>
                                 </div>
                             ))}
@@ -312,6 +349,15 @@ const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreak
                                     <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
                                         <div>
                                             <span className="text-sm font-medium text-gray-900 capitalize">{item.item}</span>
+                                            {item.optional ? (
+                                                <span className="ml-2 text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full uppercase font-semibold">
+                                                    Optional
+                                                </span>
+                                            ) : (
+                                                <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full uppercase font-semibold">
+                                                    Required
+                                                </span>
+                                            )}
                                             {item.quantity && <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>}
                                             {item.note && <p className="text-xs text-orange-600 mt-0.5">{item.note}</p>}
                                         </div>
@@ -333,6 +379,15 @@ const CostBreakdownTable = ({ breakdown, materialsBreakdown = [], equipmentBreak
                                     <div key={index} className="flex items-center justify-between py-2 border-b border-orange-100">
                                         <div>
                                             <span className="text-sm font-medium text-gray-900 capitalize">{item.item}</span>
+                                            {item.optional ? (
+                                                <span className="ml-2 text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full uppercase font-semibold">
+                                                    Optional
+                                                </span>
+                                            ) : (
+                                                <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full uppercase font-semibold">
+                                                    Required
+                                                </span>
+                                            )}
                                             {item.quantity && <p className="text-xs text-gray-500 mt-0.5">{item.quantity}</p>}
                                         </div>
                                         <span className="text-sm font-semibold text-gray-900">{formatCurrency(item.estimatedCost)}</span>
@@ -682,6 +737,11 @@ export default function ClientAIAssist() {
     const [city, setCity] = useState('');
     const [urgent, setUrgent] = useState(false);
     const [clientBudget, setClientBudget] = useState('');
+    const [breakdownMode, setBreakdownMode] = useState('full_project');
+    const [includeMaterialCost, setIncludeMaterialCost] = useState(true);
+    const [includeEquipmentCost, setIncludeEquipmentCost] = useState(true);
+    const [ownedMaterials, setOwnedMaterials] = useState('');
+    const [ownedEquipment, setOwnedEquipment] = useState('');
     const [questions, setQuestions] = useState([]);
     const [preferenceQuestions, setPreferenceQuestions] = useState([]);
     const [answers, setAnswers] = useState({});
@@ -699,6 +759,30 @@ export default function ClientAIAssist() {
     const citySelectValue = (isOtherCityMode || (city && !isKnownCity)) ? OTHER_CITY_OPTION : (city || '');
     
     const imageInputRef = useRef(null);
+
+    const applyBreakdownMode = useCallback((mode) => {
+        setBreakdownMode(mode);
+        if (mode === 'labour_only') {
+            setIncludeMaterialCost(false);
+            setIncludeEquipmentCost(false);
+        } else if (mode === 'labour_plus_material') {
+            setIncludeMaterialCost(true);
+            setIncludeEquipmentCost(false);
+        } else {
+            setIncludeMaterialCost(true);
+            setIncludeEquipmentCost(true);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (includeMaterialCost && includeEquipmentCost) {
+            setBreakdownMode('full_project');
+        } else if (includeMaterialCost && !includeEquipmentCost) {
+            setBreakdownMode('labour_plus_material');
+        } else {
+            setBreakdownMode('labour_only');
+        }
+    }, [includeMaterialCost, includeEquipmentCost]);
 
     // Load history
     const loadHistory = useCallback(async () => {
@@ -755,6 +839,10 @@ export default function ClientAIAssist() {
             toast.error('Please describe your project');
             return;
         }
+        if (!city.trim()) {
+            toast.error('City is required for accurate budget estimation');
+            return;
+        }
         if (description.trim().length < MIN_AI_DESCRIPTION_CHARS) {
             toast.error(`Please enter at least ${MIN_AI_DESCRIPTION_CHARS} characters before generating questions`);
             return;
@@ -780,6 +868,23 @@ export default function ClientAIAssist() {
     };
 
     const handleGenerateReport = async () => {
+        if (!description.trim()) {
+            toast.error('Project description is required');
+            setPhase('describe');
+            return;
+        }
+        if (!city.trim()) {
+            toast.error('City is required for accurate budget estimation');
+            setPhase('describe');
+            return;
+        }
+
+        const unansweredRequired = questions.filter((q) => q.required && !String(answers[q.id] || '').trim());
+        if (unansweredRequired.length > 0) {
+            toast.error('Please answer the required condition questions before generating the report');
+            setPhase('questions');
+            return;
+        }
         setIsLoading(prev => ({ ...prev, report: true }));
         setPhase('loading');
 
@@ -800,6 +905,11 @@ export default function ClientAIAssist() {
             formData.append('opinions', JSON.stringify(preferencesMap));
             formData.append('city', city);
             formData.append('urgent', String(urgent));
+            formData.append('breakdownMode', breakdownMode);
+            formData.append('includeMaterialCost', String(includeMaterialCost));
+            formData.append('includeEquipmentCost', String(includeEquipmentCost));
+            formData.append('ownedMaterials', ownedMaterials);
+            formData.append('ownedEquipment', ownedEquipment);
             formData.append('preferredLanguage', getPreferredUiLanguage());
             if (clientBudget && Number(clientBudget) > 0) {
                 formData.append('clientBudget', clientBudget);
@@ -855,6 +965,9 @@ export default function ClientAIAssist() {
             setCity(data.city || '');
             setUrgent(!!data.urgent);
             setClientBudget(data.clientBudget ? String(data.clientBudget) : '');
+            applyBreakdownMode(data.report?.breakdownMode || (data.report?.includeMaterialCost && data.report?.includeEquipmentCost ? 'full_project' : data.report?.includeMaterialCost ? 'labour_plus_material' : 'labour_only'));
+            setOwnedMaterials(Array.isArray(data.report?.ownedMaterials) ? data.report.ownedMaterials.join(', ') : '');
+            setOwnedEquipment(Array.isArray(data.report?.ownedEquipment) ? data.report.ownedEquipment.join(', ') : '');
             setPhase('report');
             setActiveTab('advisor');
             toast.success('Analysis loaded');
@@ -913,6 +1026,9 @@ export default function ClientAIAssist() {
         setIsOtherCityMode(false);
         setUrgent(false);
         setClientBudget('');
+        applyBreakdownMode('full_project');
+        setOwnedMaterials('');
+        setOwnedEquipment('');
         setQuestions([]);
         setPreferenceQuestions([]);
         setAnswers({});
@@ -926,6 +1042,12 @@ export default function ClientAIAssist() {
 
     const handlePrint = () => {
         window.print();
+    };
+
+    const handleReAnalyze = () => {
+        setActiveTab('advisor');
+        setPhase('describe');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1007,7 +1129,7 @@ export default function ClientAIAssist() {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    City
+                                                    City <span className="text-red-500">*</span>
                                                 </label>
                                                 <select
                                                     value={citySelectValue}
@@ -1060,7 +1182,7 @@ export default function ClientAIAssist() {
 
                                         <button
                                             onClick={handleGenerateQuestions}
-                                            disabled={isLoading.questions || !description.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS}
+                                            disabled={isLoading.questions || !description.trim() || !city.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS}
                                             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                         >
                                             <Sparkles size={18} className={isLoading.questions ? 'animate-pulse' : ''} />
@@ -1144,6 +1266,58 @@ export default function ClientAIAssist() {
                                                         ₹{amount.toLocaleString()}
                                                     </button>
                                                 ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white border border-orange-100 rounded-xl p-4 space-y-4">
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-800 mb-2">Cost Breakdown Type</p>
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                    {[
+                                                        { key: 'labour_only', label: 'Labour only' },
+                                                        { key: 'labour_plus_material', label: 'Labour + material' },
+                                                        { key: 'full_project', label: 'Full project' },
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.key}
+                                                            type="button"
+                                                            onClick={() => applyBreakdownMode(option.key)}
+                                                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${breakdownMode === option.key ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-700 hover:border-orange-300'}`}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-2">This only changes what is included in the quote. Owned items you list below will still be excluded.</p>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Materials you already have
+                                                    </label>
+                                                    <textarea
+                                                        value={ownedMaterials}
+                                                        onChange={(e) => setOwnedMaterials(e.target.value)}
+                                                        rows={3}
+                                                        placeholder="e.g. paint, primer, putty"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all resize-none"
+                                                    />
+                                                    <p className="text-xs text-gray-500 mt-1">Comma-separated list. Items here will be excluded from material cost.</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Equipment you already have
+                                                    </label>
+                                                    <textarea
+                                                        value={ownedEquipment}
+                                                        onChange={(e) => setOwnedEquipment(e.target.value)}
+                                                        rows={3}
+                                                        placeholder="e.g. roller set, brushes, drop cloth"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all resize-none"
+                                                    />
+                                                    <p className="text-xs text-gray-500 mt-1">Comma-separated list. Items here will be excluded from equipment cost.</p>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -1307,6 +1481,16 @@ export default function ClientAIAssist() {
                                                         Confidence: {report.confidence.score}%
                                                     </span>
                                                 )}
+                                                {report.labourConfidence && (
+                                                    <span className="text-xs bg-white/20 px-3 py-1 rounded-full">
+                                                        Labour confidence: {report.labourConfidence}%
+                                                    </span>
+                                                )}
+                                                {report.breakdownMode && (
+                                                    <span className="text-xs bg-white/20 px-3 py-1 rounded-full capitalize">
+                                                        {report.breakdownMode.replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1330,10 +1514,100 @@ export default function ClientAIAssist() {
                                                 breakdown={report.budgetBreakdown} 
                                                 materialsBreakdown={report.materialsBreakdown}
                                                 equipmentBreakdown={report.equipmentBreakdown}
+                                                requiredMaterialsBreakdown={report.requiredMaterialsBreakdown || []}
+                                                optionalMaterialsBreakdown={report.optionalMaterialsBreakdown || []}
+                                                requiredEquipmentBreakdown={report.requiredEquipmentBreakdown || []}
+                                                optionalEquipmentBreakdown={report.optionalEquipmentBreakdown || []}
                                                 clientBudget={report.clientBudget}
                                                 grandTotal={report.grandTotal}
                                             />
                                         </ReportSection>
+
+                                        {/* Price Reasoning */}
+                                        {report.priceReasoning?.length > 0 && (
+                                            <ReportSection title="Price Reasoning" icon={Settings} defaultOpen badge={`${report.priceReasoning.length} reasons`}>
+                                                <div className="space-y-2">
+                                                    {report.priceReasoning.map((reason, idx) => (
+                                                        <div key={idx} className="flex items-start gap-2 bg-orange-50/60 border border-orange-100 rounded-lg p-3">
+                                                            <CheckCircle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                                                            <span className="text-sm text-gray-700">{reason}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Cost Saving Suggestions */}
+                                        {report.costSavingSuggestions?.length > 0 && (
+                                            <ReportSection title="Cost Saving Suggestions" icon={Award} defaultOpen badge={`${report.costSavingSuggestions.length} tips`}>
+                                                <div className="space-y-2">
+                                                    {report.costSavingSuggestions.map((tip, idx) => (
+                                                        <div key={idx} className="flex items-start gap-2 bg-green-50/60 border border-green-100 rounded-lg p-3">
+                                                            <Sparkles size={16} className="text-green-600 mt-0.5 flex-shrink-0" />
+                                                            <span className="text-sm text-gray-700">{tip}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Best / Expected / Worst */}
+                                        {(report.bestCaseTotal || report.expectedTotal || report.worstCaseTotal) && (
+                                            <ReportSection title="Best / Expected / Worst" icon={TrendingUp} defaultOpen>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                                                        <p className="text-xs font-semibold text-green-700 uppercase tracking-wider">Best Case</p>
+                                                        <p className="text-lg font-black text-gray-900">{formatCurrency(report.bestCaseTotal)}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">Good wall condition / least prep</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-orange-100 bg-orange-50 p-4">
+                                                        <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider">Expected</p>
+                                                        <p className="text-lg font-black text-gray-900">{formatCurrency(report.expectedTotal)}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">Most likely real-world quote</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+                                                        <p className="text-xs font-semibold text-red-700 uppercase tracking-wider">Worst Case</p>
+                                                        <p className="text-lg font-black text-gray-900">{formatCurrency(report.worstCaseTotal)}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">Damaged wall / extra prep</p>
+                                                    </div>
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Local Market Insight */}
+                                        {report.localMarketInsight && (
+                                            <ReportSection title="Local Market Insight" icon={TrendingUp} defaultOpen>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">City</p>
+                                                        <p className="text-base font-bold text-gray-900">{report.localMarketInsight.city || report.city || 'Local market'}</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Average labour</p>
+                                                        <p className="text-base font-bold text-gray-900">{formatCurrency(report.localMarketInsight.avgDailyRate)}</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Demand / availability</p>
+                                                        <p className="text-base font-bold text-gray-900">{report.localMarketInsight.demandLevel || 'Normal'} demand, {report.localMarketInsight.availability || 'Moderate'} availability</p>
+                                                    </div>
+                                                </div>
+                                            </ReportSection>
+                                        )}
+
+                                        {/* Negotiation Range */}
+                                        {report.negotiationRange && (
+                                            <ReportSection title="Negotiation Range" icon={IndianRupee} defaultOpen>
+                                                <div className="rounded-xl border border-orange-100 bg-orange-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-gray-800">Suggested negotiation range</p>
+                                                        <p className="text-xs text-gray-500 mt-1">Useful for Indian market bargaining and budget comparison.</p>
+                                                    </div>
+                                                    <p className="text-xl font-black text-gray-900">
+                                                        {formatCurrency(report.negotiationRange.min)} - {formatCurrency(report.negotiationRange.max)}
+                                                    </p>
+                                                </div>
+                                            </ReportSection>
+                                        )}
 
                                         {/* Work Plan Section */}
                                         {report.workPlan?.length > 0 && (
@@ -1451,6 +1725,13 @@ export default function ClientAIAssist() {
 
                                         {/* Action Buttons */}
                                         <div className="flex gap-3 pt-4">
+                                            <button
+                                                onClick={handleReAnalyze}
+                                                className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium flex items-center justify-center gap-2"
+                                            >
+                                                <Sparkles size={18} />
+                                                Re-analysis
+                                            </button>
                                             <button
                                                 onClick={handleReset}
                                                 className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium"

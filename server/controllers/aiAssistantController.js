@@ -9,7 +9,15 @@
 
 const Groq = require('groq-sdk');
 const User = require('../models/userModel');
-const { calculateStructuredBudget, BASE_RATES } = require('../utils/rateTable');
+const BaseRate = require('../models/baseRateModel');
+const Product = require('../models/productModel');
+const MarketRate = require('../models/marketRateModel');
+const DemandSnapshot = require('../models/demandSnapshotModel');
+const {
+    calculateStructuredBudget,
+    normalizeCityKey,
+    normalizeSkillKey,
+} = require('../services/pricingEngineService');
 const {
     detectAndTranslateToEnglish,
     translateText,
@@ -59,10 +67,442 @@ const titleCase = (v = '') =>
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
 
-const getRateTableCities = () =>
-    Object.keys(BASE_RATES)
-        .filter((key) => key !== 'default')
-        .map((key) => ({ key, label: titleCase(key) }));
+const fallbackCityOptions = [
+    { key: 'mumbai', label: 'Mumbai' },
+    { key: 'delhi', label: 'Delhi' },
+    { key: 'bangalore', label: 'Bangalore' },
+    { key: 'hyderabad', label: 'Hyderabad' },
+    { key: 'pune', label: 'Pune' },
+    { key: 'chennai', label: 'Chennai' },
+    { key: 'kolkata', label: 'Kolkata' },
+];
+
+const parseBooleanInput = (value, fallback = true) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value).trim().toLowerCase();
+    if (['false', '0', 'no', 'off', 'n'].includes(normalized)) return false;
+    if (['true', '1', 'yes', 'on', 'y'].includes(normalized)) return true;
+    return fallback;
+};
+
+const parseOwnershipList = (value) => String(value || '')
+    .split(/[\n,;/]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const normalizeText = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const isOwnedItem = (itemName, ownershipList = []) => {
+    const itemText = normalizeText(itemName);
+    if (!itemText) return false;
+    return ownershipList.some((owned) => {
+        const ownedText = normalizeText(owned);
+        if (!ownedText) return false;
+        return itemText.includes(ownedText) || ownedText.includes(itemText);
+    });
+};
+
+const filterBreakdownByOwnership = (items = [], ownershipList = []) => {
+    const excludedItems = [];
+    const filteredItems = (Array.isArray(items) ? items : []).filter((item) => {
+        const itemName = String(item?.item || item?.name || '').trim();
+        const matched = isOwnedItem(itemName, ownershipList);
+        if (matched) excludedItems.push(itemName || 'unknown item');
+        return !matched;
+    });
+
+    return {
+        items: filteredItems,
+        excludedItems,
+    };
+};
+
+const sumEstimatedCost = (items = []) => items.reduce((sum, item) => sum + (Number(item?.estimatedCost) || 0), 0);
+
+const escapeRegex = (text = '') => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const getMedian = (values = []) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    if (!sorted.length) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+const tokenizeItemName = (itemName = '') => String(itemName)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+
+const buildMarketplaceSearchRegex = (itemName = '') => {
+    const tokens = tokenizeItemName(itemName);
+    if (!tokens.length) return null;
+    const selected = tokens.slice(0, 4).map(escapeRegex);
+    return new RegExp(selected.join('|'), 'i');
+};
+
+const fetchMarketplacePriceStats = async ({ city = '', itemName = '' }) => {
+    try {
+        const nameRegex = buildMarketplaceSearchRegex(itemName);
+        if (!nameRegex) return null;
+
+        const cityRegex = city ? new RegExp(`^${escapeRegex(String(city).trim())}$`, 'i') : null;
+        const pipeline = [
+            { $match: { isActive: true, name: nameRegex, price: { $gt: 0 } } },
+            {
+                $lookup: {
+                    from: 'shops',
+                    localField: 'shop',
+                    foreignField: '_id',
+                    as: 'shop',
+                },
+            },
+            { $unwind: '$shop' },
+            { $match: { 'shop.verificationStatus': 'approved', ...(cityRegex ? { 'shop.city': cityRegex } : {}) } },
+            { $project: { _id: 0, price: 1, name: 1, city: '$shop.city', shopName: '$shop.shopName' } },
+            { $sort: { price: 1 } },
+            { $limit: 60 },
+        ];
+
+        const rows = await Product.aggregate(pipeline);
+        if (!rows.length) return null;
+
+        const prices = rows.map((row) => Number(row.price)).filter((price) => Number.isFinite(price) && price > 0);
+        if (!prices.length) return null;
+
+        return {
+            minPrice: Math.min(...prices),
+            maxPrice: Math.max(...prices),
+            medianPrice: getMedian(prices),
+            sampleSize: prices.length,
+            matchedProducts: rows.slice(0, 5),
+        };
+    } catch (error) {
+        console.error('fetchMarketplacePriceStats error:', error.message);
+        return null;
+    }
+};
+
+const formatCurrencyValue = (value) => `₹${Math.round(Number(value) || 0).toLocaleString('en-IN')}`;
+
+const getBenchmarkFromBudget = (budgetResult = {}) => {
+    const labourTotal = Number(budgetResult.totalEstimated) || 0;
+    const workerCount = Math.max(1, Number(budgetResult.totalWorkers) || 1);
+    const dayBenchmark = labourTotal > 0 ? labourTotal / workerCount : 0;
+    return dayBenchmark > 0 ? dayBenchmark : 1200;
+};
+
+const buildMarketInsight = async ({ city = '', skillBlocks = [], budgetResult = {} }) => {
+    const cityKey = normalizeCityKey(city);
+    const skillKeys = [...new Set((skillBlocks || []).map((block) => normalizeSkillKey(block.skill)).filter(Boolean))];
+    const fallbackSkills = skillKeys.length ? skillKeys : ['handyman'];
+
+    const marketRates = await MarketRate.find({
+        cityKey,
+        skillKey: { $in: fallbackSkills },
+        isActive: true,
+    }).select('skillKey p50 p75 p90 avgHours dataPoints confidence lastUpdated');
+
+    const demandSnapshots = await DemandSnapshot.find({
+        cityKey,
+        skillKey: { $in: fallbackSkills },
+    }).sort({ capturedAt: -1 }).limit(fallbackSkills.length || 1).select('skillKey activeJobs activeWorkers ratio capturedAt');
+
+    const avgDailyRate = marketRates.length
+        ? marketRates.reduce((sum, row) => sum + (Number(row.p50) || 0), 0) / marketRates.length
+        : getBenchmarkFromBudget(budgetResult);
+
+    const avgRatio = demandSnapshots.length
+        ? demandSnapshots.reduce((sum, row) => sum + (Number(row.ratio) || 1), 0) / demandSnapshots.length
+        : 1;
+
+    const demandLevel = avgRatio >= 1.25 ? 'High' : avgRatio <= 0.85 ? 'Low' : 'Normal';
+    const availability = avgRatio >= 1.25 ? 'Low' : avgRatio <= 0.85 ? 'High' : 'Moderate';
+
+    return {
+        city,
+        cityKey,
+        avgDailyRate: Math.round(avgDailyRate),
+        demandLevel,
+        availability,
+        avgDemandRatio: Number(avgRatio.toFixed(2)),
+        marketRates: marketRates.map((row) => ({
+            skillKey: row.skillKey,
+            p50: row.p50,
+            p75: row.p75,
+            p90: row.p90,
+            avgHours: row.avgHours,
+            dataPoints: row.dataPoints,
+            confidence: row.confidence,
+            lastUpdated: row.lastUpdated,
+        })),
+        demandSnapshots: demandSnapshots.map((row) => ({
+            skillKey: row.skillKey,
+            activeJobs: row.activeJobs,
+            activeWorkers: row.activeWorkers,
+            ratio: row.ratio,
+            capturedAt: row.capturedAt,
+        })),
+    };
+};
+
+const buildPriceReasoning = ({
+    city,
+    budgetResult = {},
+    signals = {},
+    includeMaterials = true,
+    includeEquipment = true,
+    ownedMaterialList = [],
+    ownedEquipmentList = [],
+    marketInsight = {},
+    requiredMaterialsTotal = 0,
+    optionalMaterialsTotal = 0,
+    requiredEquipmentTotal = 0,
+    optionalEquipmentTotal = 0,
+}) => {
+    const reasons = [];
+    const smallArea = Number(signals.areaSqft) > 0 && Number(signals.areaSqft) <= 250;
+
+    reasons.push(`Labour is based on current ${city || 'city'} market rates for ${Math.max(1, Number(budgetResult.totalWorkers) || 1)} worker(s) across ${Math.max(1, Number(budgetResult.durationDays) || 1)} day(s).`);
+
+    if (smallArea) {
+        reasons.push(`Small wall area (${Math.round(signals.areaSqft)} sqft) limits material usage.`);
+    }
+
+    if (signals.hasCracks) {
+        reasons.push('Surface damage is present, so extra prep material like putty may be required.');
+    } else {
+        reasons.push('No major surface damage detected, so heavy prep usage can be reduced.');
+    }
+
+    if (!includeMaterials) {
+        reasons.push('Material cost is excluded because you selected labour-only pricing.');
+    } else if (ownedMaterialList.length > 0) {
+        reasons.push(`You already have ${ownedMaterialList.length} material item(s), so they were removed from the quote.`);
+    }
+
+    if (!includeEquipment) {
+        reasons.push('Equipment cost is excluded because you selected labour-only pricing.');
+    } else if (ownedEquipmentList.length > 0) {
+        reasons.push(`You already have ${ownedEquipmentList.length} equipment item(s), so they were removed from the quote.`);
+    }
+
+    if (marketInsight.avgDemandRatio > 1.25) {
+        reasons.push(`Local demand in ${city || 'your city'} is above average, which can push prices up.`);
+    } else if (marketInsight.avgDemandRatio < 0.85) {
+        reasons.push(`Worker availability in ${city || 'your city'} is strong, which keeps prices competitive.`);
+    }
+
+    return reasons;
+};
+
+const buildCostSavingSuggestions = ({
+    signals = {},
+    includeMaterials = true,
+    includeEquipment = true,
+    ownedMaterialList = [],
+    ownedEquipmentList = [],
+    marketInsight = {},
+}) => {
+    const suggestions = [];
+
+    if (signals.hasCracks) {
+        suggestions.push('Skip putty only if the wall is already crack-free; otherwise it is still needed for finish quality.');
+    }
+
+    if (signals.hasGoodSurface) {
+        suggestions.push('A smooth wall can reduce prep and touch-up material usage.');
+    }
+
+    if (ownedMaterialList.length > 0) {
+        suggestions.push('Reuse the materials you already have to avoid duplicate purchases.');
+    }
+
+    if (ownedEquipmentList.length > 0) {
+        suggestions.push('Use your existing tools/equipment where possible to cut tool charges.');
+    }
+
+    if (marketInsight.avgDemandRatio > 1.15) {
+        suggestions.push('Book when demand is lower if your schedule is flexible; high-demand periods raise rates.');
+    }
+
+    if (includeMaterials || includeEquipment) {
+        suggestions.push('Combine all nearby walls or related tasks into one visit to spread the setup cost.');
+    }
+
+    if (signals.areaSqft > 0 && signals.areaSqft <= 250) {
+        suggestions.push('For a small wall, buy only the exact consumables needed instead of full packs.');
+    }
+
+    return suggestions.slice(0, 5);
+};
+
+const buildNegotiationRange = ({ expected = 0, confidence = 0, demandRatio = 1 }) => {
+    if (!expected) return { min: 0, max: 0 };
+    const spread = clamp(0.08 + (1 - Math.min(1, confidence)) * 0.07 + (demandRatio > 1 ? 0.02 : 0), 0.08, 0.18);
+    return {
+        min: Math.round(expected * (1 - spread)),
+        max: Math.round(expected * (1 + spread * 0.6)),
+    };
+};
+
+const splitMaterialBuckets = (items = []) => {
+    const requiredItems = [];
+    const optionalItems = [];
+    for (const item of items) {
+        if (item?.optional) optionalItems.push(item);
+        else requiredItems.push(item);
+    }
+    return { requiredItems, optionalItems };
+};
+
+const buildProjectSummary = ({
+    labourMin = 0,
+    labourExpected = 0,
+    labourMax = 0,
+    materialsRequired = 0,
+    materialsOptional = 0,
+    equipmentRequired = 0,
+    equipmentOptional = 0,
+}) => {
+    const bestCase = labourMin + materialsRequired + equipmentRequired;
+    const expected = labourExpected + materialsRequired + materialsOptional + equipmentRequired + equipmentOptional;
+    const worstCase = labourMax + materialsRequired + materialsOptional + equipmentRequired + equipmentOptional;
+    return { bestCase, expected, worstCase };
+};
+
+const parseFirstNumber = (text = '') => {
+    const match = String(text || '').match(/\b(\d+(?:\.\d+)?)\b/);
+    return match ? Number(match[1]) : 0;
+};
+
+const estimateMaterialOrEquipmentItem = async ({
+    item = {},
+    kind = 'material',
+    signals = {},
+    marketInsight = {},
+    city = '',
+}) => {
+    const name = String(item.item || item.name || '').toLowerCase();
+    const benchmark = Math.max(1, Number(marketInsight.avgDailyRate) || 0);
+    const areaSqft = Math.max(0, Number(signals.areaSqft) || 0);
+    const wallCount = Math.max(1, Number(signals.wallCount) || 1);
+    const marketplaceStats = await fetchMarketplacePriceStats({ city, itemName: item.item || item.name || '' });
+    const unitBase = marketplaceStats?.medianPrice || (kind === 'material' ? benchmark * 0.12 : benchmark * 0.08);
+
+    let optional = kind === 'equipment';
+    let multiplier = 1;
+    let note = String(item.note || '').trim();
+
+    if (kind === 'material') {
+        if (/paint|emulsion|distemper/.test(name)) {
+            optional = false;
+            const litresNeeded = areaSqft > 0 ? Math.max(1, Math.ceil(areaSqft / 75)) : 1;
+            multiplier = litresNeeded * 0.85;
+            note = note || `Estimated from ${areaSqft ? Math.round(areaSqft) : 'unknown'} sqft and paint coverage.`;
+        } else if (/primer/.test(name)) {
+            optional = !signals.isPaintJob;
+            multiplier = Math.max(0.4, areaSqft > 0 ? Math.ceil(areaSqft / 120) * 0.5 : 0.5);
+            note = note || 'Applied only when surface preparation is needed.';
+        } else if (/putty/.test(name)) {
+            optional = !signals.hasCracks && !signals.hasGoodSurface;
+            multiplier = signals.hasCracks ? Math.max(0.35, wallCount * 0.35) : 0.18;
+            note = note || (signals.hasCracks ? 'Required for visible cracks or uneven surface.' : 'Only a small touch-up amount is usually needed for smooth walls.');
+        } else if (/sandpaper/.test(name)) {
+            optional = true;
+            multiplier = Math.max(0.12, wallCount * 0.08);
+            note = note || 'Used only in limited quantity for surface prep.';
+        } else if (/masking|tape/.test(name)) {
+            optional = true;
+            multiplier = Math.max(0.08, wallCount * 0.06);
+            note = note || 'Optional when clean edge protection is required.';
+        } else if (/drop cloth|plastic sheet|protection/.test(name)) {
+            optional = true;
+            multiplier = Math.max(0.06, wallCount * 0.05);
+            note = note || 'Optional when furniture/floor protection is needed.';
+        } else {
+            multiplier = 0.15;
+        }
+    } else {
+        if (/roller|brush/.test(name)) {
+            optional = true;
+            multiplier = Math.max(0.14, wallCount * 0.08);
+            note = note || 'Usually only charged when the client needs dedicated consumables.';
+        } else if (/drop cloth|sheet|tape|sandpaper/.test(name)) {
+            optional = true;
+            multiplier = Math.max(0.07, wallCount * 0.05);
+            note = note || 'Consumable tool item for site preparation.';
+        } else {
+            multiplier = 0.1;
+        }
+    }
+
+    const baseCost = Math.max(1, Math.round(unitBase * multiplier));
+    const bestCaseCost = Math.max(1, Math.round((marketplaceStats?.minPrice || (unitBase * 0.85)) * multiplier));
+    const worstCaseCost = Math.max(baseCost, Math.round((marketplaceStats?.maxPrice || (unitBase * 1.2)) * multiplier));
+
+    return {
+        ...item,
+        optional,
+        estimatedCost: baseCost,
+        bestCaseCost,
+        worstCaseCost,
+        priceSource: marketplaceStats ? 'marketplace_product_prices' : 'derived_market_benchmark',
+        marketplaceSampleSize: marketplaceStats?.sampleSize || 0,
+        marketplaceUnitPrice: marketplaceStats?.medianPrice || 0,
+        note,
+    };
+};
+
+const summarizeBuckets = (items = []) => {
+    const requiredItems = [];
+    const optionalItems = [];
+    for (const item of items) {
+        if (item?.optional) optionalItems.push(item);
+        else requiredItems.push(item);
+    }
+    return {
+        requiredItems,
+        optionalItems,
+        requiredTotal: sumEstimatedCost(requiredItems),
+        optionalTotal: sumEstimatedCost(optionalItems),
+        total: sumEstimatedCost(items),
+    };
+};
+
+const getRateTableCities = async () => {
+    try {
+        const rows = await BaseRate.aggregate([
+            { $match: { isActive: true } },
+            {
+                $group: {
+                    _id: '$cityKey',
+                    key: { $first: '$cityKey' },
+                    label: { $first: '$city' },
+                },
+            },
+            { $project: { _id: 0, key: 1, label: 1 } },
+            { $sort: { label: 1 } },
+        ]);
+
+        const options = (rows || [])
+            .map((row) => ({
+                key: String(row?.key || '').trim(),
+                label: String(row?.label || '').trim() || titleCase(String(row?.key || '')),
+            }))
+            .filter((row) => row.key && row.label);
+
+        return options.length ? options : fallbackCityOptions;
+    } catch (err) {
+        console.error('getRateTableCities data error:', err.message);
+        return fallbackCityOptions;
+    }
+};
 
 const MIN_WORK_QUESTIONS = 6;
 
@@ -82,6 +522,24 @@ const fallbackWorkQuestions = [
     { id: 'q6', question: 'Are there any site access constraints affecting effort or transport cost?', type: 'text' },
 ];
 
+const mandatoryConditionQuestions = [
+    { id: 'q_condition_1', question: 'What is the current wall or surface condition?', type: 'select', options: ['Smooth', 'Minor cracks', 'Major cracks', 'Peeling paint', 'Dampness'], required: true },
+    { id: 'q_condition_2', question: 'Do you already have any materials or tools for this job?', type: 'text', required: true },
+    { id: 'q_condition_3', question: 'Are protective items like masking tape or drop cloth already available?', type: 'select', options: ['Yes', 'No', 'Some items available'], required: true },
+    { id: 'q_condition_4', question: 'How many walls or areas need work?', type: 'number', required: true },
+];
+
+const mergeMandatoryQuestions = (questions = []) => {
+    const existing = new Set((Array.isArray(questions) ? questions : []).map((q) => String(q?.question || '').toLowerCase().trim()));
+    const merged = [...(Array.isArray(questions) ? questions : [])];
+    for (const question of mandatoryConditionQuestions) {
+        if (!existing.has(question.question.toLowerCase())) {
+            merged.push(question);
+        }
+    }
+    return merged;
+};
+
 const ensureMinimumWorkQuestions = (questions = []) => {
     const cleaned = (Array.isArray(questions) ? questions : [])
         .map((q, idx) => ensureQuestionShape(q, idx))
@@ -94,7 +552,31 @@ const ensureMinimumWorkQuestions = (questions = []) => {
         if (!existing.has(q.question.toLowerCase())) cleaned.push(q);
         if (cleaned.length >= MIN_WORK_QUESTIONS) break;
     }
-    return cleaned.slice(0, 8);
+    const merged = mergeMandatoryQuestions(cleaned);
+    const mandatorySet = new Set(mandatoryConditionQuestions.map((q) => q.question.toLowerCase()));
+    const mandatoryQuestions = merged.filter((q) => mandatorySet.has(String(q.question || '').toLowerCase()));
+    const otherQuestions = merged.filter((q) => !mandatorySet.has(String(q.question || '').toLowerCase()));
+    return [...mandatoryQuestions, ...otherQuestions].slice(0, 8);
+};
+
+const getAnswerBlob = (answers = {}) => Object.entries(answers)
+    .filter(([, value]) => value)
+    .map(([, value]) => String(value).toLowerCase())
+    .join(' ');
+
+const deriveConditionSignals = ({ workDescription = '', answers = {} }) => {
+    const text = `${String(workDescription || '').toLowerCase()} ${getAnswerBlob(answers)}`;
+    const areaMatch = text.match(/(\b\d+(?:\.\d+)?\b)\s*(sq\s*ft|sqft|square feet|square foot)/);
+    const wallMatch = text.match(/(\b\d+(?:\.\d+)?\b)\s*(walls?|areas?)/);
+    return {
+        isPaintJob: /paint|painting|repaint|whitewash|wall/.test(text),
+        hasCracks: /crack|peel|peeling|damp|leak|patch|rough/.test(text),
+        hasGoodSurface: /smooth|good condition|fine condition|already painted/.test(text),
+        hasToolsOrMaterials: /have|already|available|own|got/.test(text),
+        hasProtectionAvailable: /masking|drop cloth|sheet|protection/.test(text),
+        areaSqft: areaMatch ? Number(areaMatch[1]) : 0,
+        wallCount: wallMatch ? Number(wallMatch[1]) : 1,
+    };
 };
 
 // ── SYSTEM PROMPT: Full Estimate ──────────────────────────────────────────────
@@ -160,6 +642,13 @@ STRICT RULES:
 - skill: plumber, electrician, carpenter, painter, tiler, mason, welder, ac_technician, pest_control, cleaner, handyman, gardener ONLY
 - materialsBreakdown: use real Indian brand names (Asian Paints, Berger, Pidilite, Birla White, Jaquar, Havells, Polycab, etc.)
 - equipmentBreakdown: 2025 Indian market rates — roller ₹400-500, brushes ₹200-350, drop cloth ₹100-200, sandpaper ₹100-150/set, masking tape ₹150-200/3 rolls, drill ₹800-1200, grinder ₹600-900, tile cutter ₹500-800
+- Material estimates must be quantity-based and local-market realistic. Do not assume bulk packs for small jobs.
+- For paint work, use coverage logic: 1L covers about 120-150 sqft for 1 coat; for 2 coats, effective coverage is about 70-80 sqft per litre.
+- For small residential paint jobs, material totals should usually stay in the low-thousands unless the area is very large.
+- Do not add full tool kits by default. Only include consumable tools or explicit rentals/purchases needed for the job.
+- If Include Materials Cost = No, return an empty materialsBreakdown array.
+- If Include Equipment Cost = No, return an empty equipmentBreakdown array.
+- If the client already has any listed materials or equipment, do not include those items in the relevant breakdown.
 - labour costs must use the current city-specific Indian rate table and realistic worker counts/hours
 - return labour, material, equipment, and grand total so the UI can show one combined estimate block
 - colourAndStyleAdvice: ONLY populate if opinions about colour/style were provided. Otherwise empty string.
@@ -642,7 +1131,7 @@ exports.generateQuestions = async (req, res) => {
         let opinionQuestions = parsed?.opinionQuestions || [];
         if (!Array.isArray(questions)) questions = [];
         if (!Array.isArray(opinionQuestions)) opinionQuestions = [];
-        questions = ensureMinimumWorkQuestions(questions);
+        questions = mergeMandatoryQuestions(ensureMinimumWorkQuestions(questions));
 
         if (selectedLanguage !== 'en') {
             questions = await translateQuestionSet(questions, selectedLanguage);
@@ -663,7 +1152,7 @@ exports.generateQuestions = async (req, res) => {
     } catch (err) {
         console.error('generateQuestions error:', err.message);
         return res.status(200).json({
-            questions: ensureMinimumWorkQuestions([]),
+            questions: mergeMandatoryQuestions(ensureMinimumWorkQuestions([])),
             opinionQuestions: [],
             language: {
                 detected: 'en',
@@ -676,7 +1165,8 @@ exports.generateQuestions = async (req, res) => {
 };
 
 exports.getRateTableCities = async (_req, res) => {
-    return res.status(200).json({ cities: getRateTableCities() });
+    const cities = await getRateTableCities();
+    return res.status(200).json({ cities });
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -722,7 +1212,18 @@ exports.generateEstimate = async (req, res) => {
                 for (let i=0;i<skillBlocks.length;i++) skillBlocks[i].count=counts[i];
             }
         }
-        const budgetResult = calculateStructuredBudget(skillBlocks, city, aiResult.urgent||urgent);
+        const budgetResult = await calculateStructuredBudget(skillBlocks, city, aiResult.urgent||urgent);
+        const marketInsight = await buildMarketInsight({ city, skillBlocks, budgetResult });
+        const labourConfidence = Math.round(
+            ((budgetResult.breakdown || []).reduce((sum, item) => sum + (Number(item.confidence) || 0), 0) / Math.max(1, budgetResult.breakdown.length)) * 100
+        );
+        const labourMin = Number(budgetResult.totalMinEstimated) || Math.round(Number(budgetResult.totalEstimated) * 0.9);
+        const labourMax = Number(budgetResult.totalMaxEstimated) || Math.round(Number(budgetResult.totalEstimated) * 1.15);
+        const negotiationRange = buildNegotiationRange({
+            expected: Number(budgetResult.totalEstimated) || 0,
+            confidence: labourConfidence / 100,
+            demandRatio: Number(marketInsight.avgDemandRatio) || 1,
+        });
         const skillNames   = skillBlocks.map(b=>b.skill).filter(Boolean);
         const topWorkers   = await User.find({ role:'worker', verificationStatus:'approved', skills:{$elemMatch:{name:{$in:skillNames}}} }).sort({points:-1}).limit(10).select('name karigarId photo overallExperience points skills mobile address');
 
@@ -731,6 +1232,29 @@ exports.generateEstimate = async (req, res) => {
             durationDays: aiResult.durationDays || 1,
             skillBlocks,
             budgetBreakdown: budgetResult,
+            breakdownMode: 'labour_only',
+            labourConfidence,
+            priceReasoning: buildPriceReasoning({
+                city,
+                budgetResult,
+                signals: deriveConditionSignals({ workDescription, answers }),
+                includeMaterials: false,
+                includeEquipment: false,
+                marketInsight,
+                ownedMaterialList: [],
+                ownedEquipmentList: [],
+            }),
+            costSavingSuggestions: buildCostSavingSuggestions({
+                signals: deriveConditionSignals({ workDescription, answers }),
+                includeMaterials: false,
+                includeEquipment: false,
+                marketInsight,
+            }),
+            localMarketInsight: marketInsight,
+            bestCaseTotal: labourMin,
+            expectedTotal: Number(budgetResult.totalEstimated) || 0,
+            worstCaseTotal: labourMax,
+            negotiationRange,
             recommendation: aiResult.recommendation || '',
             topWorkers: topWorkers.map(formatWorker),
             language: {
@@ -758,14 +1282,25 @@ exports.generateEstimate = async (req, res) => {
     } catch (err) {
         console.error('generateEstimate error:', err);
         const fallbackSkillBlocks = [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }];
-        const fallbackBudget = calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
+        const fallbackBudget = await calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
         return res.status(200).json({
             jobTitle: workDescription?.slice(0, 60) || 'Home Service Work',
             durationDays: 1,
             skillBlocks: fallbackSkillBlocks,
             budgetBreakdown: fallbackBudget,
+            breakdownMode: 'labour_only',
+            labourConfidence: Math.round(
+                ((fallbackBudget.breakdown || []).reduce((sum, item) => sum + (Number(item.confidence) || 0), 0) / Math.max(1, fallbackBudget.breakdown.length)) * 100
+            ),
             recommendation: 'Please share more details for a more accurate estimate.',
             topWorkers: [],
+            priceReasoning: [],
+            costSavingSuggestions: [],
+            localMarketInsight: await buildMarketInsight({ city, skillBlocks: fallbackSkillBlocks, budgetResult: fallbackBudget }),
+            bestCaseTotal: Number(fallbackBudget.totalMinEstimated) || fallbackBudget.totalEstimated,
+            expectedTotal: fallbackBudget.totalEstimated,
+            worstCaseTotal: Number(fallbackBudget.totalMaxEstimated) || fallbackBudget.totalEstimated,
+            negotiationRange: buildNegotiationRange({ expected: fallbackBudget.totalEstimated, confidence: 0.5, demandRatio: 1 }),
             language: {
                 detected: 'en',
                 translatedToEnglish: false,
@@ -783,6 +1318,10 @@ exports.generateAdvisorReport = async (req, res) => {
     const {
         workDescription, answers = {}, opinions = {},
         city = '', urgent = false, clientBudget, preferredLanguage = '',
+        includeMaterialCost,
+        includeEquipmentCost,
+        ownedMaterials,
+        ownedEquipment,
     } = req.body;
 
     if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
@@ -792,9 +1331,15 @@ exports.generateAdvisorReport = async (req, res) => {
         ? `\nThe client uploaded a photo. Include relevant imageFindings (visible issues commonly seen in such photos).`
         : '';
 
+    const includeMaterials = parseBooleanInput(includeMaterialCost, true);
+    const includeEquipment = parseBooleanInput(includeEquipmentCost, true);
+    const ownedMaterialList = parseOwnershipList(ownedMaterials);
+    const ownedEquipmentList = parseOwnershipList(ownedEquipment);
+
     const budgetNote = clientBudget && Number(clientBudget) > 0
         ? `\nClient Budget: ₹${Number(clientBudget).toLocaleString('en-IN')} (consider this in your estimate and budgetAdvice)`
         : '';
+    const scopeNote = `\nInclude Materials Cost: ${includeMaterials ? 'Yes' : 'No'}\nInclude Equipment Cost: ${includeEquipment ? 'Yes' : 'No'}\nMaterials Already Available: ${ownedMaterialList.length ? ownedMaterialList.join(', ') : 'None'}\nEquipment Already Available: ${ownedEquipmentList.length ? ownedEquipmentList.join(', ') : 'None'}`;
 
     const {
         inputLanguage,
@@ -811,6 +1356,7 @@ exports.generateAdvisorReport = async (req, res) => {
     const userPrompt = `Work: "${workDescriptionEn}"
 City: ${cityEn||'Pune'}
 Urgent: ${urgent?'Yes':'No'}${budgetNote}
+    ${scopeNote}
 ${answersText?`Client Answers:\n${answersText}`:''}
 ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageHint}`;
 
@@ -838,20 +1384,106 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
                 budgetAdvice: 'Please review with a local expert before finalizing.',
                 durationDays: 1,
                 urgent: !!urgent,
+                includeMaterialCost: includeMaterials,
+                includeEquipmentCost: includeEquipment,
+                ownedMaterials: ownedMaterialList,
+                ownedEquipment: ownedEquipmentList,
             },
         });
 
         const skillBlocks  = aiResult.skillBlocks || [];
         const isUrgent     = aiResult.urgent || urgent;
-        const budgetResult = calculateStructuredBudget(skillBlocks, city, isUrgent);
+        const budgetResult = await calculateStructuredBudget(skillBlocks, city, isUrgent);
 
-        const materialsBreakdown = aiResult.materialsBreakdown || [];
-        const equipmentBreakdown = aiResult.equipmentBreakdown || [];
-        const materialsTotal     = materialsBreakdown.reduce((s,m)=>s+(Number(m.estimatedCost)||0),0);
-        const equipmentTotal     = equipmentBreakdown.reduce((s,e)=>s+(Number(e.estimatedCost)||0),0);
+        const conditionSignals = deriveConditionSignals({ workDescription, answers });
+        const marketInsight = await buildMarketInsight({ city, skillBlocks, budgetResult });
+        const labourConfidence = Math.round(
+            ((budgetResult.breakdown || []).reduce((sum, item) => sum + (Number(item.confidence) || 0), 0) / Math.max(1, budgetResult.breakdown.length)) * 100
+        );
+        const labourMin = Number(budgetResult.totalMinEstimated) || Math.round(Number(budgetResult.totalEstimated) * 0.9);
+        const labourMax = Number(budgetResult.totalMaxEstimated) || Math.round(Number(budgetResult.totalEstimated) * 1.15);
+        const breakdownMode = includeMaterials && includeEquipment
+            ? 'full_project'
+            : includeMaterials
+                ? 'labour_plus_material'
+                : 'labour_only';
+
+        const rawMaterialsBreakdown = Array.isArray(aiResult.materialsBreakdown) ? aiResult.materialsBreakdown : [];
+        const rawEquipmentBreakdown = Array.isArray(aiResult.equipmentBreakdown) ? aiResult.equipmentBreakdown : [];
+        const filteredMaterials = includeMaterials
+            ? filterBreakdownByOwnership(rawMaterialsBreakdown, ownedMaterialList)
+            : { items: [], excludedItems: rawMaterialsBreakdown.map((item) => String(item?.item || item?.name || 'unknown item')) };
+        const filteredEquipment = includeEquipment
+            ? filterBreakdownByOwnership(rawEquipmentBreakdown, ownedEquipmentList)
+            : { items: [], excludedItems: rawEquipmentBreakdown.map((item) => String(item?.item || item?.name || 'unknown item')) };
+        const materialsBreakdown = await Promise.all(filteredMaterials.items.map((item) => estimateMaterialOrEquipmentItem({
+            item,
+            kind: 'material',
+            signals: conditionSignals,
+            marketInsight,
+            city,
+        })));
+        const equipmentBreakdown = await Promise.all(filteredEquipment.items.map((item) => estimateMaterialOrEquipmentItem({
+            item,
+            kind: 'equipment',
+            signals: conditionSignals,
+            marketInsight,
+            city,
+        })));
+        const splitMaterials = summarizeBuckets(materialsBreakdown);
+        const splitEquipment = summarizeBuckets(equipmentBreakdown);
+        const materialsTotal     = includeMaterials ? sumEstimatedCost(materialsBreakdown) : 0;
+        const equipmentTotal     = includeEquipment ? sumEstimatedCost(equipmentBreakdown) : 0;
+        const requiredMaterialsTotal = includeMaterials ? splitMaterials.requiredTotal : 0;
+        const optionalMaterialsTotal = includeMaterials ? splitMaterials.optionalTotal : 0;
+        const requiredEquipmentTotal = includeEquipment ? splitEquipment.requiredTotal : 0;
+        const optionalEquipmentTotal = includeEquipment ? splitEquipment.optionalTotal : 0;
         const labourTotal        = budgetResult.totalEstimated;
         const combinedTotal      = labourTotal + materialsTotal + equipmentTotal;
         const grandTotal         = combinedTotal;
+        const sumCostByKey = (items = [], key = 'estimatedCost') => items.reduce((sum, item) => sum + (Number(item?.[key]) || 0), 0);
+        const materialBestCaseTotal = includeMaterials ? sumCostByKey(splitMaterials.requiredItems, 'bestCaseCost') : 0;
+        const materialWorstCaseTotal = includeMaterials ? sumCostByKey(materialsBreakdown, 'worstCaseCost') : 0;
+        const equipmentBestCaseTotal = includeEquipment ? sumCostByKey(splitEquipment.requiredItems, 'bestCaseCost') : 0;
+        const equipmentWorstCaseTotal = includeEquipment ? sumCostByKey(equipmentBreakdown, 'worstCaseCost') : 0;
+        const projectSummary     = {
+            bestCase: labourMin + materialBestCaseTotal + equipmentBestCaseTotal,
+            expected: labourTotal + materialsTotal + equipmentTotal,
+            worstCase: labourMax + materialWorstCaseTotal + equipmentWorstCaseTotal,
+        };
+        const marketplaceCoverage = {
+            materialsFromMarketplace: materialsBreakdown.filter((item) => item.priceSource === 'marketplace_product_prices').length,
+            equipmentFromMarketplace: equipmentBreakdown.filter((item) => item.priceSource === 'marketplace_product_prices').length,
+            totalMaterialItems: materialsBreakdown.length,
+            totalEquipmentItems: equipmentBreakdown.length,
+        };
+        const negotiationRange   = buildNegotiationRange({
+            expected: projectSummary.expected,
+            confidence: labourConfidence / 100,
+            demandRatio: Number(marketInsight.avgDemandRatio) || 1,
+        });
+        const priceReasoning     = buildPriceReasoning({
+            city,
+            budgetResult,
+            signals: conditionSignals,
+            includeMaterials,
+            includeEquipment,
+            ownedMaterialList,
+            ownedEquipmentList,
+            marketInsight,
+            requiredMaterialsTotal,
+            optionalMaterialsTotal,
+            requiredEquipmentTotal,
+            optionalEquipmentTotal,
+        });
+        const costSavingSuggestions = buildCostSavingSuggestions({
+            signals: conditionSignals,
+            includeMaterials,
+            includeEquipment,
+            ownedMaterialList,
+            ownedEquipmentList,
+            marketInsight,
+        });
 
         const clientBudgetNum = Number(clientBudget) || 0;
         const isOverBudget    = clientBudgetNum > 0 && grandTotal > clientBudgetNum;
@@ -888,13 +1520,39 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             isAIEstimate:         true,
             skillBlocks,
             budgetBreakdown:      budgetResult,
+            breakdownMode,
+            labourConfidence,
             labourTotal,
             materialsBreakdown,
             equipmentBreakdown,
+            requiredMaterialsBreakdown: splitMaterials.requiredItems,
+            optionalMaterialsBreakdown: splitMaterials.optionalItems,
+            requiredEquipmentBreakdown: splitEquipment.requiredItems,
+            optionalEquipmentBreakdown: splitEquipment.optionalItems,
             materialsTotal,
             equipmentTotal,
+            requiredMaterialsTotal,
+            optionalMaterialsTotal,
+            requiredEquipmentTotal,
+            optionalEquipmentTotal,
             combinedTotal,
             grandTotal,
+            includeMaterialCost: includeMaterials,
+            includeEquipmentCost: includeEquipment,
+            ownedMaterials: ownedMaterialList,
+            ownedEquipment: ownedEquipmentList,
+            excludedMaterials: filteredMaterials.excludedItems,
+            excludedEquipment: filteredEquipment.excludedItems,
+            localMarketInsight: {
+                ...marketInsight,
+                marketplaceCoverage,
+            },
+            priceReasoning,
+            costSavingSuggestions,
+            bestCaseTotal: projectSummary.bestCase,
+            expectedTotal: projectSummary.expected,
+            worstCaseTotal: projectSummary.worstCase,
+            negotiationRange,
             clientBudget:         clientBudgetNum,
             isOverBudget,
             budgetGap,
@@ -934,7 +1592,22 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
     } catch (err) {
         console.error('generateAdvisorReport error:', err);
         const fallbackSkillBlocks = [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }];
-        const budgetResult = calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
+        const budgetResult = await calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
+        const marketInsight = await buildMarketInsight({ city, skillBlocks: fallbackSkillBlocks, budgetResult });
+        const labourConfidence = Math.round(
+            ((budgetResult.breakdown || []).reduce((sum, item) => sum + (Number(item.confidence) || 0), 0) / Math.max(1, budgetResult.breakdown.length)) * 100
+        );
+        const labourMin = Number(budgetResult.totalMinEstimated) || Math.round(Number(budgetResult.totalEstimated) * 0.9);
+        const labourMax = Number(budgetResult.totalMaxEstimated) || Math.round(Number(budgetResult.totalEstimated) * 1.15);
+        const projectSummary = buildProjectSummary({
+            labourMin,
+            labourExpected: budgetResult.totalEstimated,
+            labourMax,
+            materialsRequired: 0,
+            materialsOptional: 0,
+            equipmentRequired: 0,
+            equipmentOptional: 0,
+        });
         return res.status(200).json({
             jobTitle: workDescription?.slice(0, 60) || 'Home Service Work',
             problemSummary: 'Unable to generate full advisory at the moment.',
@@ -944,6 +1617,8 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             isAIEstimate: true,
             skillBlocks: fallbackSkillBlocks,
             budgetBreakdown: budgetResult,
+            breakdownMode: 'labour_only',
+            labourConfidence,
             labourTotal: budgetResult.totalEstimated,
             materialsBreakdown: [],
             equipmentBreakdown: [],
@@ -951,6 +1626,31 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             equipmentTotal: 0,
             combinedTotal: budgetResult.totalEstimated,
             grandTotal: budgetResult.totalEstimated,
+            priceReasoning: buildPriceReasoning({
+                city,
+                budgetResult,
+                signals: deriveConditionSignals({ workDescription, answers }),
+                includeMaterials: false,
+                includeEquipment: false,
+                marketInsight,
+                ownedMaterialList: [],
+                ownedEquipmentList: [],
+                requiredMaterialsTotal: 0,
+                optionalMaterialsTotal: 0,
+                requiredEquipmentTotal: 0,
+                optionalEquipmentTotal: 0,
+            }),
+            costSavingSuggestions: buildCostSavingSuggestions({
+                signals: deriveConditionSignals({ workDescription, answers }),
+                includeMaterials: false,
+                includeEquipment: false,
+                marketInsight,
+            }),
+            localMarketInsight: marketInsight,
+            bestCaseTotal: projectSummary.bestCase,
+            expectedTotal: projectSummary.expected,
+            worstCaseTotal: projectSummary.worstCase,
+            negotiationRange: buildNegotiationRange({ expected: projectSummary.expected, confidence: labourConfidence / 100, demandRatio: marketInsight.avgDemandRatio }),
             clientBudget: Number(clientBudget) || 0,
             isOverBudget: false,
             budgetGap: 0,

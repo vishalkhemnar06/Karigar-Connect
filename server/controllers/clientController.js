@@ -24,6 +24,7 @@ const { sendCustomSms, sendPasswordChangeOtpSms } = require('../utils/smsHelper'
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const { upsertJobById, removeJobById, getWorkersForJob, submitFeedback } = require('../services/semanticMatchingService');
 const faceClient = require('../utils/faceServiceClient');
+const { cloudinary } = require('../utils/cloudinary');
 
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
@@ -31,6 +32,72 @@ const parseJSON   = (v, fb) => { if (!v) return fb; try { return typeof v === 's
 const validateNeg = (v, l)  => { const n = Number(v); if (!isNaN(n) && n < 0) return `${l} cannot be negative.`; return null; };
 const ALERT_RADIUS_KM = 5;
 const MAX_URGENT_ALERT_RECIPIENTS = 75;
+
+const toPositiveNumber = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const roundTo2 = (value) => Math.round(value * 100) / 100;
+
+const computeJobActualHours = (job) => {
+    if (job?.actualStartTime && job?.actualEndTime) {
+        const ms = new Date(job.actualEndTime).getTime() - new Date(job.actualStartTime).getTime();
+        if (ms > 0) return roundTo2(ms / (1000 * 60 * 60));
+    }
+
+    const slotHours = (job?.workerSlots || [])
+        .map((slot) => {
+            if (!slot?.actualStartTime || !slot?.actualEndTime) return 0;
+            const ms = new Date(slot.actualEndTime).getTime() - new Date(slot.actualStartTime).getTime();
+            return ms > 0 ? ms / (1000 * 60 * 60) : 0;
+        })
+        .filter((h) => h > 0);
+
+    if (!slotHours.length) return 0;
+    return roundTo2(Math.max(...slotHours));
+};
+
+const applyPricingCompletionMeta = (job, options = {}) => {
+    const {
+        finalPaidPrice,
+        workerQuotedPrice,
+        priceSource,
+        captureTimestamp = true,
+    } = options;
+
+    job.pricingMeta = job.pricingMeta || {};
+
+    const finalPaid =
+        toPositiveNumber(finalPaidPrice) ||
+        toPositiveNumber(job.pricingMeta.finalPaidPrice) ||
+        toPositiveNumber(job.payment);
+    if (finalPaid) job.pricingMeta.finalPaidPrice = finalPaid;
+
+    const quoted =
+        toPositiveNumber(workerQuotedPrice) ||
+        toPositiveNumber(job.pricingMeta.workerQuotedPrice) ||
+        toPositiveNumber(job.payment);
+    if (quoted) job.pricingMeta.workerQuotedPrice = quoted;
+
+    const actualHours = computeJobActualHours(job);
+    if (actualHours > 0) job.pricingMeta.actualHours = actualHours;
+
+    if (!toPositiveNumber(job.pricingMeta.estimatedHours)) {
+        const estimatedHours = (job.workerSlots || []).reduce((m, s) => Math.max(m, Number(s?.hoursEstimated || 0)), 0);
+        if (estimatedHours > 0) job.pricingMeta.estimatedHours = estimatedHours;
+    }
+
+    if (['ai', 'manual', 'historical'].includes(priceSource)) {
+        job.pricingMeta.priceSource = priceSource;
+    } else if (!job.pricingMeta.priceSource) {
+        job.pricingMeta.priceSource = 'manual';
+    }
+
+    if (captureTimestamp) {
+        job.pricingMeta.capturedAt = new Date();
+    }
+};
 
 const mapSemanticWorkersToLegacyShape = (matches = []) =>
     matches.map((match) => ({
@@ -500,7 +567,8 @@ const buildWorkerSlots = (bd, skills = [], wr = 1) => {
     if (bd?.breakdown?.length) {
         for (const b of bd.breakdown) {
             const count = Math.max(1, Number(b.count) || 1);
-            const perH  = Math.max(1, Math.round(Math.max(1, Number(b.hours) || 8) / count));
+            // Keep per-worker hours as provided by budget breakdown.
+            const perH  = Math.max(1, Math.round(Number(b.hours) || 8));
             for (let i = 0; i < count; i++) slots.push({ skill: (b.skill || 'general').toLowerCase().trim(), hoursEstimated: perH, assignedWorker: null, status: 'open' });
         }
     } else if (skills.length) {
@@ -991,6 +1059,38 @@ exports.updateClientProfile = async (req, res) => {
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
+exports.getClientDocumentPreviewUrl = async (req, res) => {
+    try {
+        const src = String(req.query?.url || '').trim();
+        if (!src) return res.status(400).json({ message: 'Document URL is required.' });
+
+        const match = src.match(/^https?:\/\/res\.cloudinary\.com\/[^/]+\/(image|raw|video)\/upload\/(?:v\d+\/)?([^?#]+)$/i);
+        if (!match) return res.status(400).json({ message: 'Unsupported document URL.' });
+
+        const resourceType = String(match[1] || 'raw').toLowerCase();
+        const fullPath = decodeURIComponent(match[2] || '');
+        const extMatch = fullPath.match(/\.([a-z0-9]+)$/i);
+        const format = extMatch ? extMatch[1].toLowerCase() : 'pdf';
+        const publicId = fullPath.replace(/\.[a-z0-9]+$/i, '');
+        if (!publicId) return res.status(400).json({ message: 'Invalid Cloudinary public id.' });
+
+        const expiresAt = Math.floor(Date.now() / 1000) + 10 * 60;
+        const signedUrl = cloudinary.url(publicId, {
+            resource_type: resourceType,
+            type: 'upload',
+            secure: true,
+            sign_url: true,
+            expires_at: expiresAt,
+            format,
+        });
+
+        return res.json({ url: signedUrl, expiresAt });
+    } catch (err) {
+        console.error('getClientDocumentPreviewUrl:', err.message);
+        return res.status(500).json({ message: 'Failed to prepare document preview.' });
+    }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET CLIENT JOBS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1023,6 +1123,20 @@ exports.postJob = async (req, res) => {
             negotiable, minBudget, paymentMethod, shift, qaAnswers, urgent, category, experienceRequired,
         } = req.body;
 
+        const pSkills = parseJSON(skills, []);
+        const pLoc = parseJSON(location, {}) || {};
+        const pBD = sanitiseBudgetBreakdown(parseJSON(budgetBreakdown, undefined));
+        const pWR = Math.max(1, Number(workersRequired) || 1);
+        const paymentNum = Math.max(0, Number(payment) || 0);
+        const estimatedTotalNum = Math.max(0, Number(totalEstimatedCost) || Number(pBD?.totalEstimated) || 0);
+        const finalPaymentNum = Math.max(paymentNum, estimatedTotalNum);
+        const maxBlockHours = Array.isArray(pBD?.breakdown)
+            ? pBD.breakdown.reduce((m, b) => Math.max(m, Number(b?.hours) || 0), 0)
+            : 0;
+        const inferredDurationDays = Math.max(0, Number(pBD?.durationDays) || Math.ceil(maxBlockHours / 8));
+        const normalizedDuration = String(duration || '').trim() ||
+            (inferredDurationDays > 0 ? `${inferredDurationDays} day${inferredDurationDays > 1 ? 's' : ''}` : '');
+
         const allowedPaymentMethods = new Set(['cash', 'upi_qr', 'bank_transfer', 'flexible']);
         const normalizedPaymentMethod = allowedPaymentMethods.has(String(paymentMethod || '').trim())
             ? String(paymentMethod).trim()
@@ -1036,6 +1150,13 @@ exports.postJob = async (req, res) => {
         if (errors.length)        return res.status(400).json({ message: errors[0] });
         if (!title?.trim())       return res.status(400).json({ message: 'Job title is required.' });
         if (!description?.trim()) return res.status(400).json({ message: 'Job description is required.' });
+        if (!Array.isArray(pSkills) || !pSkills.length) return res.status(400).json({ message: 'At least one skill is required.' });
+        if (!String(pLoc?.city || '').trim()) return res.status(400).json({ message: 'City is required for pricing and matching.' });
+        if (finalPaymentNum <= 0) return res.status(400).json({ message: 'Budget must be greater than 0.' });
+        if (!normalizedDuration) return res.status(400).json({ message: 'Duration is required.' });
+        if ((negotiable === 'true' || negotiable === true) && Number(minBudget) > 0 && Number(minBudget) >= finalPaymentNum) {
+            return res.status(400).json({ message: 'Minimum budget must be less than offered budget.' });
+        }
 
         if (scheduledTime) {
             const tc = validateWorkTime(scheduledTime);
@@ -1049,11 +1170,6 @@ exports.postJob = async (req, res) => {
         }
 
         const photos  = req.files ? req.files.map(f => f.path) : [];
-        const pSkills = parseJSON(skills, []);
-        const pWR     = Math.max(1, Number(workersRequired) || 1);
-
-        // FIX: sanitise complexity before passing to Job.create()
-        const pBD = sanitiseBudgetBreakdown(parseJSON(budgetBreakdown, undefined));
 
         const job = await Job.create({
             postedBy:            req.user.id,
@@ -1063,12 +1179,12 @@ exports.postJob = async (req, res) => {
             shortDescription:    shortDescription || description.trim().slice(0, 150),
             detailedDescription: detailedDescription || description.trim(),
             skills:              pSkills,
-            payment:             Math.max(0, Number(payment) || 0),
+            payment:             finalPaymentNum,
             paymentMethod:       normalizedPaymentMethod,
-            duration:            duration || '',
+            duration:            normalizedDuration,
             experienceRequired:  experienceRequired || '',
             workersRequired:     pWR,
-            location:            parseJSON(location, {}),
+            location:            pLoc,
             photos,
             scheduledDate,
             scheduledTime,
@@ -1078,7 +1194,7 @@ exports.postJob = async (req, res) => {
             urgent:              urgent === 'true' || urgent === true,
             qaAnswers:           parseJSON(qaAnswers, []),
             budgetBreakdown:     pBD,
-            totalEstimatedCost:  Math.max(0, Number(totalEstimatedCost) || 0),
+            totalEstimatedCost:  estimatedTotalNum || finalPaymentNum,
             workerSlots:         buildWorkerSlots(pBD, pSkills, pWR),
         });
 
@@ -1486,7 +1602,11 @@ exports.completeWorkerTask = async (req, res) => {
         if (!slot || slot.status !== 'filled') return res.status(404).json({ message: 'No active slot found.' });
         slot.status = 'task_completed'; slot.completedAt = new Date(); slot.actualEndTime = new Date();
         await createNotification({ userId: workerId, type: 'job_update', title: 'Task Marked Complete ✅', message: `Your ${slot.skill} task for "${job.title}" has been marked complete. You are now free for new jobs.` });
-        if (job.allSlotsCompleted() && job.completionPhotos?.length) { job.status = 'completed'; job.actualEndTime = new Date(); }
+        if (job.allSlotsCompleted() && job.completionPhotos?.length) {
+            job.status = 'completed';
+            job.actualEndTime = new Date();
+            applyPricingCompletionMeta(job, { captureTimestamp: false });
+        }
         await job.save();
         upsertJobById(job._id).catch((err) => {
             console.error('semantic upsertJobById(completeWorkerTask):', err.message);
@@ -1590,7 +1710,7 @@ exports.submitRating = async (req, res) => {
 
 exports.updateJobStatus = async (req, res) => {
     try {
-        const { status, manualComplete = false } = req.body;
+        const { status, manualComplete = false, finalPaidPrice, workerQuotedPrice, priceSource } = req.body;
         const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (status === 'completed') {
@@ -1611,6 +1731,12 @@ exports.updateJobStatus = async (req, res) => {
             }
             job.actualEndTime = new Date();
             job.applicationsOpen = false;
+            applyPricingCompletionMeta(job, {
+                finalPaidPrice,
+                workerQuotedPrice,
+                priceSource,
+                captureTimestamp: true,
+            });
         }
         job.status = status;
         await job.save();

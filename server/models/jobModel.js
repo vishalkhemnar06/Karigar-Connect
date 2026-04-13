@@ -92,6 +92,34 @@ const jobSchema = new mongoose.Schema({
     shift:               String,
     actualStartTime:     Date,
     actualEndTime:       Date,
+
+    // ── PRICING INTELLIGENCE (Ground Truth for Learning) ─────────────────────────
+    pricingMeta: {
+        // Task characterization
+        taskType:           { type: String, default: '' },        // e.g., 'wall_paint', 'pipe_installation'
+        quantity:           { type: Number, default: 1 },         // dimension of work
+        unit:               { type: String, default: '' },        // 'sqft', 'meters', 'points', 'visit'
+        
+        // Time tracking
+        estimatedHours:     { type: Number, default: 0 },         // from estimate
+        actualHours:        { type: Number, default: 0 },         // computed from actualStartTime/actualEndTime
+        
+        // Pricing ground truth (CRITICAL for learning)
+        workerQuotedPrice:  { type: Number, default: 0 },         // what workers asked for
+        finalPaidPrice:     { type: Number, default: 0 },         // what was actually paid (MOST IMPORTANT)
+        
+        // Market factors
+        demandSupplyRatio:  { type: Number, default: 1.0 },       // (activeJobs / activeWorkers) at time of job
+        
+        // Source and confidence
+        priceSource:        { type: String, enum: ['ai', 'manual', 'historical', ''], default: '' },
+        confidenceScore:    { type: Number, min: 0, max: 1, default: 0 },
+        
+        // Tracking
+        capturedAt:         { type: Date, default: null },        // when this data was finalized
+    },
+    
+    
     visibility:          { type: Boolean, default: true },
     applicationsOpen:    { type: Boolean, default: true },
     workerSlots:         { type: [workerSlotSchema], default: [] },

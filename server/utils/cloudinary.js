@@ -100,11 +100,11 @@ const createUploader = (folder, allowed = ['image']) => {
 
             const cloudinaryParams = {
                 folder: targetFolder,
-                // Keep PDFs as image resource_type so browsers can preview inline more reliably.
-                resource_type: (isImage || isPdf) ? 'image' : 'raw',
+                // Store PDFs as raw resources to avoid restricted PDF delivery on image endpoints.
+                resource_type: isImage ? 'image' : 'raw',
                 // Restrict supported output formats for safety and consistency
                 allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
-                public_id: `${Date.now()}-${safeBaseName}${(isImage || isPdf) ? '' : `.${fileExt}`}`,
+                public_id: `${Date.now()}-${safeBaseName}${isImage ? '' : `.${fileExt}`}`,
             };
 
             if (isImage) {
