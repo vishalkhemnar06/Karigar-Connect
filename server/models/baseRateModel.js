@@ -18,6 +18,12 @@ const baseRateSchema = new mongoose.Schema({
     localHourlyMax:     { type: Number, default: 0 },
     localDayMin:        { type: Number, default: 0 },
     localDayMax:        { type: Number, default: 0 },
+
+    // Optional platform quoted rates retained from CSV bootstrap
+    platformHourlyMin:  { type: Number, default: 0 },
+    platformHourlyMax:  { type: Number, default: 0 },
+    platformDayMin:     { type: Number, default: 0 },
+    platformDayMax:     { type: Number, default: 0 },
     
     // Platform target rates (KarigarConnect)
     platformCostMin:    { type: Number, default: 0 },

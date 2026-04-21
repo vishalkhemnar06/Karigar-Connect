@@ -14,6 +14,7 @@ const User      = require('../models/userModel');
 const Rating    = require('../models/ratingModel');
 const AIHistory = require('../models/aiHistoryModel');
 const Location  = require('../models/locationModel');
+const WorkerDailyProfile = require('../models/workerDailyProfileModel');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const Groq = require('groq-sdk');
@@ -25,13 +26,116 @@ const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passw
 const { upsertJobById, removeJobById, getWorkersForJob, submitFeedback } = require('../services/semanticMatchingService');
 const faceClient = require('../utils/faceServiceClient');
 const { cloudinary } = require('../utils/cloudinary');
+const {
+    buildWorkerDailyProfileResponse,
+    getWorkerDailyProfileSnapshot,
+} = require('../services/workerDailyProfileService');
+const {
+    computeWorkerJobCommute,
+    getClientAcceptanceRuleResult,
+    getCompletedJobsCountMap,
+} = require('../utils/commuteHelper');
 
 const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 const parseJSON   = (v, fb) => { if (!v) return fb; try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return fb; } };
 const validateNeg = (v, l)  => { const n = Number(v); if (!isNaN(n) && n < 0) return `${l} cannot be negative.`; return null; };
+const normalizeQaAnswerValue = (answer) => {
+    if (Array.isArray(answer)) {
+        return answer
+            .map((item) => String(item ?? '').trim())
+            .filter(Boolean)
+            .join(', ');
+    }
+    if (answer === null || answer === undefined) return '';
+    if (typeof answer === 'object') {
+        if (answer.value !== undefined) return String(answer.value).trim();
+        if (answer.label !== undefined) return String(answer.label).trim();
+        try {
+            return JSON.stringify(answer);
+        } catch {
+            return '';
+        }
+    }
+    return String(answer).trim();
+};
+const sanitiseQaAnswers = (qaInput) => {
+    const parsed = parseJSON(qaInput, []);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+        .map((entry) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const question = String(entry.question ?? '').trim();
+            const answer = normalizeQaAnswerValue(entry.answer);
+            if (!question && !answer) return null;
+            return { question, answer };
+        })
+        .filter(Boolean);
+};
+const normalizeJobLocation = (locationInput = {}) => {
+    const src = locationInput && typeof locationInput === 'object' ? locationInput : {};
+    const city = String(src.city || '').trim();
+    const locality = String(src.locality || '').trim();
+    const state = String(src.state || '').trim();
+    const pincode = String(src.pincode || '').trim();
+    const fullAddress = String(src.fullAddress || '').trim();
+    const buildingName = String(src.buildingName || '').trim();
+    const unitNumber = String(src.unitNumber || '').trim();
+    const floorNumber = String(src.floorNumber || '').trim();
+    const latNum = Number(src.lat);
+    const lngNum = Number(src.lng);
+
+    return {
+        city,
+        locality,
+        state,
+        pincode,
+        fullAddress,
+        buildingName,
+        unitNumber,
+        floorNumber,
+        lat: Number.isFinite(latNum) ? latNum : null,
+        lng: Number.isFinite(lngNum) ? lngNum : null,
+    };
+};
 const ALERT_RADIUS_KM = 5;
 const MAX_URGENT_ALERT_RECIPIENTS = 75;
+
+const parseScheduledDateTimeForNotice = (scheduledDate, scheduledTime) => {
+    if (!scheduledDate) return null;
+    const dt = new Date(scheduledDate);
+    if (Number.isNaN(dt.getTime())) return null;
+    const [h, m] = String(scheduledTime || '').split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    dt.setHours(h, m, 0, 0);
+    return dt;
+};
+
+const buildOtherAssignmentNotice = async ({ workerId, excludingJobId, currentClientId }) => {
+    const otherAssignments = await Job.find({
+        _id: { $ne: excludingJobId },
+        assignedTo: workerId,
+        status: { $in: ['scheduled', 'running'] },
+        postedBy: { $ne: currentClientId },
+    }).select('scheduledDate scheduledTime actualStartTime').lean();
+
+    if (!otherAssignments.length) return null;
+
+    const now = Date.now();
+    const starts = otherAssignments
+        .map((j) => (j.actualStartTime ? new Date(j.actualStartTime) : parseScheduledDateTimeForNotice(j.scheduledDate, j.scheduledTime)))
+        .filter((d) => d && !Number.isNaN(d.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+
+    if (!starts.length) {
+        return 'Notice: This worker is already assigned to another job. You may continue, reject, or contact the worker.';
+    }
+
+    const next = starts.find((d) => d.getTime() >= now) || starts[0];
+    const at = next.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `Notice: This worker is already scheduled for another job at ${at}. You may continue, reject, or contact the worker.`;
+};
 
 const toPositiveNumber = (value) => {
     const n = Number(value);
@@ -39,6 +143,26 @@ const toPositiveNumber = (value) => {
 };
 
 const roundTo2 = (value) => Math.round(value * 100) / 100;
+
+const serializeCommute = (commute) => {
+    if (!commute) return null;
+    return {
+        ...commute,
+        arrivalAt: commute.arrivalAt ? new Date(commute.arrivalAt).toISOString() : null,
+        jobStartAt: commute.jobStartAt ? new Date(commute.jobStartAt).toISOString() : null,
+        workerLocationUpdatedAt: commute.workerLocationUpdatedAt ? new Date(commute.workerLocationUpdatedAt).toISOString() : null,
+    };
+};
+
+const buildDailyProfileMap = async (workerIds = []) => {
+    const validIds = workerIds.filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
+    if (!validIds.length) return new Map();
+
+    const docs = await WorkerDailyProfile.find({ workerId: { $in: validIds } })
+        .select('workerId liveLocation travelMethod')
+        .lean();
+    return new Map(docs.map((doc) => [String(doc.workerId), doc]));
+};
 
 const computeJobActualHours = (job) => {
     if (job?.actualStartTime && job?.actualEndTime) {
@@ -58,9 +182,34 @@ const computeJobActualHours = (job) => {
     return roundTo2(Math.max(...slotHours));
 };
 
+const parseSlotFinalPaidInput = (input) => {
+    if (!input) return [];
+
+    if (Array.isArray(input)) {
+        return input
+            .map((row) => ({
+                slotId: String(row?.slotId || '').trim(),
+                amount: toPositiveNumber(row?.amount),
+            }))
+            .filter((row) => row.slotId && row.amount);
+    }
+
+    if (typeof input === 'object') {
+        return Object.entries(input)
+            .map(([slotId, amount]) => ({
+                slotId: String(slotId || '').trim(),
+                amount: toPositiveNumber(amount),
+            }))
+            .filter((row) => row.slotId && row.amount);
+    }
+
+    return [];
+};
+
 const applyPricingCompletionMeta = (job, options = {}) => {
     const {
         finalPaidPrice,
+        slotFinalPaid,
         workerQuotedPrice,
         priceSource,
         captureTimestamp = true,
@@ -68,7 +217,32 @@ const applyPricingCompletionMeta = (job, options = {}) => {
 
     job.pricingMeta = job.pricingMeta || {};
 
+    const explicitSlotRows = Array.isArray(slotFinalPaid) ? slotFinalPaid : [];
+    const normalizedSkillRows = explicitSlotRows
+        .map((row) => ({
+            slotId: row?.slotId ? row.slotId : null,
+            skill: String(row?.skill || '').trim(),
+            workerId: row?.workerId || null,
+            amount: toPositiveNumber(row?.amount) || 0,
+        }))
+        .filter((row) => row.amount > 0);
+
+    if (normalizedSkillRows.length) {
+        const existingRows = Array.isArray(job.pricingMeta.skillFinalPaid) ? job.pricingMeta.skillFinalPaid : [];
+        const mergedRows = new Map();
+        [...existingRows, ...normalizedSkillRows].forEach((row) => {
+            const key = row?.slotId ? `slot:${row.slotId}` : `skill:${row?.skill || ''}:${row?.workerId || ''}`;
+            mergedRows.set(key, row);
+        });
+        job.pricingMeta.skillFinalPaid = [...mergedRows.values()];
+    } else if (!Array.isArray(job.pricingMeta.skillFinalPaid)) {
+        job.pricingMeta.skillFinalPaid = [];
+    }
+
+    const slotTotal = (Array.isArray(job.pricingMeta.skillFinalPaid) ? job.pricingMeta.skillFinalPaid : normalizedSkillRows)
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
     const finalPaid =
+        toPositiveNumber(slotTotal) ||
         toPositiveNumber(finalPaidPrice) ||
         toPositiveNumber(job.pricingMeta.finalPaidPrice) ||
         toPositiveNumber(job.payment);
@@ -266,15 +440,48 @@ function sanitiseBudgetBreakdown(bd) {
     if (!bd) return bd;
     try {
         const parsed = typeof bd === 'string' ? JSON.parse(bd) : bd;
+        if (!parsed || typeof parsed !== 'object') return undefined;
         if (Array.isArray(parsed?.breakdown)) {
             parsed.breakdown = parsed.breakdown.map(block => ({
-                ...block,
+                skill: String(block?.skill || '').trim(),
+                count: Math.max(1, Number(block?.count) || 1),
+                hours: Math.max(1, Number(block?.hours) || 8),
+                baseRate: Math.max(0, Number(block?.baseRate) || 0),
+                rateInputMode: ['hour', 'day', 'visit'].includes(String(block?.rateInputMode || '').toLowerCase())
+                    ? String(block.rateInputMode).toLowerCase()
+                    : '',
+                sourceRatePerHourBase: Math.max(0, Number(block?.sourceRatePerHourBase) || 0),
+                sourceRatePerDayBase: Math.max(0, Number(block?.sourceRatePerDayBase) || 0),
+                sourceRatePerVisitBase: Math.max(0, Number(block?.sourceRatePerVisitBase) || 0),
+                ratePerHourBase: Math.max(0, Number(block?.ratePerHourBase) || 0),
+                ratePerDayBase: Math.max(0, Number(block?.ratePerDayBase) || 0),
+                ratePerVisitBase: Math.max(0, Number(block?.ratePerVisitBase) || 0),
+                ratePerHour: Math.max(0, Number(block?.ratePerHour) || 0),
+                ratePerDay: Math.max(0, Number(block?.ratePerDay) || 0),
+                ratePerVisit: Math.max(0, Number(block?.ratePerVisit) || 0),
+                perWorkerCostBase: Math.max(0, Number(block?.perWorkerCostBase) || 0),
+                perWorkerCost: Math.max(0, Number(block?.perWorkerCost) || 0),
+                appliedDemandMultiplier: Math.max(0, Number(block?.appliedDemandMultiplier) || 1),
+                priceSource: String(block?.priceSource || '').trim(),
                 complexity: COMPLEXITY_MAP[block.complexity] ?? 'normal',
+                complexityMult: Math.max(0, Number(block?.complexityMult) || 1.2),
+                durationFactor: Math.max(0, Number(block?.durationFactor) || 1.0),
+                subtotal: Math.max(0, Number(block?.subtotal) || 0),
+                negotiationAmount: Math.max(0, Number(block?.negotiationAmount) || 0),
+                description: String(block?.description || '').trim(),
             }));
         }
-        return parsed;
+        return {
+            city: String(parsed?.city || '').trim(),
+            breakdown: Array.isArray(parsed?.breakdown) ? parsed.breakdown : [],
+            subtotal: Math.max(0, Number(parsed?.subtotal) || 0),
+            urgent: parsed?.urgent === true || parsed?.urgent === 'true',
+            urgencyMult: Math.max(0, Number(parsed?.urgencyMult) || 1.0),
+            totalEstimated: Math.max(0, Number(parsed?.totalEstimated) || 0),
+            totalWorkers: Math.max(1, Number(parsed?.totalWorkers) || 1),
+        };
     } catch {
-        return bd;
+        return undefined;
     }
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -427,6 +634,69 @@ const enrichClientJobsWithRatings = async (jobs = []) => {
             })),
         })),
     }));
+};
+
+const attachCommuteToClientJobs = async (jobs = []) => {
+    const workerIds = new Set();
+    jobs.forEach((job) => {
+        (job.applicants || []).forEach((app) => {
+            const id = String(app?.workerId?._id || app?.workerId || '');
+            if (id) workerIds.add(id);
+        });
+        (job.subTasks || []).forEach((subTask) => {
+            (subTask?.applicants || []).forEach((app) => {
+                const id = String(app?.workerId?._id || app?.workerId || '');
+                if (id) workerIds.add(id);
+            });
+        });
+    });
+
+    const dailyProfileMap = await buildDailyProfileMap([...workerIds]);
+
+    const withCommute = await Promise.all(jobs.map(async (job) => {
+        const applicants = await Promise.all((job.applicants || []).map(async (app) => {
+            const worker = app?.workerId;
+            const workerId = String(worker?._id || worker || '');
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile: dailyProfileMap.get(workerId) || null,
+                job,
+            });
+            return {
+                ...app,
+                commute: serializeCommute(commute),
+            };
+        }));
+
+        const subTasks = await Promise.all((job.subTasks || []).map(async (subTask) => {
+            const applicantsWithCommute = await Promise.all((subTask?.applicants || []).map(async (app) => {
+                const worker = app?.workerId;
+                const workerId = String(worker?._id || worker || '');
+                const commute = await computeWorkerJobCommute({
+                    worker,
+                    dailyProfile: dailyProfileMap.get(workerId) || null,
+                    job: subTask,
+                });
+                return {
+                    ...app,
+                    commute: serializeCommute(commute),
+                };
+            }));
+
+            return {
+                ...subTask,
+                applicants: applicantsWithCommute,
+            };
+        }));
+
+        return {
+            ...job,
+            applicants,
+            subTasks,
+        };
+    }));
+
+    return withCommute;
 };
 
 const attachClientSubmittedRatings = async (jobs = [], clientId) => {
@@ -645,6 +915,25 @@ const runAutoMaintenance = async (jobs) => {
         if (job.status === 'scheduled' && job.scheduledDate && job.scheduledTime) {
             const [h, m] = job.scheduledTime.split(':').map(Number);
             const sched  = new Date(job.scheduledDate); sched.setHours(h, m, 0, 0);
+
+            if (now >= sched.getTime()) {
+                const openSlots = (job.workerSlots || []).filter((slot) => slot.status === 'open');
+                if (openSlots.length > 0) {
+                    const openSkills = [...new Set(openSlots.map((slot) => String(slot.skill || '').trim()).filter(Boolean))];
+                    openSlots.forEach((slot) => { slot.status = 'cancelled'; });
+                    job.applicationsOpen = false;
+
+                    await createNotification({
+                        userId: job.postedBy,
+                        type: 'job_update',
+                        title: 'Unfilled Slots Auto-Cancelled',
+                        message: `Start time reached for "${job.title}". Unfilled slots were auto-cancelled: ${openSkills.join(', ') || 'general'}.`,
+                        jobId: job._id,
+                    });
+                    changed = true;
+                }
+            }
+
             if (now >= sched.getTime() && job.assignedTo.length > 0) {
                 job.status = 'running'; job.actualStartTime = sched; job.applicationsOpen = false;
                 job.workerSlots.forEach(s => { if (s.status === 'filled') s.actualStartTime = sched; });
@@ -696,38 +985,34 @@ const runAutoMaintenance = async (jobs) => {
             const endMs = job.estimatedJobEndMs ? job.estimatedJobEndMs() : null;
             if (endMs && now >= endMs + 30 * 60 * 1000) {
                 await createNotification({ userId: job.postedBy, type: 'reminder', title: 'Please Complete the Job ⏰', message: `Estimated work time for "${job.title}" has passed. Upload photos, rate workers, and mark complete.` });
+                const clientUser = await User.findById(job.postedBy).select('mobile name');
+                if (clientUser?.mobile) {
+                    await sendCustomSms(
+                        clientUser.mobile,
+                        `KarigarConnect: Reminder - Estimated work time for job "${job.title}" has passed. Please open app and mark worker tasks complete.`
+                    );
+                }
                 job.clientNotifiedCompletion = true; changed = true;
             }
         }
 
-        // 5. Auto-close stale running jobs so old jobs don't remain stuck in running forever.
+        // 5. Do not auto-complete whole jobs from backend maintenance.
+        // Client must explicitly complete the job via updateJobStatus.
         if (job.status === 'running') {
             const endMs = job.estimatedJobEndMs ? job.estimatedJobEndMs() : null;
             const allSlotsDone = job.allSlotsCompleted ? job.allSlotsCompleted() : false;
             const staleByTimeout = !!endMs && now >= endMs + 2 * 60 * 60 * 1000;
-            const readyBySlots = allSlotsDone && (!!endMs ? now >= endMs : true);
+            const reminderDue = allSlotsDone || staleByTimeout;
 
-            if (readyBySlots || staleByTimeout) {
-                job.status = 'completed';
-                job.actualEndTime = new Date();
-                job.applicationsOpen = false;
-                job.clientNotifiedCompletion = true;
-
+            if (reminderDue && !job.clientNotifiedCompletion) {
                 await createNotification({
                     userId: job.postedBy,
-                    type: 'job_update',
-                    title: 'Job Auto-Completed',
-                    message: `"${job.title}" has been auto-completed because the scheduled work window has ended.`,
+                    type: 'reminder',
+                    title: 'Please Confirm Job Completion',
+                    message: `All worker tasks for "${job.title}" are done. Please confirm full job completion from the app when you are satisfied.`,
                 });
 
-                for (const wId of job.assignedTo || []) {
-                    await createNotification({
-                        userId: wId,
-                        type: 'job_update',
-                        title: 'Job Completed',
-                        message: `"${job.title}" has been marked completed.`,
-                    });
-                }
+                job.clientNotifiedCompletion = true;
                 changed = true;
             }
         }
@@ -776,7 +1061,7 @@ const attachSubTasksToParents = async (parentJobs, clientId) => {
     if (!parentIds.length) return parentJobs.map(j => ({ ...j.toObject(), subTasks: [] }));
 
     const subTasks = await Job.find({ postedBy: clientId, parentJobId: { $in: parentIds } })
-        .populate('applicants.workerId',        'name photo karigarId points overallExperience skills verificationStatus mobile')
+        .populate('applicants.workerId',        'name photo karigarId points overallExperience skills verificationStatus mobile address travelMethod')
         .populate('workerSlots.assignedWorker', 'name photo karigarId points mobile')
         .sort({ createdAt: -1 });
 
@@ -797,7 +1082,7 @@ const attachSubTasksToParents = async (parentJobs, clientId) => {
 const loadParentJobWithSubTasks = async (parentId, clientId) => {
     const parents = await Job.find({ _id: parentId, postedBy: clientId, parentJobId: null })
         .populate('assignedTo',                'name photo karigarId points overallExperience mobile')
-        .populate('applicants.workerId',        'name photo karigarId points overallExperience')
+        .populate('applicants.workerId',        'name photo karigarId points overallExperience address travelMethod')
         .populate('workerSlots.assignedWorker', 'name photo karigarId points mobile')
         .populate('parentJobId',                'title');
     if (!parents.length) return null;
@@ -1098,16 +1383,143 @@ exports.getClientJobs = async (req, res) => {
     try {
         const jobs = await Job.find({ postedBy: req.user.id, parentJobId: null })
             .populate('assignedTo',                'name photo karigarId points overallExperience mobile')
-            .populate('applicants.workerId',        'name photo karigarId points overallExperience')
+            .populate('applicants.workerId',        'name photo karigarId points overallExperience address travelMethod')
             .populate('workerSlots.assignedWorker', 'name photo karigarId points mobile')
             .populate('parentJobId',                'title')
             .sort({ createdAt: -1 });
         try { await runAutoMaintenance(jobs); } catch (e) { console.error('Auto-maintenance error:', e.message); }
         const jobsWithSubTasks = await attachSubTasksToParents(jobs, req.user.id);
         const jobsWithRatings = await enrichClientJobsWithRatings(jobsWithSubTasks);
-        const jobsWithSubmittedRatings = await attachClientSubmittedRatings(jobsWithRatings, req.user.id);
-        return res.json(jobsWithSubmittedRatings);
+        const jobsWithCommute = await attachCommuteToClientJobs(jobsWithRatings);
+        const jobsWithSubmittedRatings = await attachClientSubmittedRatings(jobsWithCommute, req.user.id);
+        const jobsWithAutoFlags = (Array.isArray(jobsWithSubmittedRatings) ? jobsWithSubmittedRatings : []).map((job) => {
+            const reason = String(job?.cancellationReason || '').trim().toLowerCase();
+            const autoByReason =
+                reason.includes('auto-cancel')
+                || reason.includes('auto cancel')
+                || reason.includes('auto-delete')
+                || reason.includes('auto deleted')
+                || reason.includes('auto-deleted');
+
+            return {
+                ...job,
+                isAutoCancelledOrDeleted: !!autoByReason,
+            };
+        });
+
+        return res.json(jobsWithAutoFlags);
     } catch { return res.status(500).json({ message: 'Failed to fetch jobs.' }); }
+};
+
+const isHistoryJobForPermanentDelete = (job) => (
+    !!job && (['completed', 'cancelled', 'cancelled_by_client'].includes(job.status) || job.archivedByClient)
+);
+
+const hardDeleteHistoryJobsWithRelations = async (parentJobs = [], clientId) => {
+    const parentIds = parentJobs.map((j) => j._id);
+    if (!parentIds.length) {
+        return { deletedParentJobIds: [], deletedParentCount: 0, deletedTotalCount: 0 };
+    }
+
+    const subTasks = await Job.find({
+        postedBy: clientId,
+        parentJobId: { $in: parentIds },
+    }).select('_id').lean();
+
+    const subTaskIds = subTasks.map((st) => st._id);
+    const allJobIds = [...parentIds, ...subTaskIds];
+
+    await Promise.all(
+        allJobIds.map((jobId) => removeJobById(jobId).catch((err) => {
+            console.error('semantic removeJobById(hardDeleteHistoryJobsWithRelations):', err.message);
+        })),
+    );
+
+    await Promise.all([
+        Rating.deleteMany({ jobId: { $in: allJobIds } }),
+        Location.deleteMany({ jobId: { $in: allJobIds } }),
+    ]);
+
+    await Job.deleteMany({ postedBy: clientId, _id: { $in: allJobIds } });
+
+    return {
+        deletedParentJobIds: parentIds.map((id) => String(id)),
+        deletedParentCount: parentIds.length,
+        deletedTotalCount: allJobIds.length,
+    };
+};
+
+exports.permanentlyDeleteHistoryJob = async (req, res) => {
+    try {
+        const parentJob = await Job.findOne({ _id: req.params.id, postedBy: req.user.id, parentJobId: null });
+        if (!parentJob) return res.status(404).json({ message: 'Job not found.' });
+        if (!isHistoryJobForPermanentDelete(parentJob)) {
+            return res.status(403).json({ message: 'Only completed/cancelled/deleted history jobs can be permanently deleted.' });
+        }
+
+        const result = await hardDeleteHistoryJobsWithRelations([parentJob], req.user.id);
+        return res.json({
+            message: 'History job permanently deleted.',
+            ...result,
+        });
+    } catch (err) {
+        console.error('permanentlyDeleteHistoryJob:', err);
+        return res.status(500).json({ message: 'Failed to permanently delete history job.' });
+    }
+};
+
+exports.permanentlyDeleteSelectedHistoryJobs = async (req, res) => {
+    try {
+        const ids = Array.isArray(req.body?.jobIds) ? req.body.jobIds : [];
+        const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+        if (!validIds.length) return res.status(400).json({ message: 'Select at least one valid history job.' });
+
+        const parentJobs = await Job.find({
+            _id: { $in: validIds },
+            postedBy: req.user.id,
+            parentJobId: null,
+        });
+
+        const historyParents = parentJobs.filter(isHistoryJobForPermanentDelete);
+        if (!historyParents.length) {
+            return res.status(400).json({ message: 'No eligible history jobs found for deletion.' });
+        }
+
+        const result = await hardDeleteHistoryJobsWithRelations(historyParents, req.user.id);
+        return res.json({
+            message: 'Selected history jobs permanently deleted.',
+            ...result,
+        });
+    } catch (err) {
+        console.error('permanentlyDeleteSelectedHistoryJobs:', err);
+        return res.status(500).json({ message: 'Failed to delete selected history jobs.' });
+    }
+};
+
+exports.permanentlyDeleteAllHistoryJobs = async (req, res) => {
+    try {
+        const parentJobs = await Job.find({
+            postedBy: req.user.id,
+            parentJobId: null,
+            $or: [
+                { status: { $in: ['completed', 'cancelled', 'cancelled_by_client'] } },
+                { archivedByClient: true },
+            ],
+        });
+
+        if (!parentJobs.length) {
+            return res.status(400).json({ message: 'No history jobs available to delete.' });
+        }
+
+        const result = await hardDeleteHistoryJobsWithRelations(parentJobs, req.user.id);
+        return res.json({
+            message: 'All history jobs permanently deleted.',
+            ...result,
+        });
+    } catch (err) {
+        console.error('permanentlyDeleteAllHistoryJobs:', err);
+        return res.status(500).json({ message: 'Failed to delete all history jobs.' });
+    }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1123,8 +1535,13 @@ exports.postJob = async (req, res) => {
             negotiable, minBudget, paymentMethod, shift, qaAnswers, urgent, category, experienceRequired,
         } = req.body;
 
-        const pSkills = parseJSON(skills, []);
-        const pLoc = parseJSON(location, {}) || {};
+        const parsedSkills = parseJSON(skills, []);
+        const pSkills = Array.from(new Set(
+            (Array.isArray(parsedSkills) ? parsedSkills : [])
+                .map((s) => String(s || '').trim().toLowerCase())
+                .filter(Boolean),
+        ));
+        const pLoc = normalizeJobLocation(parseJSON(location, {}) || {});
         const pBD = sanitiseBudgetBreakdown(parseJSON(budgetBreakdown, undefined));
         const pWR = Math.max(1, Number(workersRequired) || 1);
         const paymentNum = Math.max(0, Number(payment) || 0);
@@ -1152,6 +1569,10 @@ exports.postJob = async (req, res) => {
         if (!description?.trim()) return res.status(400).json({ message: 'Job description is required.' });
         if (!Array.isArray(pSkills) || !pSkills.length) return res.status(400).json({ message: 'At least one skill is required.' });
         if (!String(pLoc?.city || '').trim()) return res.status(400).json({ message: 'City is required for pricing and matching.' });
+        if (!String(pLoc?.locality || '').trim()) return res.status(400).json({ message: 'Locality is required for locality factor pricing.' });
+        if (!String(pLoc?.state || '').trim()) return res.status(400).json({ message: 'State is required for location validation.' });
+        if (!String(pLoc?.buildingName || '').trim()) return res.status(400).json({ message: 'Building/Home name is required for precise location guidance.' });
+        if (!String(pLoc?.unitNumber || '').trim()) return res.status(400).json({ message: 'Flat/Home number is required for precise location guidance.' });
         if (finalPaymentNum <= 0) return res.status(400).json({ message: 'Budget must be greater than 0.' });
         if (!normalizedDuration) return res.status(400).json({ message: 'Duration is required.' });
         if ((negotiable === 'true' || negotiable === true) && Number(minBudget) > 0 && Number(minBudget) >= finalPaymentNum) {
@@ -1170,6 +1591,9 @@ exports.postJob = async (req, res) => {
         }
 
         const photos  = req.files ? req.files.map(f => f.path) : [];
+        if (photos.length > 3) {
+            return res.status(400).json({ message: 'Maximum 3 photos are allowed.' });
+        }
 
         const job = await Job.create({
             postedBy:            req.user.id,
@@ -1192,7 +1616,7 @@ exports.postJob = async (req, res) => {
             negotiable:          negotiable === 'true' || negotiable === true,
             minBudget:           Math.max(0, Number(minBudget) || 0),
             urgent:              urgent === 'true' || urgent === true,
-            qaAnswers:           parseJSON(qaAnswers, []),
+            qaAnswers:           sanitiseQaAnswers(qaAnswers),
             budgetBreakdown:     pBD,
             totalEstimatedCost:  estimatedTotalNum || finalPaymentNum,
             workerSlots:         buildWorkerSlots(pBD, pSkills, pWR),
@@ -1307,6 +1731,21 @@ exports.repostMissingSkill = async (req, res) => {
         const parentJob = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!parentJob) return res.status(404).json({ message: 'Job not found.' });
         if (!['open','scheduled','running'].includes(parentJob.status)) return res.status(400).json({ message: 'Can only repost skills for active jobs.' });
+
+        if (!parentJob.scheduledDate || !parentJob.scheduledTime) {
+            return res.status(400).json({ message: 'Repost is allowed only for jobs with scheduled date and time.' });
+        }
+
+        const [ph, pm] = String(parentJob.scheduledTime).split(':').map(Number);
+        const parentStart = new Date(parentJob.scheduledDate);
+        parentStart.setHours(ph, pm, 0, 0);
+        const minsToStart = (parentStart.getTime() - Date.now()) / 60000;
+
+        if (minsToStart > 30 || minsToStart <= 0) {
+            return res.status(400).json({
+                message: 'Repost can be done only in the last 30 minutes before job start time.',
+            });
+        }
 
         const slot = parentJob.workerSlots.id(slotId);
         if (!slot) return res.status(404).json({ message: 'Slot not found.' });
@@ -1423,6 +1862,7 @@ exports.cancelSlotRequirement = async (req, res) => {
 exports.respondToApplicant = async (req, res) => {
     try {
         const { workerId, status, feedback, skill: reqSkill } = req.body;
+        let acceptanceNotice = null;
         if (!workerId || !status) return res.status(400).json({ message: 'workerId and status are required.' });
         const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
@@ -1434,13 +1874,44 @@ exports.respondToApplicant = async (req, res) => {
         if (!applicant) return res.status(404).json({ message: 'Applicant not found.' });
 
         if (status === 'accepted') {
-            const conflict = await checkWorkerScheduleConflict(Job, workerId, job._id.toString());
-            if (conflict.conflict) return res.status(409).json({ message: conflict.message });
-
             const skill    = applicant.skill || reqSkill || job.skills?.[0] || 'general';
             const openSlot = job.workerSlots.find(s => s.status === 'open' && s.skill === skill)
                           || job.workerSlots.find(s => s.status === 'open');
             if (!openSlot) return res.status(400).json({ message: `All ${skill} slots are filled.` });
+
+            const workerDoc = await User.findById(workerId).select('travelMethod address');
+            const dailyProfile = await getWorkerDailyProfileSnapshot(workerDoc);
+            const commute = await computeWorkerJobCommute({
+                worker: workerDoc,
+                dailyProfile,
+                job,
+            });
+            const acceptanceRule = getClientAcceptanceRuleResult(commute, { maxDistanceKm: 25, job });
+            if (!acceptanceRule.canAccept) {
+                return res.status(400).json({
+                    message: acceptanceRule.warning || 'Unable to accept worker due to commute constraints.',
+                    commute: serializeCommute(commute),
+                });
+            }
+
+            const conflict = await checkWorkerScheduleConflict(Job, workerId, job._id.toString(), {
+                targetSlotHours: openSlot.hoursEstimated,
+                targetScheduledDate: job.scheduledDate,
+                targetScheduledTime: job.scheduledTime,
+                targetActualStartTime: job.actualStartTime,
+            });
+            if (conflict.conflict) return res.status(409).json({ message: conflict.message });
+
+            acceptanceNotice = await buildOtherAssignmentNotice({
+                workerId,
+                excludingJobId: job._id,
+                currentClientId: req.user.id,
+            });
+            if (acceptanceRule.warning) {
+                acceptanceNotice = acceptanceNotice
+                    ? `${acceptanceNotice} ${acceptanceRule.warning}`
+                    : acceptanceRule.warning;
+            }
 
             openSlot.assignedWorker = workerId; openSlot.status = 'filled';
             applicant.status = 'accepted'; applicant.feedback = feedback || '';
@@ -1466,14 +1937,19 @@ exports.respondToApplicant = async (req, res) => {
                 );
             }
         } else {
-            applicant.status = 'rejected'; applicant.feedback = feedback || '';
-            await createNotification({ userId: workerId, type: 'job_update', title: 'Application Not Selected', message: `Your application for "${job.title}" was not selected.${feedback ? ` Feedback: ${feedback}` : ''}` });
+            const rejectionReason = String(feedback || '').trim();
+            if (!rejectionReason) {
+                return res.status(400).json({ message: 'Please provide a rejection reason.' });
+            }
+
+            applicant.status = 'rejected'; applicant.feedback = rejectionReason;
+            await createNotification({ userId: workerId, type: 'job_update', title: 'Application Not Selected', message: `Your application for "${job.title}" was not selected. Feedback: ${rejectionReason}` });
 
             const workerUser = await User.findById(workerId).select('mobile name');
             if (workerUser?.mobile) {
                 await sendCustomSms(
                     workerUser.mobile,
-                    `KarigarConnect: Your application for job "${job.title}" was rejected.${feedback ? ` Reason: ${feedback}` : ''}`
+                    `KarigarConnect: Your application for job "${job.title}" was rejected. Reason: ${rejectionReason}`
                 );
             }
         }
@@ -1493,7 +1969,14 @@ exports.respondToApplicant = async (req, res) => {
         await job.populate('assignedTo',                'name photo karigarId mobile');
         await job.populate('applicants.workerId',        'name photo karigarId');
         await job.populate('workerSlots.assignedWorker', 'name photo karigarId mobile');
-        return res.json({ message: `Applicant ${status}.`, job });
+        const refreshed = await loadParentJobWithSubTasks(job._id, req.user.id);
+        const [rated] = await enrichClientJobsWithRatings([refreshed || job.toObject()]);
+        const [enrichedJob] = await attachCommuteToClientJobs([rated]);
+        return res.json({
+            message: `Applicant ${status}.`,
+            job: enrichedJob || job,
+            ...(acceptanceNotice ? { notice: acceptanceNotice } : {}),
+        });
     } catch (err) {
         console.error('respondToApplicant:', err);
         return res.status(500).json({ message: 'Failed.' });
@@ -1505,6 +1988,7 @@ exports.hireWorker = async (req, res) => { req.body.status = 'accepted'; return 
 exports.respondToSubTaskApplicant = async (req, res) => {
     try {
         const { subTaskId, workerId, status, feedback } = req.body;
+        let acceptanceNotice = null;
         if (!subTaskId || !workerId || !status) {
             return res.status(400).json({ message: 'subTaskId, workerId and status are required.' });
         }
@@ -1519,11 +2003,42 @@ exports.respondToSubTaskApplicant = async (req, res) => {
         if (!parentJob) return res.status(404).json({ message: 'Parent job not found.' });
 
         if (status === 'accepted') {
-            const conflict = await checkWorkerScheduleConflict(Job, workerId, subTask._id.toString());
-            if (conflict.conflict) return res.status(409).json({ message: conflict.message });
-
             const openSlot = subTask.workerSlots.find(s => s.status === 'open') || subTask.workerSlots[0];
             if (!openSlot) return res.status(400).json({ message: 'No available slot in sub-task.' });
+
+            const workerDoc = await User.findById(workerId).select('travelMethod address');
+            const dailyProfile = await getWorkerDailyProfileSnapshot(workerDoc);
+            const commute = await computeWorkerJobCommute({
+                worker: workerDoc,
+                dailyProfile,
+                job: subTask,
+            });
+            const acceptanceRule = getClientAcceptanceRuleResult(commute, { maxDistanceKm: 25, job: subTask });
+            if (!acceptanceRule.canAccept) {
+                return res.status(400).json({
+                    message: acceptanceRule.warning || 'Unable to accept worker due to commute constraints.',
+                    commute: serializeCommute(commute),
+                });
+            }
+
+            const conflict = await checkWorkerScheduleConflict(Job, workerId, subTask._id.toString(), {
+                targetSlotHours: openSlot.hoursEstimated,
+                targetScheduledDate: subTask.scheduledDate,
+                targetScheduledTime: subTask.scheduledTime,
+                targetActualStartTime: subTask.actualStartTime,
+            });
+            if (conflict.conflict) return res.status(409).json({ message: conflict.message });
+
+            acceptanceNotice = await buildOtherAssignmentNotice({
+                workerId,
+                excludingJobId: subTask._id,
+                currentClientId: req.user.id,
+            });
+            if (acceptanceRule.warning) {
+                acceptanceNotice = acceptanceNotice
+                    ? `${acceptanceNotice} ${acceptanceRule.warning}`
+                    : acceptanceRule.warning;
+            }
 
             openSlot.assignedWorker = workerId;
             openSlot.status = 'filled';
@@ -1552,14 +2067,19 @@ exports.respondToSubTaskApplicant = async (req, res) => {
                 );
             }
         } else {
-            applicant.status = 'rejected'; applicant.feedback = feedback || '';
-            await createNotification({ userId: workerId, type: 'job_update', title: 'Application Not Selected', message: `Your application for "${subTask.title}" was not selected.${feedback ? ` Feedback: ${feedback}` : ''}` });
+            const rejectionReason = String(feedback || '').trim();
+            if (!rejectionReason) {
+                return res.status(400).json({ message: 'Please provide a rejection reason.' });
+            }
+
+            applicant.status = 'rejected'; applicant.feedback = rejectionReason;
+            await createNotification({ userId: workerId, type: 'job_update', title: 'Application Not Selected', message: `Your application for "${subTask.title}" was not selected. Feedback: ${rejectionReason}` });
 
             const workerUser = await User.findById(workerId).select('mobile name');
             if (workerUser?.mobile) {
                 await sendCustomSms(
                     workerUser.mobile,
-                    `KarigarConnect: Your application for sub-task "${subTask.title}" was rejected.${feedback ? ` Reason: ${feedback}` : ''}`
+                    `KarigarConnect: Your application for sub-task "${subTask.title}" was rejected. Reason: ${rejectionReason}`
                 );
             }
         }
@@ -1582,7 +2102,13 @@ exports.respondToSubTaskApplicant = async (req, res) => {
         });
         const parent = await loadParentJobWithSubTasks(req.params.id, req.user.id);
         if (!parent) return res.status(404).json({ message: 'Parent job not found.' });
-        return res.json({ message: `Sub-task applicant ${status}.`, job: parent });
+        const [ratedParent] = await enrichClientJobsWithRatings([parent]);
+        const [enrichedParent] = await attachCommuteToClientJobs([ratedParent]);
+        return res.json({
+            message: `Sub-task applicant ${status}.`,
+            job: enrichedParent || parent,
+            ...(acceptanceNotice ? { notice: acceptanceNotice } : {}),
+        });
     } catch (err) {
         console.error('respondToSubTaskApplicant:', err);
         return res.status(500).json({ message: 'Failed.' });
@@ -1591,7 +2117,7 @@ exports.respondToSubTaskApplicant = async (req, res) => {
 
 exports.completeWorkerTask = async (req, res) => {
     try {
-        const { workerId, slotId } = req.body;
+        const { workerId, slotId, finalPaidPrice, priceSource, workerQuotedPrice } = req.body;
         if (!workerId) return res.status(400).json({ message: 'workerId is required.' });
         const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
@@ -1600,19 +2126,27 @@ exports.completeWorkerTask = async (req, res) => {
             ? job.workerSlots.id(slotId)
             : job.workerSlots.find(s => s.assignedWorker?.toString() === workerId && s.status === 'filled');
         if (!slot || slot.status !== 'filled') return res.status(404).json({ message: 'No active slot found.' });
-        slot.status = 'task_completed'; slot.completedAt = new Date(); slot.actualEndTime = new Date();
-        await createNotification({ userId: workerId, type: 'job_update', title: 'Task Marked Complete ✅', message: `Your ${slot.skill} task for "${job.title}" has been marked complete. You are now free for new jobs.` });
-        if (job.allSlotsCompleted() && job.completionPhotos?.length) {
-            job.status = 'completed';
-            job.actualEndTime = new Date();
-            applyPricingCompletionMeta(job, { captureTimestamp: false });
+
+        const paidAmount = toPositiveNumber(finalPaidPrice) || toPositiveNumber(slot.finalPaidPrice);
+        if (paidAmount) {
+            slot.finalPaidPrice = paidAmount;
         }
+
+        slot.status = 'task_completed'; slot.completedAt = new Date(); slot.actualEndTime = new Date();
+        applyPricingCompletionMeta(job, {
+            finalPaidPrice: paidAmount || 0,
+            slotFinalPaid: [{ slotId: slot._id, skill: slot.skill, workerId: slot.assignedWorker || workerId, amount: paidAmount || 0 }],
+            workerQuotedPrice,
+            priceSource: priceSource || 'manual',
+            captureTimestamp: true,
+        });
+        await createNotification({ userId: workerId, type: 'job_update', title: 'Payment Received ✅', message: `Your ${slot.skill} payment for "${job.title}" has been recorded and the task is marked complete.` });
         await job.save();
         upsertJobById(job._id).catch((err) => {
             console.error('semantic upsertJobById(completeWorkerTask):', err.message);
         });
         await job.populate('workerSlots.assignedWorker', 'name photo karigarId mobile');
-        return res.json({ message: `${slot.skill} task complete.`, job, allDone: job.allSlotsCompleted() });
+        return res.json({ message: `${slot.skill} payment recorded.`, job, allDone: job.allSlotsCompleted(), slotPaid: paidAmount || null });
     } catch (err) {
         console.error('completeWorkerTask:', err);
         return res.status(500).json({ message: 'Failed.' });
@@ -1678,7 +2212,6 @@ exports.submitRating = async (req, res) => {
         const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (!['running','completed'].includes(job.status)) return res.status(400).json({ message: 'Ratings only for running/completed jobs.' });
-        if (job.status === 'running' && !job.completionPhotos?.length) return res.status(400).json({ message: 'Upload completion photos before rating.' });
         let slot = slotId ? job.workerSlots.id(slotId) : null;
         if (!slot) slot = job.workerSlots.find(s => (s.assignedWorker?._id?.toString() || s.assignedWorker?.toString()) === workerId && (!ratingSkill || s.skill === ratingSkill) && !s.ratingSubmitted);
         if (!slot) return res.status(404).json({ message: 'No unrated slot found.' });
@@ -1710,31 +2243,40 @@ exports.submitRating = async (req, res) => {
 
 exports.updateJobStatus = async (req, res) => {
     try {
-        const { status, manualComplete = false, finalPaidPrice, workerQuotedPrice, priceSource } = req.body;
+        const { status, manualComplete = false } = req.body;
         const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (status === 'completed') {
             if (job.status !== 'running') return res.status(400).json({ message: 'Only running jobs can be marked complete.' });
-            if (!manualComplete) {
-                if (!job.completionPhotos?.length) return res.status(400).json({ message: 'Upload completion photos first.' });
-                const unrated = job.workerSlots.filter(s => s.assignedWorker && !['cancelled','open','reposted'].includes(s.status) && !s.ratingSubmitted);
-                if (unrated.length > 0) return res.status(400).json({ message: `Rate all workers first. Unrated: ${[...new Set(unrated.map(s => s.skill))].join(', ')}.` });
-            } else {
-                job.workerSlots.forEach((slot) => {
-                    if (slot.assignedWorker && ['filled', 'scheduled', 'running'].includes(slot.status)) {
-                        slot.status = 'task_completed';
-                        slot.completedAt = slot.completedAt || new Date();
-                        slot.actualEndTime = slot.actualEndTime || new Date();
-                    }
+            const completionSlots = job.workerSlots.filter((slot) => (
+                slot.assignedWorker && !['cancelled', 'open', 'reposted'].includes(slot.status)
+            ));
+
+            const incompleteSlots = completionSlots.filter((slot) => slot.status !== 'task_completed');
+            if (incompleteSlots.length > 0) {
+                return res.status(400).json({
+                    message: `Please pay each assigned worker before final completion. Pending: ${[...new Set(incompleteSlots.map((slot) => slot.skill || 'skill'))].join(', ')}.`,
                 });
-                job.clientNotifiedCompletion = true;
             }
+
+            const unpaidSlots = completionSlots.filter((slot) => !toPositiveNumber(slot.finalPaidPrice));
+            if (unpaidSlots.length > 0) {
+                return res.status(400).json({
+                    message: `Please pay each assigned worker before completion. Pending: ${[...new Set(unpaidSlots.map((slot) => slot.skill || 'skill'))].join(', ')}.`,
+                });
+            }
+
             job.actualEndTime = new Date();
             job.applicationsOpen = false;
             applyPricingCompletionMeta(job, {
-                finalPaidPrice,
-                workerQuotedPrice,
-                priceSource,
+                slotFinalPaid: completionSlots.map((slot) => ({
+                    slotId: slot._id,
+                    skill: slot.skill || 'general',
+                    workerId: slot.assignedWorker || null,
+                    amount: toPositiveNumber(slot.finalPaidPrice),
+                })),
+                finalPaidPrice: completionSlots.reduce((sum, slot) => sum + Number(toPositiveNumber(slot.finalPaidPrice) || 0), 0),
+                priceSource: 'manual',
                 captureTimestamp: true,
             });
         }
@@ -1758,6 +2300,30 @@ exports.uploadCompletionPhotos = async (req, res) => {
         await job.save();
         return res.json({ message: 'Photos uploaded.', completionPhotos: job.completionPhotos });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
+};
+
+exports.removeCompletionPhoto = async (req, res) => {
+    try {
+        const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
+        if (!job) return res.status(404).json({ message: 'Not found.' });
+        if (job.status !== 'running') return res.status(400).json({ message: 'Only for running jobs.' });
+
+        const idx = Number(req.params.photoIndex);
+        if (!Number.isInteger(idx) || idx < 0) {
+            return res.status(400).json({ message: 'Invalid photo index.' });
+        }
+
+        const currentPhotos = Array.isArray(job.completionPhotos) ? job.completionPhotos : [];
+        if (idx >= currentPhotos.length) {
+            return res.status(404).json({ message: 'Photo not found.' });
+        }
+
+        job.completionPhotos = currentPhotos.filter((_, i) => i !== idx);
+        await job.save();
+        return res.json({ message: 'Photo removed.', completionPhotos: job.completionPhotos });
+    } catch {
+        return res.status(500).json({ message: 'Failed.' });
+    }
 };
 
 exports.startJob = async (req, res) => {
@@ -1824,9 +2390,26 @@ exports.removeAssignedWorker = async (req, res) => {
 exports.getJobApplicants = async (req, res) => {
     try {
         const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id })
-            .populate('applicants.workerId', 'name photo karigarId points overallExperience skills verificationStatus mobile');
+            .populate('applicants.workerId', 'name photo karigarId points overallExperience skills verificationStatus mobile address travelMethod');
         if (!job) return res.status(404).json({ message: 'Not found.' });
-        return res.json(job.applicants || []);
+
+        const workerIds = (job.applicants || []).map((app) => String(app?.workerId?._id || app?.workerId || '')).filter(Boolean);
+        const dailyProfileMap = await buildDailyProfileMap(workerIds);
+        const applicants = await Promise.all((job.applicants || []).map(async (app) => {
+            const worker = app?.workerId;
+            const workerId = String(worker?._id || worker || '');
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile: dailyProfileMap.get(workerId) || null,
+                job,
+            });
+            return {
+                ...app.toObject(),
+                commute: serializeCommute(commute),
+            };
+        }));
+
+        return res.json(applicants);
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
@@ -1847,9 +2430,62 @@ exports.getSmartWorkerSuggestions = async (req, res) => {
             console.error('semantic getWorkersForJob(getSmartWorkerSuggestions):', err.message);
             suggestions = await buildSmartWorkerSuggestions(job, { limit: 3 });
         }
+
+        const suggestionIds = [...new Set((suggestions || []).map((s) => String(s?._id || '')).filter(Boolean))];
+        const workers = await User.find({ _id: { $in: suggestionIds }, role: 'worker' })
+            .select('name photo karigarId mobile points overallExperience address travelMethod')
+            .lean();
+        const workerMap = new Map(workers.map((w) => [String(w._id), w]));
+        const dailyProfileMap = await buildDailyProfileMap(suggestionIds);
+        const completedJobsMap = await getCompletedJobsCountMap(Job, workers.map((w) => w._id));
+
+        const enrichedSuggestions = await Promise.all((suggestions || []).map(async (row) => {
+            const workerId = String(row?._id || '');
+            const worker = workerMap.get(workerId) || row;
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile: dailyProfileMap.get(workerId) || null,
+                job,
+            });
+
+            const semanticScore = Number(row?.score ?? row?.semanticScore ?? 0);
+            const ratingScore = Math.max(0, Math.min(1, Number(row?.avgStars || 0) / 5));
+            const pointsScore = Math.max(0, Math.min(1, Number(worker?.points || row?.points || 0) / 1500));
+            const completedJobs = Number(completedJobsMap.get(workerId) || 0);
+            const completionScore = Math.max(0, Math.min(1, completedJobs / 40));
+            const distanceScore = commute?.available
+                ? Math.max(0, Math.min(1, (25 - Number(commute.distanceKm || 25)) / 25))
+                : 0.2;
+
+            const rankingScore = Number((
+                semanticScore * 0.55 +
+                distanceScore * 0.2 +
+                ratingScore * 0.15 +
+                completionScore * 0.05 +
+                pointsScore * 0.05
+            ).toFixed(4));
+
+            return {
+                ...row,
+                _id: workerId,
+                name: worker?.name || row?.name || '',
+                photo: worker?.photo || row?.photo || '',
+                karigarId: worker?.karigarId || row?.karigarId || '',
+                mobile: worker?.mobile || row?.mobile || '',
+                points: Number(worker?.points || row?.points || 0),
+                overallExperience: worker?.overallExperience || row?.overallExperience || '',
+                completedJobs,
+                commute: serializeCommute(commute),
+                rankingScore,
+                rankingScorePercent: Math.round(rankingScore * 100),
+            };
+        }));
+
+        enrichedSuggestions.sort((a, b) => Number(b.rankingScore || 0) - Number(a.rankingScore || 0));
+
         return res.json({
             jobId: job._id,
-            suggestions,
+            suggestions: enrichedSuggestions,
             radiusKm: ALERT_RADIUS_KM,
         });
     } catch (err) {
@@ -1860,9 +2496,13 @@ exports.getSmartWorkerSuggestions = async (req, res) => {
 
 exports.inviteWorkersToJob = async (req, res) => {
     try {
-        const { workerIds } = req.body;
+        const { workerIds, inviteSkill } = req.body;
         if (!Array.isArray(workerIds) || workerIds.length === 0) {
             return res.status(400).json({ message: 'workerIds array is required.' });
+        }
+        const normalizedInviteSkill = String(inviteSkill || '').trim().toLowerCase();
+        if (!normalizedInviteSkill) {
+            return res.status(400).json({ message: 'inviteSkill is required.' });
         }
 
         const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user.id });
@@ -1871,42 +2511,71 @@ exports.inviteWorkersToJob = async (req, res) => {
             return res.status(400).json({ message: 'Job is not accepting outreach right now.' });
         }
 
+        const normalizeSkill = (value) => String(value || '').trim().toLowerCase();
+        const openSlots = Array.isArray(job.workerSlots)
+            ? job.workerSlots.filter((slot) => slot.status === 'open')
+            : [];
+
+        const selectedOpenSlot = openSlots.find((slot) => normalizeSkill(slot.skill) === normalizedInviteSkill);
+        const skillExistsOnJob = (job.skills || []).some((skill) => normalizeSkill(skill) === normalizedInviteSkill);
+        if (!selectedOpenSlot && !skillExistsOnJob) {
+            return res.status(400).json({ message: 'Selected invite skill is not available on this job.' });
+        }
+
+        const inviteSkillLabel = selectedOpenSlot?.skill || (job.skills || []).find((skill) => normalizeSkill(skill) === normalizedInviteSkill) || inviteSkill;
+
         const dedupedIds = [...new Set(workerIds.map((id) => String(id)).filter(Boolean))].slice(0, 10);
         const workers = await User.find({
             _id: { $in: dedupedIds },
             role: 'worker',
             verificationStatus: 'approved',
             availability: true,
-        }).select('_id name mobile');
+        }).select('_id name mobile travelMethod address points overallExperience');
 
         if (!workers.length) return res.status(404).json({ message: 'No eligible workers found.' });
 
-        const invitedSet = new Set((job.invitedWorkers || []).map((iw) => String(iw.workerId)));
+        const dailyProfileMap = await buildDailyProfileMap(workers.map((w) => String(w._id)));
+
         const invitedNow = [];
         for (const worker of workers) {
             const workerId = String(worker._id);
-            if (!invitedSet.has(workerId)) {
-                job.invitedWorkers.push({ workerId: worker._id, invitedAt: new Date() });
-                invitedSet.add(workerId);
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile: dailyProfileMap.get(workerId) || null,
+                job,
+            });
+            const existingInviteIndex = (job.invitedWorkers || []).findIndex((iw) => String(iw.workerId) === workerId);
+            if (existingInviteIndex === -1) {
+                job.invitedWorkers.push({
+                    workerId: worker._id,
+                    inviteSkill: inviteSkillLabel,
+                    inviteSlotId: selectedOpenSlot?._id || null,
+                    invitedAt: new Date(),
+                });
+            } else {
+                job.invitedWorkers[existingInviteIndex].inviteSkill = inviteSkillLabel;
+                job.invitedWorkers[existingInviteIndex].inviteSlotId = selectedOpenSlot?._id || null;
+                job.invitedWorkers[existingInviteIndex].invitedAt = new Date();
             }
-            invitedNow.push(worker);
+            invitedNow.push({ ...worker.toObject(), commute: serializeCommute(commute) });
 
             await createNotification({
                 userId: worker._id,
                 type: job.urgent ? 'urgent_job' : 'job_update',
                 title: job.urgent ? 'Urgent Invite from Client' : 'Direct Job Invite',
-                message: `You are invited to apply for "${job.title}" in ${job.location?.city || 'your area'}.`,
+                message: `You are invited for ${inviteSkillLabel} in "${job.title}" (${job.location?.city || 'your area'}).`,
                 jobId: job._id,
                 data: {
                     invited: true,
                     urgent: !!job.urgent,
+                    inviteSkill: inviteSkillLabel,
                 },
             });
 
             if (worker.mobile) {
                 await sendCustomSms(
                     worker.mobile,
-                    `KarigarConnect: You have a direct ${job.urgent ? 'URGENT ' : ''}invite for job "${job.title}". Open Job Requests to apply.`
+                    `KarigarConnect: You have a direct ${job.urgent ? 'URGENT ' : ''}invite for ${inviteSkillLabel} in "${job.title}". Open Direct Invites to respond.`
                 );
             }
 
@@ -1929,13 +2598,19 @@ exports.inviteWorkersToJob = async (req, res) => {
             role: 'client',
             action: 'job_invite_workers',
             req,
-            metadata: { jobId: job._id, invitedWorkers: invitedNow.map((w) => w._id) },
+            metadata: { jobId: job._id, inviteSkill: inviteSkillLabel, inviteSlotId: selectedOpenSlot?._id || null, invitedWorkers: invitedNow.map((w) => w._id) },
         });
 
         return res.json({
             message: 'Workers invited successfully.',
             invitedCount: invitedNow.length,
-            invitedWorkers: invitedNow.map((w) => ({ _id: w._id, name: w.name, mobile: w.mobile || '' })),
+            inviteSkill: inviteSkillLabel,
+            invitedWorkers: invitedNow.map((w) => ({
+                _id: w._id,
+                name: w.name,
+                mobile: w.mobile || '',
+                commute: w.commute || null,
+            })),
         });
     } catch (err) {
         console.error('inviteWorkersToJob:', err);
@@ -1946,13 +2621,20 @@ exports.inviteWorkersToJob = async (req, res) => {
 exports.getWorkerPublicProfile = async (req, res) => {
     try {
         const w = await findWorkerByIdOrKarigarId(req.params.workerId, {
-            select: 'name photo karigarId skills overallExperience points verificationStatus location address mobile travelMethod',
+            select: 'name photo karigarId skills overallExperience points verificationStatus location address mobile phoneType travelMethod',
         });
         if (!w) return res.status(404).json({ message: 'Not found.' });
+        const dailyProfile = await getWorkerDailyProfileSnapshot(w);
         const completedJobs = await Job.countDocuments({ assignedTo: w._id, status: 'completed' });
         const ratings       = await Rating.find({ worker: w._id }).populate('client','name photo').sort({ createdAt: -1 }).limit(10);
         const avgStars      = ratings.length ? ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length : 0;
-        return res.json({ ...w.toObject(), completedJobs, avgStars: Math.round(avgStars * 10) / 10, ratings });
+        return res.json({
+            ...w.toObject(),
+            completedJobs,
+            avgStars: Math.round(avgStars * 10) / 10,
+            ratings,
+            dailyProfile,
+        });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
@@ -1980,6 +2662,7 @@ exports.generateWorkerProfileSummary = async (req, res) => {
             completedJobs,
             avgStars: Number(stats.avgStars || 0),
             ratingCount: Number(stats.ratingCount || 0),
+            dailyProfile: buildWorkerDailyProfileResponse(await getWorkerDailyProfileSnapshot(worker), worker),
         };
 
         let summary = null;
@@ -2033,8 +2716,11 @@ exports.getAIHistoryItem = async (req, res) => {
 exports.saveAIAnalysis = async (req, res) => {
     try {
         const {
-            title, notes, workDescription, city, urgent, clientBudget,
-            answers, opinions, report, durationDays, budgetBreakdown,
+            title, notes, workDescription, city, locality, urgent, clientBudget,
+            answers, opinions, answersById, preferencesById,
+            questionSet, preferenceQuestionSet,
+            includeTravelCost,
+            report, durationDays, budgetBreakdown,
             recommendation, query, analysis,
         } = req.body;
 
@@ -2045,10 +2731,16 @@ exports.saveAIAnalysis = async (req, res) => {
             notes:           notes || '',
             workDescription: workDescription || query || '',
             city:            city || '',
+            locality:        locality || '',
             urgent:          urgent || false,
+            includeTravelCost: !!includeTravelCost,
             clientBudget:    clientBudget ?? null,
             answers:         answers || {},
             opinions:        opinions || {},
+            answersById:     answersById || {},
+            preferencesById: preferencesById || {},
+            questionSet:     Array.isArray(questionSet) ? questionSet : [],
+            preferenceQuestionSet: Array.isArray(preferenceQuestionSet) ? preferenceQuestionSet : [],
             report:          normalizedReport,
             durationDays:    durationDays || normalizedReport?.durationDays || null,
             budgetBreakdown: budgetBreakdown || normalizedReport?.budgetBreakdown || normalizedReport || null,
@@ -2060,7 +2752,11 @@ exports.saveAIAnalysis = async (req, res) => {
 
 exports.updateAIHistoryItem = async (req, res) => {
     try {
-        const allowed = ['title','notes','workDescription','city','urgent','clientBudget','answers','opinions','report','durationDays','budgetBreakdown','recommendation'];
+        const allowed = [
+            'title','notes','workDescription','city','locality','urgent','includeTravelCost','clientBudget',
+            'answers','opinions','answersById','preferencesById','questionSet','preferenceQuestionSet',
+            'report','durationDays','budgetBreakdown','recommendation',
+        ];
         const updates = {};
         allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
         const item = await AIHistory.findOneAndUpdate(

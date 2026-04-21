@@ -121,7 +121,7 @@ export default function WorkerProposals() {
                                 <Sparkles size={12} className="md:size-4 text-emerald-400" />
                             </div>
                             <p className="text-xl md:text-2xl font-black text-emerald-600">
-                                ₹{totalPayment.toLocaleString('en-IN')}
+                                {totalPayment.toLocaleString('en-IN')}
                             </p>
                             <p className="text-[9px] md:text-xs text-gray-500 font-medium">Total Value</p>
                         </div>
@@ -276,7 +276,7 @@ export default function WorkerProposals() {
                                                 {job.payment > 0 && (
                                                     <span className="inline-flex items-center gap-0.5 md:gap-1 bg-green-50 text-green-700 px-2 md:px-3 py-0.5 md:py-1 rounded-lg text-[9px] md:text-xs font-semibold">
                                                         <IndianRupee size={10} className="md:size-3" />
-                                                        ₹{job.payment.toLocaleString('en-IN')}
+                                                        {job.payment.toLocaleString('en-IN')}
                                                     </span>
                                                 )}
                                                 {job.duration && (

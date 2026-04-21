@@ -1,5 +1,6 @@
 const Job = require('../models/jobModel');
 const User = require('../models/userModel');
+const { findActiveWorkerTask, getActiveTaskBlockMessage } = require('../utils/workerTaskGate');
 
 const CANCEL_APPLICATION_CUTOFF_MINUTES = 30;
 
@@ -30,12 +31,12 @@ const applyForJobByWorker = async ({
         return { ok: false, status: 403, message: 'Not accepting applications.' };
     }
 
-    const running = await Job.findOne({ assignedTo: workerId, status: 'running' }).select('title');
-    if (running) {
+    const activeTask = await findActiveWorkerTask(workerId);
+    if (activeTask) {
         return {
             ok: false,
             status: 403,
-            message: `You have a running job: "${running.title}". Complete it first.`,
+            message: getActiveTaskBlockMessage(activeTask),
         };
     }
 
@@ -149,11 +150,12 @@ const cancelPendingApplicationByWorker = async ({
     }
 
     const now = Date.now();
-    const hasExpired = pending.some((app) => {
+    const enforceCutoff = Number.isFinite(Number(cutoffMinutes));
+    const hasExpired = enforceCutoff && pending.some((app) => {
         const appliedAt = app.appliedAt ? new Date(app.appliedAt).getTime() : 0;
         if (!appliedAt) return true;
         const diffMinutes = (now - appliedAt) / 60000;
-        return diffMinutes > cutoffMinutes;
+        return diffMinutes > Number(cutoffMinutes);
     });
 
     if (hasExpired) {
@@ -164,12 +166,13 @@ const cancelPendingApplicationByWorker = async ({
         };
     }
 
-    job.applicants.forEach((app) => {
-        if (app.workerId?.toString() === String(workerId) && app.status === 'pending') {
-            app.status = 'rejected';
-            app.workerCancelled = true;
-            app.feedback = 'Cancelled by worker within allowed window.';
-        }
+    const removedSkills = pending.map((app) => app.skill).filter(Boolean);
+    (job.applicants || []).forEach((app) => {
+        const isOwnPending = app.workerId?.toString() === String(workerId) && app.status === 'pending';
+        if (!isOwnPending) return;
+        app.status = 'rejected';
+        app.workerCancelled = true;
+        app.feedback = 'Cancelled by worker before assignment';
     });
 
     await job.save();
@@ -178,6 +181,7 @@ const cancelPendingApplicationByWorker = async ({
         ok: true,
         status: 200,
         message: 'Your application has been cancelled.',
+        removedSkills,
         job,
     };
 };

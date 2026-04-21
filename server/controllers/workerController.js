@@ -11,9 +11,59 @@ const { logAuditEvent } = require('../utils/auditLogger');
 const { sendPasswordChangeOtpSms, sendCustomSms } = require('../utils/smsHelper');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const { upsertWorkerById, removeWorkerById, submitFeedback } = require('../services/semanticMatchingService');
+const { findActiveWorkerTask, getActiveTaskBlockMessage } = require('../utils/workerTaskGate');
+const { cancelPendingApplicationByWorker } = require('../services/jobApplicationService');
 const { cloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
+const {
+    getWorkerDailyProfileSnapshot,
+    isWorkerDailyProfileComplete,
+    upsertWorkerDailyProfile,
+} = require('../services/workerDailyProfileService');
+const {
+    computeWorkerJobCommute,
+    getApplyRestrictionResult,
+} = require('../utils/commuteHelper');
 
 const CANCEL_PENALTY = 30;
+
+const normalizeSkillKey = (value) => String(value || '').trim().toLowerCase();
+
+const parseQuotedApplications = (input) => {
+    if (!input) return [];
+
+    const rows = Array.isArray(input)
+        ? input
+        : (typeof input === 'object'
+            ? Object.entries(input).map(([skill, payload]) => ({ skill, ...(payload && typeof payload === 'object' ? payload : { amount: payload }) }))
+            : []);
+
+    return rows
+        .map((row) => {
+            const skill = normalizeSkillKey(row?.skill);
+            const amount = Number(row?.amount ?? row?.quotedPrice ?? row?.quote ?? row?.rate);
+            const quoteRate = Number(row?.quoteRate ?? row?.rate ?? 0);
+            const quoteQuantity = Number(row?.quoteQuantity ?? row?.quantity ?? 0);
+            const quoteBasis = String(row?.quoteBasis || row?.basis || '').trim();
+            return {
+                skill,
+                amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+                quoteRate: Number.isFinite(quoteRate) && quoteRate > 0 ? quoteRate : null,
+                quoteQuantity: Number.isFinite(quoteQuantity) && quoteQuantity > 0 ? quoteQuantity : null,
+                quoteBasis,
+            };
+        })
+        .filter((row) => row.skill);
+};
+
+const serializeCommute = (commute) => {
+    if (!commute) return null;
+    return {
+        ...commute,
+        arrivalAt: commute.arrivalAt ? new Date(commute.arrivalAt).toISOString() : null,
+        jobStartAt: commute.jobStartAt ? new Date(commute.jobStartAt).toISOString() : null,
+        workerLocationUpdatedAt: commute.workerLocationUpdatedAt ? new Date(commute.workerLocationUpdatedAt).toISOString() : null,
+    };
+};
 
 const isLegacyDocumentPath = (value) => {
     if (typeof value !== 'string') return false;
@@ -339,7 +389,8 @@ exports.deleteAccountPermanently = async (req, res) => {
 
 exports.getAvailableJobs = async (req, res) => {
     try {
-        const worker = await User.findById(req.user.id).select('skills');
+        const worker = await User.findById(req.user.id).select('skills travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(worker);
         const wSkills = (worker?.skills || [])
             .map(s => (typeof s === 'string' ? s : s?.name || '').toLowerCase().trim())
             .filter(Boolean);
@@ -355,7 +406,7 @@ exports.getAvailableJobs = async (req, res) => {
 
         const wid = req.user.id.toString();
 
-        const formatted = jobs.map(job => {
+        const formatted = await Promise.all(jobs.map(async (job) => {
             const allOpenSlots = job.workerSlots.filter(s => s.status === 'open');
             const openSlotSummary = {};
             allOpenSlots.forEach(s => { openSlotSummary[s.skill] = (openSlotSummary[s.skill] || 0) + 1; });
@@ -367,12 +418,20 @@ exports.getAvailableJobs = async (req, res) => {
             const myApps = job.applicants.filter(a => a.workerId?.toString() === wid && a.status === 'pending');
             const myHistory = job.applicants.filter(a => a.workerId?.toString() === wid);
             const blockedByCancellation = myHistory.some(a => a.workerCancelled);
+            const myApplicationStatuses = [...new Set(myHistory.map((a) => String(a.status || '').toLowerCase()).filter(Boolean))];
             const relBudget = job.budgetBreakdown?.breakdown || [];
             const invitedRecord = (job.invitedWorkers || []).find(iw => iw.workerId?.toString() === wid);
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile,
+                job,
+            });
 
             return {
                 ...job.toObject(),
                 hasApplied: myApps.length > 0 || blockedByCancellation,
+                hasApplicationHistory: myHistory.length > 0,
+                myApplicationStatuses,
                 myAppliedSkills: myApps.map(a => a.skill),
                 blockedByCancellation,
                 invitedForMe: !!invitedRecord,
@@ -386,8 +445,9 @@ exports.getAvailableJobs = async (req, res) => {
                 subTaskSkill: job.subTaskSkill,
                 parentJobTitle: job.parentJobId?.title || null,
                 parentJobLocation: job.parentJobId?.location || null,
+                commute: serializeCommute(commute),
             };
-        });
+        }));
 
         return res.json(formatted);
     } catch (err) {
@@ -404,18 +464,47 @@ exports.getJobDetails = async (req, res) => {
             .populate('parentJobId', 'title scheduledDate scheduledTime location description');
         if (!job) return res.status(404).json({ message: 'Not found.' });
 
+        let detailJob = job;
+        let parentFull = null;
+        if (job.isSubTask && job.parentJobId?._id) {
+            parentFull = await Job.findById(job.parentJobId._id)
+                .populate('postedBy', 'name photo verificationStatus location address mobile')
+                .populate('workerSlots.assignedWorker', 'name photo karigarId');
+
+            if (parentFull) {
+                const merged = {
+                    ...parentFull.toObject(),
+                    _id: job._id,
+                    isSubTask: true,
+                    subTaskSkill: job.subTaskSkill,
+                    parentJobId: parentFull._id,
+                    scheduledDate: job.scheduledDate || parentFull.scheduledDate,
+                    scheduledTime: job.scheduledTime || parentFull.scheduledTime,
+                    shift: job.shift || parentFull.shift,
+                    duration: job.duration || parentFull.duration,
+                    status: job.status,
+                    applicationsOpen: job.applicationsOpen,
+                    workerSlots: job.workerSlots,
+                    applicants: job.applicants,
+                    assignedTo: job.assignedTo,
+                };
+                detailJob = merged;
+            }
+        }
+
         const [tp, cp] = await Promise.all([
-            Job.countDocuments({ postedBy: job.postedBy._id }),
-            Job.countDocuments({ postedBy: job.postedBy._id, status: 'completed' }),
+            Job.countDocuments({ postedBy: detailJob.postedBy._id }),
+            Job.countDocuments({ postedBy: detailJob.postedBy._id, status: 'completed' }),
         ]);
 
         const wid = req.user.id.toString();
-        const w = await User.findById(wid).select('skills');
+        const w = await User.findById(wid).select('skills travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(w);
         const wSkills = (w?.skills || [])
             .map(s => (typeof s === 'string' ? s : s?.name || '').toLowerCase().trim())
             .filter(Boolean);
 
-        const allOpenSlots = job.workerSlots.filter(s => s.status === 'open');
+        const allOpenSlots = (detailJob.workerSlots || []).filter(s => s.status === 'open');
         const openSlotSummary = {};
         allOpenSlots.forEach(s => { openSlotSummary[s.skill] = (openSlotSummary[s.skill] || 0) + 1; });
 
@@ -423,27 +512,35 @@ exports.getJobDetails = async (req, res) => {
             ? allOpenSlots.filter(s => wSkills.includes(s.skill))
             : allOpenSlots;
 
-        const myApps = job.applicants.filter(a => a.workerId?.toString() === wid && a.status === 'pending');
-        const myHistory = job.applicants.filter(a => a.workerId?.toString() === wid);
+        const myApps = (detailJob.applicants || []).filter(a => a.workerId?.toString() === wid && a.status === 'pending');
+        const myHistory = (detailJob.applicants || []).filter(a => a.workerId?.toString() === wid);
         const blockedByCancellation = myHistory.some(a => a.workerCancelled);
-        const mySlots = job.workerSlots.filter(s =>
+        const mySlots = (detailJob.workerSlots || []).filter(s =>
             (s.assignedWorker?._id || s.assignedWorker)?.toString() === wid
         );
+        const commute = await computeWorkerJobCommute({
+            worker: w,
+            dailyProfile,
+            job: detailJob,
+        });
+
+        const serializedDetailJob = typeof detailJob?.toObject === 'function' ? detailJob.toObject() : detailJob;
 
         return res.json({
-            ...job.toObject(),
+            ...serializedDetailJob,
             clientStats: { totalJobsPosted: tp, completedJobs: cp },
-            hasApplied: job.applicants.some(a => a.workerId?.toString() === wid),
+            hasApplied: (detailJob.applicants || []).some(a => a.workerId?.toString() === wid),
             blockedByCancellation,
             myAppliedSkills: myApps.map(a => a.skill),
-            isAssigned: job.assignedTo.some(id => id?.toString() === wid),
-            applicantCount: job.applicants.length,
+            isAssigned: (detailJob.assignedTo || []).some(id => id?.toString() === wid),
+            applicantCount: (detailJob.applicants || []).length,
             mySlots,
             openSlotSummary,
             relevantSkills: [...new Set(relOpen.map(s => s.skill))],
-            relevantBudgetBlocks: job.budgetBreakdown?.breakdown || [],
-            parentJobTitle: job.parentJobId?.title || null,
-            parentJobDetails: job.parentJobId || null,
+            relevantBudgetBlocks: detailJob.budgetBreakdown?.breakdown || [],
+            parentJobTitle: parentFull?.title || job.parentJobId?.title || null,
+            parentJobDetails: parentFull?.toObject?.() || job.parentJobId || null,
+            commute: serializeCommute(commute),
         });
     } catch (err) {
         console.error('getJobDetails:', err);
@@ -453,7 +550,7 @@ exports.getJobDetails = async (req, res) => {
 
 exports.applyForJob = async (req, res) => {
     try {
-        const { selectedSkills } = req.body;
+        const { selectedSkills, quotedApplications } = req.body;
         const job = await Job.findById(req.params.jobId);
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (!job.applicationsOpen) return res.status(403).json({ message: 'Applications are closed.' });
@@ -461,11 +558,26 @@ exports.applyForJob = async (req, res) => {
             return res.status(403).json({ message: 'Not accepting applications.' });
 
         const wid = req.user.id.toString();
-        const running = await Job.findOne({ assignedTo: wid, status: 'running' });
-        if (running)
-            return res.status(403).json({ message: `You have a running job: "${running.title}". Complete it first.` });
+        const worker = await User.findById(wid).select('skills name karigarId travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(worker);
+        if (!isWorkerDailyProfileComplete(dailyProfile)) {
+            return res.status(403).json({ message: 'Please fill your Daily Details on the dashboard before applying to jobs.' });
+        }
 
-        const worker = await User.findById(wid).select('skills name karigarId');
+        const commute = await computeWorkerJobCommute({
+            worker,
+            dailyProfile,
+            job,
+        });
+        const commuteRule = getApplyRestrictionResult(commute, { maxDistanceKm: 20, job });
+        if (!commuteRule.allowed) {
+            return res.status(403).json({ message: commuteRule.message, commute: serializeCommute(commute) });
+        }
+
+        const activeTask = await findActiveWorkerTask(wid);
+        if (activeTask)
+            return res.status(403).json({ message: getActiveTaskBlockMessage(activeTask) });
+
         const blocked = job.applicants.find(a => a.workerId?.toString() === wid && a.workerCancelled);
         if (blocked)
             return res.status(403).json({ message: 'You cancelled this assignment earlier. You cannot apply again.' });
@@ -489,7 +601,23 @@ exports.applyForJob = async (req, res) => {
         const newSkills = skills2apply.filter(sk => !existing.includes(sk));
         if (!newSkills.length) return res.status(400).json({ message: 'Already applied for these positions.' });
 
-        newSkills.forEach(sk => job.applicants.push({ workerId: wid, skill: sk, status: 'pending' }));
+        const quoteRows = parseQuotedApplications(quotedApplications);
+        const quoteMap = new Map(quoteRows.map((row) => [row.skill, row]));
+
+        newSkills.forEach((sk) => {
+            const quoteRow = quoteMap.get(normalizeSkillKey(sk));
+            const quotedPrice = quoteRow?.amount || null;
+            job.applicants.push({
+                workerId: wid,
+                skill: sk,
+                status: 'pending',
+                quotedPrice: quotedPrice || 0,
+                quoteRate: quoteRow?.quoteRate || quotedPrice || 0,
+                quoteBasis: quoteRow?.quoteBasis || '',
+                quoteQuantity: quoteRow?.quoteQuantity || 0,
+                quotedAt: quotedPrice ? new Date() : null,
+            });
+        });
         await job.save();
 
         submitFeedback({
@@ -502,20 +630,26 @@ exports.applyForJob = async (req, res) => {
         });
 
         const jobLabel = job.isSubTask ? `"${job.title}" (${job.subTaskSkill} sub-task)` : `"${job.title}"`;
+        const quotedSkills = newSkills.filter((sk) => quoteMap.get(normalizeSkillKey(sk))?.amount);
         await createNotification({
             userId: job.postedBy, type: 'application', title: 'New Application 📋',
-            message: `${worker?.name || 'A worker'} applied for ${jobLabel} as: ${newSkills.join(', ')}.`,
+            message: `${worker?.name || 'A worker'} applied for ${jobLabel} as: ${newSkills.join(', ')}.${quotedSkills.length ? ` Quoted price set for ${quotedSkills.join(', ')}.` : ''}`,
         });
 
         const clientUser = await User.findById(job.postedBy).select('mobile name');
         if (clientUser?.mobile) {
             await sendCustomSms(
                 clientUser.mobile,
-                `KarigarConnect: ${worker?.name || 'A worker'} applied for your job "${job.title}" as ${newSkills.join(', ')}.`
+                `KarigarConnect: ${worker?.name || 'A worker'} applied for your job "${job.title}" as ${newSkills.join(', ')}.${quotedSkills.length ? ' Quoted price added.' : ''}`
             );
         }
 
-        return res.json({ message: 'Applied successfully.', appliedSkills: newSkills });
+        return res.json({
+            message: 'Applied successfully.',
+            appliedSkills: newSkills,
+            commute: serializeCommute(commute),
+            notice: commuteRule.warning || commute.etaVarianceNote || '',
+        });
     } catch (err) {
         console.error('applyForJob:', err);
         return res.status(500).json({ message: 'Failed to apply.' });
@@ -532,12 +666,27 @@ exports.applyForSubTask = async (req, res) => {
         if (subTask.parentJobId?.toString() !== jobId) return res.status(400).json({ message: 'Sub-task mismatch.' });
         if (!subTask.applicationsOpen) return res.status(403).json({ message: 'Applications closed.' });
         if (!['open', 'scheduled'].includes(subTask.status)) return res.status(403).json({ message: 'Not accepting applications.' });
+        const worker = await User.findById(wid).select('karigarId name skills travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(worker);
+        if (!isWorkerDailyProfileComplete(dailyProfile)) {
+            return res.status(403).json({ message: 'Please fill your Daily Details on the dashboard before applying to jobs.' });
+        }
+        const commute = await computeWorkerJobCommute({
+            worker,
+            dailyProfile,
+            job: subTask,
+        });
+        const commuteRule = getApplyRestrictionResult(commute, { maxDistanceKm: 20, job: subTask });
+        if (!commuteRule.allowed) {
+            return res.status(403).json({ message: commuteRule.message, commute: serializeCommute(commute) });
+        }
+        const activeTask = await findActiveWorkerTask(wid);
+        if (activeTask) return res.status(403).json({ message: getActiveTaskBlockMessage(activeTask) });
         if (subTask.applicants.find(a => a.workerId?.toString() === wid && a.workerCancelled))
             return res.status(403).json({ message: 'You cancelled this earlier. Cannot re-apply.' });
         if (subTask.applicants.some(a => a.workerId?.toString() === wid))
             return res.status(400).json({ message: 'Already applied.' });
 
-        const workerDoc = await User.findById(wid).select('skills name');
         const skill = (subTask.subTaskSkill || 'general').toLowerCase();
         subTask.applicants.push({ workerId: wid, skill, status: 'pending' });
         await subTask.save();
@@ -551,18 +700,23 @@ exports.applyForSubTask = async (req, res) => {
         });
         await createNotification({
             userId: subTask.postedBy, type: 'application', title: 'Sub-task Application 📋',
-            message: `${workerDoc?.name || 'A worker'} applied for the "${skill}" sub-task of "${subTask.title}".`,
+            message: `${worker?.name || 'A worker'} applied for the "${skill}" sub-task of "${subTask.title}".`,
         });
 
         const clientUser = await User.findById(subTask.postedBy).select('mobile');
         if (clientUser?.mobile) {
             await sendCustomSms(
                 clientUser.mobile,
-                `KarigarConnect: ${workerDoc?.name || 'A worker'} applied for your sub-task "${subTask.title}" (${skill}).`
+                `KarigarConnect: ${worker?.name || 'A worker'} applied for your sub-task "${subTask.title}" (${skill}).`
             );
         }
 
-        return res.json({ message: 'Applied to sub-task successfully.', skill });
+        return res.json({
+            message: 'Applied to sub-task successfully.',
+            skill,
+            commute: serializeCommute(commute),
+            notice: commuteRule.warning || commute.etaVarianceNote || '',
+        });
     } catch (err) {
         console.error('applyForSubTask:', err);
         return res.status(500).json({ message: 'Failed.' });
@@ -572,6 +726,8 @@ exports.applyForSubTask = async (req, res) => {
 exports.getWorkerBookings = async (req, res) => {
     try {
         const wid = req.user.id;
+        const worker = await User.findById(wid).select('travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(worker);
         const jobs = await Job.find({
             $or: [{ 'applicants.workerId': wid }, { assignedTo: wid }, { cancelledWorkerId: wid }],
         })
@@ -580,13 +736,18 @@ exports.getWorkerBookings = async (req, res) => {
             .populate('parentJobId', 'title scheduledDate scheduledTime')
             .sort({ createdAt: -1 });
 
-        const annotated = jobs.map(job => {
+        const annotated = await Promise.all(jobs.map(async (job) => {
             const mySlots = job.workerSlots.filter(s =>
                 (s.assignedWorker?._id || s.assignedWorker)?.toString() === wid.toString()
             );
             const cancelCheck = canWorkerCancelJob(job);
-            return { ...job.toObject(), mySlots, cancelCheck };
-        });
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile,
+                job,
+            });
+            return { ...job.toObject(), mySlots, cancelCheck, commute: serializeCommute(commute) };
+        }));
         return res.json(annotated);
     } catch (err) {
         console.error('getWorkerBookings:', err);
@@ -695,6 +856,7 @@ exports.getWorkerProfile = async (req, res) => {
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const normalized = await normalizeWorkerDocumentUrls(w);
         const sanitized = sanitizeWorkerSensitiveFields(normalized);
+        const dailyProfile = await getWorkerDailyProfileSnapshot(sanitized);
         const workerObjectId = new mongoose.Types.ObjectId(req.user.id);
         const [ratingStats] = await Rating.aggregate([
             { $match: { worker: workerObjectId } },
@@ -713,8 +875,43 @@ exports.getWorkerProfile = async (req, res) => {
             ...sanitized,
             averageRating: avgStars,
             totalRatings,
+            dailyProfile,
+            dailyProfileComplete: isWorkerDailyProfileComplete(dailyProfile),
         });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
+};
+
+exports.getWorkerDailyProfile = async (req, res) => {
+    try {
+        const worker = await User.findById(req.user.id).select('karigarId name skills');
+        if (!worker) return res.status(404).json({ message: 'Not found.' });
+
+        const profile = await getWorkerDailyProfileSnapshot(worker);
+        return res.json({
+            data: profile,
+            dailyProfileComplete: isWorkerDailyProfileComplete(profile),
+        });
+    } catch (err) {
+        console.error('getWorkerDailyProfile:', err);
+        return res.status(500).json({ message: 'Failed to load daily profile.' });
+    }
+};
+
+exports.updateWorkerDailyProfile = async (req, res) => {
+    try {
+        const worker = await User.findById(req.user.id).select('_id karigarId name skills');
+        if (!worker) return res.status(404).json({ message: 'Not found.' });
+
+        const updated = await upsertWorkerDailyProfile({ worker, payload: req.body || {} });
+        const data = await getWorkerDailyProfileSnapshot(worker);
+        return res.json({
+            data,
+            dailyProfileComplete: isWorkerDailyProfileComplete(updated),
+        });
+    } catch (err) {
+        console.error('updateWorkerDailyProfile:', err);
+        return res.status(500).json({ message: 'Failed to save daily profile.' });
+    }
 };
 
 exports.updateWorkerProfile = async (req, res) => {
@@ -888,6 +1085,7 @@ exports.getPublicWorkerProfile = async (req, res) => {
             populate: { path: 'reviewLock.lockedBy', select: 'name mobile karigarId' },
         });
         if (!w) return res.status(404).json({ message: 'Not found.' });
+        const dailyProfile = await getWorkerDailyProfileSnapshot(w);
 
         const [completedJobs, ratings, rankCount, completedJobDocs] = await Promise.all([
             Job.countDocuments({ assignedTo: w._id, status: 'completed' }),
@@ -899,14 +1097,14 @@ exports.getPublicWorkerProfile = async (req, res) => {
         const avgStars = ratings.length
             ? Math.round(ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length * 10) / 10 : 0;
         const workPhotos = completedJobDocs.flatMap(j => j.completionPhotos || []).slice(0, 12);
-        return res.json({ ...w.toObject(), completedJobs, ratings, rank: rankCount + 1, avgStars, workPhotos });
+        return res.json({ ...w.toObject(), completedJobs, ratings, rank: rankCount + 1, avgStars, workPhotos, dailyProfile });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
 exports.getAllKarigars = async (req, res) => {
     try {
         const workers = await User.find({ role: 'worker', verificationStatus: 'approved' })
-            .select('name karigarId photo points availability verificationStatus skills experience overallExperience address')
+            .select('name karigarId photo mobile phoneType points availability verificationStatus skills experience overallExperience address')
             .sort({ points: -1 }).lean();
         const ids = workers.map(w => w._id);
         const ratingAgg = await Rating.aggregate([
@@ -954,12 +1152,64 @@ exports.getMyComplaints = async (req, res) => {
 
 exports.getNearClients = async (req, res) => {
     try {
+        const normalizeText = (value) => String(value || '').trim().toLowerCase();
+        const toFiniteNumber = (value) => {
+            const num = Number(value);
+            return Number.isFinite(num) ? num : null;
+        };
+        const haversineKm = (lat1, lng1, lat2, lng2) => {
+            const toRad = (deg) => (deg * Math.PI) / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLng = toRad(lng2 - lng1);
+            const a =
+                Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+            return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        };
+
         const worker = await User.findById(req.user.id).select('address');
-        const city = worker?.address?.city;
+        const city = String(worker?.address?.city || '').trim();
+        const locality = String(worker?.address?.locality || '').trim();
+        const workerLat = toFiniteNumber(worker?.address?.latitude);
+        const workerLng = toFiniteNumber(worker?.address?.longitude);
         if (!city) return res.json([]);
-        const clients = await User.find({ role: 'client', 'address.city': { $regex: new RegExp(city, 'i') } })
-            .select('name photo verificationStatus address mobile').limit(20);
-        const clientIds = clients.map(c => c._id);
+
+        const cityRegex = new RegExp(city, 'i');
+        const localityRegex = locality ? new RegExp(locality, 'i') : null;
+
+        const clients = await User.find({
+            role: 'client',
+            'address.city': { $regex: cityRegex },
+            ...(localityRegex ? { 'address.locality': { $regex: localityRegex } } : {}),
+        })
+            .select('name photo verificationStatus address mobile karigarId userId')
+            .limit(100)
+            .lean();
+
+        const withinRadius = clients
+            .map((client) => {
+                const cLat = toFiniteNumber(client?.address?.latitude);
+                const cLng = toFiniteNumber(client?.address?.longitude);
+                if (!Number.isFinite(workerLat) || !Number.isFinite(workerLng) || !Number.isFinite(cLat) || !Number.isFinite(cLng)) {
+                    return { ...client, distanceKm: null };
+                }
+                const distanceKm = haversineKm(workerLat, workerLng, cLat, cLng);
+                return { ...client, distanceKm };
+            })
+            .filter((client) => {
+                if (Number.isFinite(client.distanceKm)) return client.distanceKm <= 5;
+                const cityMatch = normalizeText(client?.address?.city) === normalizeText(city);
+                const localityMatch = locality ? normalizeText(client?.address?.locality) === normalizeText(locality) : true;
+                return cityMatch && localityMatch;
+            })
+            .sort((a, b) => {
+                const aDistance = Number.isFinite(a.distanceKm) ? a.distanceKm : Number.MAX_SAFE_INTEGER;
+                const bDistance = Number.isFinite(b.distanceKm) ? b.distanceKm : Number.MAX_SAFE_INTEGER;
+                return aDistance - bDistance;
+            })
+            .slice(0, 20);
+
+        const clientIds = withinRadius.map(c => c._id);
         const jobs = await Job.find({ postedBy: { $in: clientIds } })
             .select('postedBy title status createdAt').sort({ createdAt: -1 }).lean();
         const jobsByClient = {};
@@ -969,10 +1219,10 @@ exports.getNearClients = async (req, res) => {
             if (!jobsByClient[cId]) jobsByClient[cId] = [];
             jobsByClient[cId].push(j);
         });
-        return res.json(clients.map(c => {
+        return res.json(withinRadius.map(c => {
             const list = jobsByClient[c._id.toString()] || [];
             return {
-                ...c.toObject(),
+                ...c,
                 totalPosted: list.length,
                 totalCompleted: list.filter(j => j.status === 'completed').length,
                 recentJobs: list.slice(0, 3).map(j => ({ title: j.title, status: j.status })),
@@ -988,6 +1238,9 @@ exports.getNearClients = async (req, res) => {
 exports.getDirectInvites = async (req, res) => {
     try {
         const workerId = req.user.id;
+        const workerIdStr = String(workerId);
+        const worker = await User.findById(workerId).select('travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(worker);
         // Find all jobs where this worker is in invitedWorkers array but hasn't applied yet
         const jobs = await Job.find({
             'invitedWorkers.workerId': workerId,
@@ -997,26 +1250,87 @@ exports.getDirectInvites = async (req, res) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        const invites = jobs.map(job => {
-            const invite = job.invitedWorkers.find(iw => iw.workerId?.toString() === workerId);
-            const hasApplied = job.applicants?.some(a => a.workerId?.toString() === workerId);
+        const normalizeSkill = (value) => String(value || '').trim().toLowerCase();
+
+        const invites = await Promise.all(jobs.map(async (job) => {
+            const invite = job.invitedWorkers.find(iw => iw.workerId?.toString() === workerIdStr);
+            const hasApplied = job.applicants?.some(a => a.workerId?.toString() === workerIdStr);
+
+            const invitedSkill = String(invite?.inviteSkill || '').trim();
+            const invitedSlot = (job.workerSlots || []).find((slot) => {
+                if (!invite?.inviteSlotId) return false;
+                return slot?._id?.toString?.() === invite.inviteSlotId?.toString?.();
+            }) || (job.workerSlots || []).find((slot) => normalizeSkill(slot?.skill) === normalizeSkill(invitedSkill));
+
+            const openSlots = Array.isArray(job.workerSlots)
+                ? job.workerSlots.filter((slot) => slot?.status === 'open')
+                : [];
+            const inferredSkillFromSlot = String(invitedSlot?.skill || '').trim();
+            const inferredSkillFromOpenSlot = openSlots.length === 1 ? String(openSlots[0]?.skill || '').trim() : '';
+            const inferredSkillFromJobSkills = Array.isArray(job.skills) && job.skills.length === 1
+                ? String(job.skills[0] || '').trim()
+                : '';
+            const effectiveInvitedSkill = invitedSkill || inferredSkillFromSlot || inferredSkillFromOpenSlot || inferredSkillFromJobSkills;
+
+            const budgetBlock = (job?.budgetBreakdown?.breakdown || []).find(
+                (entry) => normalizeSkill(entry?.skill) === normalizeSkill(effectiveInvitedSkill)
+            )
+                || (job?.budgetBreakdown?.breakdown || []).find(
+                    (entry) => normalizeSkill(entry?.skill) === normalizeSkill(invitedSlot?.skill)
+                )
+                || ((job?.budgetBreakdown?.breakdown || []).length === 1 ? (job?.budgetBreakdown?.breakdown || [])[0] : null)
+                || null;
+
+            const blockCount = Math.max(1, Number(budgetBlock?.count) || 1);
+            const blockSubtotal = Number(budgetBlock?.subtotal || 0);
+            const fallbackBlockEstimate = Math.round(
+                Number(budgetBlock?.baseRate || 0)
+                * Math.max(1, Number(budgetBlock?.hours || invitedSlot?.hoursEstimated || 0) || 1)
+                * Math.max(1, Number(budgetBlock?.complexityMult || 1) || 1)
+                * Math.max(1, Number(budgetBlock?.durationFactor || 1) || 1)
+            );
+            const invitedSkillCost = blockSubtotal > 0
+                ? Math.round(blockSubtotal / blockCount)
+                : (fallbackBlockEstimate > 0 ? Math.round(fallbackBlockEstimate / blockCount) : null);
+            const invitedNegotiationAmount = budgetBlock?.negotiationAmount != null
+                ? Number(budgetBlock.negotiationAmount)
+                : (budgetBlock?.negotiationMin != null ? Number(budgetBlock.negotiationMin) : null);
+
+            const invitedHours = Number(invitedSlot?.hoursEstimated || budgetBlock?.hours || 0);
+            const commute = await computeWorkerJobCommute({
+                worker,
+                dailyProfile,
+                job,
+            });
             return {
                 jobId: job._id,
                 title: job.title,
+                shortDescription: job.shortDescription || '',
+                detailedDescription: job.detailedDescription || '',
                 description: job.shortDescription || job.description,
                 category: job.category,
                 skills: job.skills,
-                payment: job.payment,
-                duration: job.duration,
                 location: job.location,
                 urgent: job.urgent,
                 workersRequired: job.workersRequired,
                 postedBy: job.postedBy,
-                invitedAt: invite.invitedAt,
+                invitedAt: invite?.invitedAt || null,
                 hasApplied,
                 status: job.status,
+                scheduledDate: job.scheduledDate || null,
+                scheduledTime: job.scheduledTime || '',
+                shift: job.shift || '',
+                photos: Array.isArray(job.photos) ? job.photos : [],
+                qaAnswers: Array.isArray(job.qaAnswers) ? job.qaAnswers : [],
+                invitedSkill: effectiveInvitedSkill || '',
+                invitedSlotId: invitedSlot?._id || invite?.inviteSlotId || null,
+                invitedSkillCost,
+                invitedNegotiationAmount,
+                invitedHours,
+                invitedDuration: invitedHours > 0 ? `${invitedHours} hour${invitedHours === 1 ? '' : 's'}` : '',
+                commute: serializeCommute(commute),
             };
-        });
+        }));
 
         return res.json({ invites, total: invites.length });
     } catch (err) {
@@ -1033,6 +1347,24 @@ exports.acceptDirectInvite = async (req, res) => {
 
         const job = await Job.findById(jobId);
         if (!job) return res.status(404).json({ message: 'Job not found.' });
+        const activeTask = await findActiveWorkerTask(workerId);
+        if (activeTask) return res.status(403).json({ message: getActiveTaskBlockMessage(activeTask) });
+
+        const worker = await User.findById(workerId).select('travelMethod address');
+        const dailyProfile = await getWorkerDailyProfileSnapshot(worker);
+        if (!isWorkerDailyProfileComplete(dailyProfile)) {
+            return res.status(403).json({ message: 'Please fill your Daily Details on the dashboard before applying to jobs.' });
+        }
+
+        const commute = await computeWorkerJobCommute({
+            worker,
+            dailyProfile,
+            job,
+        });
+        const commuteRule = getApplyRestrictionResult(commute, { maxDistanceKm: 20, job });
+        if (!commuteRule.allowed) {
+            return res.status(403).json({ message: commuteRule.message, commute: serializeCommute(commute) });
+        }
 
         // Check if worker was invited
         const inviteIndex = job.invitedWorkers.findIndex(iw => iw.workerId?.toString() === workerId);
@@ -1044,7 +1376,9 @@ exports.acceptDirectInvite = async (req, res) => {
         }
 
         // Add to applicants
-        job.applicants.push({ workerId, skill: 'general', status: 'pending' });
+        const invite = job.invitedWorkers[inviteIndex] || null;
+        const invitedSkill = String(invite?.inviteSkill || '').trim();
+        job.applicants.push({ workerId, skill: invitedSkill || 'general', status: 'pending' });
         job.invitedWorkers.splice(inviteIndex, 1); // Remove from invites after accepting
         await job.save();
 
@@ -1062,7 +1396,12 @@ exports.acceptDirectInvite = async (req, res) => {
             source: 'worker_accept_invite',
         }).catch(() => null);
 
-        return res.json({ message: 'Invite accepted. Your application has been submitted.', job: { _id: job._id, title: job.title } });
+        return res.json({
+            message: 'Invite accepted. Your application has been submitted.',
+            job: { _id: job._id, title: job.title },
+            commute: serializeCommute(commute),
+            notice: commuteRule.warning || commute.etaVarianceNote || '',
+        });
     } catch (err) {
         console.error('acceptDirectInvite:', err);
         return res.status(500).json({ message: 'Failed to accept invite.' });
@@ -1088,5 +1427,39 @@ exports.rejectDirectInvite = async (req, res) => {
     } catch (err) {
         console.error('rejectDirectInvite:', err);
         return res.status(500).json({ message: 'Failed to reject invite.' });
+    }
+};
+
+exports.cancelPendingJobApplication = async (req, res) => {
+    try {
+        const wid = req.user.id.toString();
+        const result = await cancelPendingApplicationByWorker({
+            jobId: req.params.jobId,
+            workerId: wid,
+            cutoffMinutes: null,
+        });
+
+        if (!result.ok) {
+            return res.status(result.status || 400).json({ message: result.message || 'Failed to cancel application.' });
+        }
+
+        const job = result.job;
+        const worker = await User.findById(wid).select('name');
+        await createNotification({
+            userId: job.postedBy,
+            type: 'job_update',
+            title: 'Application Withdrawn',
+            message: `${worker?.name || 'A worker'} has withdrawn application for "${job.title}".${result.removedSkills?.length ? ` Skills: ${result.removedSkills.join(', ')}.` : ''}`,
+            jobId: job._id,
+        });
+
+        return res.json({
+            message: result.message,
+            removedSkills: result.removedSkills || [],
+            jobId: job._id,
+        });
+    } catch (err) {
+        console.error('cancelPendingJobApplication:', err);
+        return res.status(500).json({ message: 'Failed to cancel application.' });
     }
 };

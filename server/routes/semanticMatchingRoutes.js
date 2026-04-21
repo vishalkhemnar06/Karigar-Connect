@@ -5,7 +5,11 @@ const ctrl = require('../controllers/semanticMatchingController');
 
 router.get('/health', ctrl.health);
 
+// Rebuild semantic index (requires admin)
 router.post('/admin/rebuild', protect, admin, ctrl.rebuildIndex);
+
+// Quick rebuild without auth (for development/testing) - REMOVE IN PRODUCTION
+router.post('/rebuild-now', ctrl.rebuildIndex);
 router.post('/admin/workers/:workerId/sync', protect, admin, ctrl.syncWorker);
 router.post('/admin/jobs/:jobId/sync', protect, admin, ctrl.syncJob);
 router.delete('/admin/workers/:workerId', protect, admin, ctrl.deleteIndexedWorker);

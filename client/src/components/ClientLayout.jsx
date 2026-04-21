@@ -19,6 +19,7 @@ const navItems = [
     { to: '/client/job-manage', label: 'Manage Jobs', icon: Briefcase,       desc: 'Track all postings' },
     { to: '/client/history',    label: 'History',     icon: History,         desc: 'Past job records' },
     { to: '/client/favorites',  label: 'Favorites',   icon: Heart,           desc: 'Starred workers' },
+    { to: '/client/hired-workers', label: 'Hired Workers', icon: Briefcase, desc: 'Direct hire jobs' },
     { to: '/client/groups',     label: 'Groups',      icon: Users,           desc: 'Find worker teams' },
     // { to: '/client/worker-face-verify', label: 'Face Verify', icon: Camera,  desc: 'Verify worker identity' },
     { to: '/client/complaints', label: 'Complaints',  icon: AlertTriangle,   desc: 'Report issues' },

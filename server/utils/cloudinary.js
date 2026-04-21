@@ -138,6 +138,7 @@ const photoUploader      = createUploader('karigarconnect/photos', ['image']);
 const documentUploader   = createUploader('karigarconnect/documents', ['image', 'application/pdf']);
 const mixedUploader      = createUploader('karigarconnect/misc', ['image', 'application/pdf']);
 const aiImageUploader    = createUploader('karigarconnect/ai', ['image']);
+const clientJobPhotoUploader = createUploader('karigarconnect/client', ['image']);
 
 // Backwards-compatible aliases used in route files
 // profilePhotoUploader: used for worker/client profile photo uploads
@@ -153,6 +154,7 @@ module.exports = {
     documentUploader,
     mixedUploader,
     aiImageUploader,
+    clientJobPhotoUploader,
     profilePhotoUploader,
     jobPhotoUploader,
 };

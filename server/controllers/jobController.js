@@ -17,6 +17,7 @@ const {
     sendNewJobSmsToGroup,
     sendJobResponseSmsToClient,
 } = require('../utils/smsHelper');
+const { findActiveWorkerTask, getActiveTaskBlockMessage } = require('../utils/workerTaskGate');
 
 // ── GROUP JOB: Client hires a group ──────────────────────────────────────────
 const hireGroupJob = async (req, res) => {
@@ -68,6 +69,11 @@ const respondToGroupJob = async (req, res) => {
 
         const job = await Job.findById(jobId);
         if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+        const activeTask = await findActiveWorkerTask(req.user.id);
+        if (activeTask) {
+            return res.status(403).json({ message: getActiveTaskBlockMessage(activeTask) });
+        }
 
         // Prevent duplicate responses from the same karigar
         const alreadyResponded = job.responses.some(

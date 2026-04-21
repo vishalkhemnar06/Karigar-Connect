@@ -20,6 +20,7 @@ const STATUS_CFG = {
     completed: { label: 'Completed', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
     cancelled: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
     cancelled_by_client: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
+    cancelled_by_worker: { label: 'Cancelled by Worker', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
 };
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
@@ -119,12 +120,19 @@ function AnalyticsBar({ bookings, feedback }) {
 
 // ── Enhanced Job Card with animations ─────────────────────────────────────────
 function JobCard({ job, index }) {
-    const cfg = STATUS_CFG[job.status] || STATUS_CFG.cancelled;
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const cancelledByWorker = String(job?.cancelledWorkerId || '') === String(currentUser?._id || '');
+    const displayStatus = job.status === 'completed'
+        ? 'completed'
+        : (cancelledByWorker ? 'cancelled_by_worker' : (job.status === 'cancelled_by_client' ? 'cancelled_by_client' : 'cancelled'));
+    const cfg = STATUS_CFG[displayStatus] || STATUS_CFG.cancelled;
     const Icon = cfg.icon;
     const skills = job.mySlots?.map(s => s.skill).filter(Boolean) ||
                    (job.workerSlots || [])
-                       .filter(s => s.assignedWorker?.toString() === JSON.parse(localStorage.getItem('user') || '{}')._id?.toString())
+                       .filter(s => s.assignedWorker?.toString() === currentUser?._id?.toString())
                        .map(s => s.skill) || [];
+    const jobPhoto = job?.photos?.[0] ? getImageUrl(job.photos[0]) : '';
+    const cityLine = [job?.location?.locality, job?.location?.city].filter(Boolean).join(', ');
 
     const [expanded, setExpanded] = useState(false);
 
@@ -134,18 +142,39 @@ function JobCard({ job, index }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
             whileHover={{ y: -2 }}
-            className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden"
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden h-full flex flex-col"
         >
+            {jobPhoto && (
+                <div className="relative h-32 border-b border-gray-100 overflow-hidden">
+                    <img
+                        src={jobPhoto}
+                        alt={job?.title || 'Job'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            e.target.style.display = 'none';
+                        }}
+                    />
+                </div>
+            )}
+
             <div className={`h-1 ${job.status === 'completed' ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gradient-to-r from-red-400 to-rose-500'}`} />
             
-            <div className="p-4 sm:p-5">
+            <div className="p-4 sm:p-5 flex-1 flex flex-col">
                 {/* Top row */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex-1 min-w-0">
                         <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-snug line-clamp-2">
                             {job.title}
                         </h3>
-                        <p className="text-xs sm:text-sm text-gray-500 line-clamp-2 mt-1">{job.description}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <img
+                                src={getImageUrl(job?.postedBy?.photo)}
+                                alt=""
+                                className="w-5 h-5 rounded-full object-cover border border-orange-200"
+                                onError={(e) => { e.target.src = '/admin.png'; }}
+                            />
+                            <p className="text-xs sm:text-sm text-gray-500 line-clamp-1">{job?.postedBy?.name || 'Client'}</p>
+                        </div>
                     </div>
                     <span className={`flex-shrink-0 inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.text}`}>
                         <Icon size={10} /> {cfg.label}
@@ -172,7 +201,7 @@ function JobCard({ job, index }) {
                 <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs sm:text-sm text-gray-500">
                     {job.payment > 0 && (
                         <span className="flex items-center gap-1 font-bold text-green-600">
-                            <IndianRupee size={12} /> ₹{fmt(job.payment)}
+                            <IndianRupee size={12} /> {fmt(job.payment)}
                         </span>
                     )}
                     {job.location?.city && (
@@ -193,34 +222,64 @@ function JobCard({ job, index }) {
                             })}
                         </span>
                     )}
+                    {job.scheduledTime && (
+                        <span className="flex items-center gap-1">
+                            <Clock size={11} /> {job.scheduledTime}
+                        </span>
+                    )}
+                    {cityLine && (
+                        <span className="flex items-center gap-1 truncate">
+                            <MapPin size={11} /> {cityLine}
+                        </span>
+                    )}
                 </div>
 
-                {/* Expandable section for cancellation reason */}
-                {['cancelled', 'cancelled_by_client'].includes(job.status) && job.cancellationReason && (
-                    <div className="mt-3">
-                        <button
-                            onClick={() => setExpanded(!expanded)}
-                            className="flex items-center gap-1 text-red-500 text-xs font-semibold"
+                <div className="mt-auto pt-3 border-t border-gray-100 grid grid-cols-3 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (job?.location?.lat && job?.location?.lng) {
+                                window.open(`https://www.google.com/maps?q=${job.location.lat},${job.location.lng}`, '_blank', 'noopener,noreferrer');
+                            }
+                        }}
+                        className="text-xs px-2 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-bold"
+                    >
+                        Maps
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setExpanded(!expanded)}
+                        className="text-xs px-2 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 font-bold"
+                    >
+                        Details
+                    </button>
+                    <div className="text-xs px-2 py-2 rounded-lg font-bold bg-gray-100 text-gray-500 text-center">History</div>
+                </div>
+
+                <AnimatePresence>
+                    {expanded && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2"
                         >
-                            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            {expanded ? 'Hide reason' : 'Show cancellation reason'}
-                        </button>
-                        <AnimatePresence>
-                            {expanded && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: 'auto' }}
-                                    exit={{ opacity: 0, height: 0 }}
-                                    className="mt-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2"
-                                >
-                                    <p className="text-xs text-red-600 font-medium break-words">
-                                        {job.cancellationReason}
-                                    </p>
-                                </motion.div>
+                            <p className="text-xs text-gray-700 leading-relaxed">{job?.description || 'No description available.'}</p>
+                            <p className="text-xs text-gray-600">
+                                <span className="font-semibold">Location:</span>{' '}
+                                {[job?.location?.locality, job?.location?.city, job?.location?.pincode].filter(Boolean).join(', ') || 'N/A'}
+                            </p>
+                            {['cancelled', 'cancelled_by_client'].includes(job.status) && job.cancellationReason && (
+                                <p className="text-xs text-red-600">
+                                    <span className="font-semibold">Reason:</span> {job.cancellationReason}
+                                </p>
                             )}
-                        </AnimatePresence>
-                    </div>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Expandable section for cancellation reason */}
+                {false && null}
             </div>
         </motion.div>
     );
@@ -655,9 +714,11 @@ export default function History() {
                                             <span>Updated recently</span>
                                         </div>
                                     </div>
-                                    {filteredJobs.map((job, idx) => (
-                                        <JobCard key={job._id} job={job} index={idx} />
-                                    ))}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                        {filteredJobs.map((job, idx) => (
+                                            <JobCard key={job._id} job={job} index={idx} />
+                                        ))}
+                                    </div>
                                 </>
                             )}
                         </motion.div>

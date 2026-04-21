@@ -5,6 +5,7 @@ import {
     applyForJob,
     applyForSubTask,
     getWorkerProfile,
+    getWorkerBookings,
     getImageUrl,
     getSemanticJobsForWorker,
     recordSemanticFeedback,
@@ -31,6 +32,28 @@ const normSkill = (s) => {
 
 const asPercent = (value) => Math.round(Math.max(0, Math.min(1, Number(value || 0))) * 100);
 
+const formatCommuteText = (commute) => {
+    if (!commute) return 'Distance unavailable';
+    if (!commute.available) return 'Location unavailable';
+    const distance = commute.distanceText || `${Number(commute.distanceKm || 0).toFixed(1)} km`;
+    const eta = commute.etaText ? `ETA ${commute.etaText}` : '';
+    return [distance, eta].filter(Boolean).join(' • ');
+};
+
+const getCommuteToneClass = (commute) => {
+    if (!commute?.available) return 'text-gray-500';
+    if (commute.distanceColor === 'green') return 'text-emerald-700';
+    if (commute.distanceColor === 'yellow') return 'text-amber-700';
+    return 'text-red-600';
+};
+
+const isCommuteApplyBlocked = (commute) => {
+    if (!commute?.available) return true;
+    if (Number(commute.distanceKm || 0) > 20) return true;
+    if (commute.canReachBeforeStart === false) return true;
+    return false;
+};
+
 const formatPaymentMethod = (method) => {
     switch (method) {
         case 'cash': return 'Cash';
@@ -38,6 +61,101 @@ const formatPaymentMethod = (method) => {
         case 'bank_transfer': return 'Direct Bank Account';
         default: return 'Flexible (Any)';
     }
+};
+
+const formatHoursAsDuration = (hoursValue) => {
+    const totalHours = Math.max(0, Number(hoursValue) || 0);
+    if (!totalHours) return 'N/A';
+
+    if (totalHours < 1) {
+        const minutes = Math.round(totalHours * 60);
+        return `${minutes} min`;
+    }
+
+    const wholeHours = Math.floor(totalHours);
+    const minutes = Math.round((totalHours - wholeHours) * 60);
+    if (!minutes) return `${wholeHours} hr`;
+    return `${wholeHours} hr ${minutes} min`;
+};
+
+const getQuoteBlock = (job = {}, skill = '') => {
+    const normalizedSkill = normSkill(skill);
+    const fromBlocks = Array.isArray(job?.relevantBudgetBlocks) ? job.relevantBudgetBlocks : [];
+    return fromBlocks.find((entry) => normSkill(entry?.skill) === normalizedSkill)
+        || (Array.isArray(job?.budgetBreakdown?.breakdown)
+            ? job.budgetBreakdown.breakdown.find((entry) => normSkill(entry?.skill) === normalizedSkill)
+            : null)
+        || null;
+};
+
+const getQuoteBasisInfo = (job = {}, skill = '') => {
+    const normalizedSkill = normSkill(skill);
+    const slot = (job.workerSlots || []).find((entry) => normSkill(entry?.skill) === normalizedSkill) || null;
+    const budgetBlock = getQuoteBlock(job, normalizedSkill);
+    const hours = Number(slot?.hoursEstimated || budgetBlock?.hours || 0) || 8;
+    const durationText = formatHoursAsDuration(hours);
+    const durationTextLower = durationText.toLowerCase();
+    const lowerDuration = String(job?.duration || '').toLowerCase();
+
+    const normalizedMode = String(budgetBlock?.rateInputMode || '').toLowerCase();
+    let basisKey = normalizedMode;
+    let basisLabel = normalizedMode === 'hour' ? 'per hour' : normalizedMode === 'visit' ? 'per visit' : normalizedMode === 'day' ? 'per day' : '';
+    let units = 1;
+
+    if (!basisKey) {
+        if (Number(budgetBlock?.sourceRatePerHourBase) > 0 || Number(budgetBlock?.ratePerHourBase) > 0 || Number(budgetBlock?.ratePerHour) > 0) {
+            basisKey = 'hour';
+            basisLabel = 'per hour';
+        } else if (Number(budgetBlock?.sourceRatePerVisitBase) > 0 || Number(budgetBlock?.ratePerVisitBase) > 0 || Number(budgetBlock?.ratePerVisit) > 0 || Number(budgetBlock?.perWorkerCost) > 0) {
+            basisKey = 'visit';
+            basisLabel = 'per visit';
+        } else if (Number(budgetBlock?.sourceRatePerDayBase) > 0 || Number(budgetBlock?.ratePerDayBase) > 0 || Number(budgetBlock?.ratePerDay) > 0) {
+            basisKey = 'day';
+            basisLabel = 'per day';
+        }
+    }
+
+    if (!basisKey) {
+        if (Number(budgetBlock?.sourceRatePerHourBase) > 0 || Number(budgetBlock?.ratePerHourBase) > 0 || Number(budgetBlock?.ratePerHour) > 0) {
+            basisKey = 'hour';
+            basisLabel = 'per hour';
+        } else if (lowerDuration.includes('visit')) {
+            basisKey = 'visit';
+            basisLabel = 'per visit';
+        } else if (hours <= 12 || lowerDuration.includes('hour') || durationTextLower.includes('hr') || durationTextLower.includes('hour')) {
+            basisKey = 'hour';
+            basisLabel = 'per hour';
+        } else {
+            basisKey = 'day';
+            basisLabel = 'per day';
+        }
+    }
+
+    if (basisKey === 'visit') {
+        units = 1;
+    } else if (basisKey === 'hour') {
+        units = Math.max(1, Math.round(hours * 100) / 100);
+    } else if (basisKey === 'day') {
+        units = Math.max(1, Math.ceil(hours / 8));
+    }
+
+    const suggestedTotal = Number(budgetBlock?.subtotal || 0) > 0
+        ? Math.round(Number(budgetBlock.subtotal || 0) / Math.max(1, Number(budgetBlock.count || 1)))
+        : 0;
+
+    return {
+        basisKey,
+        basisLabel,
+        units,
+        durationText,
+        suggestedTotal,
+    };
+};
+
+const formatQuoteAmount = (value) => {
+    const num = Number(value || 0);
+    if (!Number.isFinite(num) || num <= 0) return '—';
+    return `₹${num.toLocaleString('en-IN')}`;
 };
 
 const openGoogleMapsDirections = ({ lat, lng }) => {
@@ -68,6 +186,113 @@ const openGoogleMapsDirections = ({ lat, lng }) => {
     );
 };
 
+const parseScheduledDateTime = (scheduledDate, scheduledTime) => {
+    if (!scheduledDate) return null;
+    const dt = new Date(scheduledDate);
+    if (Number.isNaN(dt.getTime())) return null;
+
+    let hours = 9;
+    let minutes = 0;
+    const raw = String(scheduledTime || '').trim();
+    if (raw) {
+        const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+        if (m) {
+            const h = Number(m[1]);
+            const mm = Number(m[2] || '0');
+            const meridiem = String(m[3] || '').toLowerCase();
+            if (Number.isFinite(h) && Number.isFinite(mm)) {
+                hours = h;
+                minutes = mm;
+                if (meridiem === 'pm' && hours < 12) hours += 12;
+                if (meridiem === 'am' && hours === 12) hours = 0;
+            }
+        }
+    }
+
+    dt.setHours(hours, minutes, 0, 0);
+    return dt.getTime();
+};
+
+const formatDurationHMS = (totalSeconds) => {
+    const safe = Math.max(0, Number(totalSeconds) || 0);
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const seconds = safe % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const formatDateTime = (ms) => {
+    if (!Number.isFinite(ms)) return 'N/A';
+    try {
+        return new Date(ms).toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    } catch {
+        return 'N/A';
+    }
+};
+
+const getActiveTaskBlockFromBookings = (bookings = [], workerId = '') => {
+    const wid = String(workerId || '');
+    if (!wid || !Array.isArray(bookings)) return null;
+
+    const activeStatuses = new Set(['filled', 'scheduled', 'running']);
+    const candidates = [];
+    const now = Date.now();
+    const travelBufferHours = 2;
+
+    bookings.forEach((job) => {
+        const allSlots = Array.isArray(job?.mySlots) && job.mySlots.length
+            ? job.mySlots
+            : (job?.workerSlots || []).filter((slot) => {
+                const assignedId = slot?.assignedWorker?._id?.toString() || slot?.assignedWorker?.toString() || '';
+                return assignedId === wid;
+            });
+
+        allSlots.forEach((slot) => {
+            if (!activeStatuses.has(String(slot?.status || '').toLowerCase())) return;
+
+            const durationHours = Math.max(0, Number(slot?.hoursEstimated || 0));
+            const startMs =
+                (slot?.actualStartTime ? new Date(slot.actualStartTime).getTime() : null)
+                || (job?.actualStartTime ? new Date(job.actualStartTime).getTime() : null)
+                || parseScheduledDateTime(job?.scheduledDate, job?.scheduledTime)
+                || (job?.createdAt ? new Date(job.createdAt).getTime() : null);
+
+            const endMs = Number.isFinite(startMs) && durationHours > 0
+                ? startMs + (durationHours + travelBufferHours) * 60 * 60 * 1000
+                : null;
+
+            const blocksNow = String(slot?.status || '').toLowerCase() === 'running'
+                || (Number.isFinite(startMs) && Number.isFinite(endMs) && now >= startMs && now < endMs);
+            if (!blocksNow) return;
+
+            candidates.push({
+                jobId: job?._id,
+                jobTitle: job?.title || 'Current task',
+                skill: slot?.skill || 'assigned skill',
+                slotStatus: slot?.status || 'filled',
+                durationHours,
+                startMs,
+                endMs,
+            });
+        });
+    });
+
+    if (!candidates.length) return null;
+
+    candidates.sort((a, b) => {
+        const aEnd = Number.isFinite(a.endMs) ? a.endMs : Number.MAX_SAFE_INTEGER;
+        const bEnd = Number.isFinite(b.endMs) ? b.endMs : Number.MAX_SAFE_INTEGER;
+        return aEnd - bEnd;
+    });
+
+    return candidates[0];
+};
+
 const normalizeSemanticJobMatch = (row = {}) => ({
     jobId: row.jobId,
     score: Number(row.score || 0),
@@ -87,6 +312,24 @@ const getJobSkillSet = (job = {}) => {
         ...Object.keys(job.openSlotSummary || {}),
     ].map(normSkill).filter(Boolean);
     return [...new Set(all)];
+};
+
+const getOpenSkillList = (job = {}) =>
+    Object.keys(job.openSlotSummary || {}).map(normSkill).filter(Boolean);
+
+const getAppliedSkillList = (job = {}) =>
+    (job.myAppliedSkills || []).map(normSkill).filter(Boolean);
+
+const getRemainingOpenSkills = (job = {}) => {
+    const openSkills = getOpenSkillList(job);
+    const applied = new Set(getAppliedSkillList(job));
+    return openSkills.filter((skill) => !applied.has(skill));
+};
+
+const isFullyAppliedForOpenSlots = (job = {}) => {
+    const openSkills = getOpenSkillList(job);
+    if (!openSkills.length) return !!job.hasApplied;
+    return getRemainingOpenSkills(job).length === 0;
 };
 
 const getSkillOverlapStats = (job = {}, workerSkills = []) => {
@@ -161,14 +404,17 @@ function MiniMap({ lat, lng }) {
 // ── Skill Selection Modal (Mobile Optimized) ──────────────────────────────────
 function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
     const [selected, setSelected] = useState([]);
+    const [quoteRates, setQuoteRates] = useState({});
     const [applying, setApplying] = useState(false);
     const [alert, setAlert] = useState('');
 
     const options = [];
     const seen = new Set();
+    const appliedSet = new Set((job?.myAppliedSkills || []).map(normSkill).filter(Boolean));
     (job.workerSlots || []).forEach(s => {
         if (s.status !== 'open') return;
         const skill = normSkill(s.skill);
+        if (appliedSet.has(skill)) return;
         if (!skill || seen.has(skill)) return;
         seen.add(skill);
         const count = (job.openSlotSummary || {})[s.skill] || (job.openSlotSummary || {})[skill] || 1;
@@ -180,6 +426,7 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
     if (options.length === 0 && job.openSlotSummary) {
         Object.entries(job.openSlotSummary).forEach(([sk, cnt]) => {
             const skill = normSkill(sk);
+            if (appliedSet.has(skill)) return;
             const budgetBlock = (job.relevantBudgetBlocks || []).find(b => normSkill(b.skill) === skill);
             const isMatch = workerSkills.length > 0 && workerSkills.includes(skill);
             options.push({ skill, count: cnt, hoursEstimated: null, budgetBlock, isMatch });
@@ -189,7 +436,15 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
     const toggle = (sk) => {
         setAlert('');
         setSelected(p => {
-            if (p.includes(sk)) return p.filter(s => s !== sk);
+            if (p.includes(sk)) {
+                const next = p.filter(s => s !== sk);
+                setQuoteRates((prev) => {
+                    const copy = { ...prev };
+                    delete copy[sk];
+                    return copy;
+                });
+                return next;
+            }
             if (p.length >= 2) { setAlert('You can apply for a maximum of 2 positions per job.'); return p; }
             return [...p, sk];
         });
@@ -197,9 +452,24 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
 
     const handleApply = async () => {
         if (!selected.length) { setAlert('Please select at least one position.'); return; }
+        const quotedApplications = selected
+            .map((skill) => {
+                const quoteInfo = getQuoteBasisInfo(job, skill);
+                const rate = Number(quoteRates[skill] || 0);
+                if (!Number.isFinite(rate) || rate <= 0) return null;
+                const amount = Math.max(0, Math.round(rate * quoteInfo.units));
+                return {
+                    skill,
+                    amount,
+                    quoteRate: rate,
+                    quoteQuantity: quoteInfo.units,
+                    quoteBasis: quoteInfo.basisKey,
+                };
+            })
+            .filter(Boolean);
         try {
             setApplying(true);
-            await onApply(selected);
+            await onApply(selected, quotedApplications);
             onClose();
         } catch (err) {
             setAlert(err?.response?.data?.message || 'Failed to apply.');
@@ -260,15 +530,19 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                     <div className="space-y-3 mb-5 max-h-[50vh] overflow-y-auto custom-scrollbar">
                         {options.map(opt => {
                             const isSel = selected.includes(opt.skill);
-                            const perW = opt.budgetBlock
-                                ? Math.round(opt.budgetBlock.subtotal / (opt.budgetBlock.count || 1))
-                                : null;
+                            const quoteInfo = getQuoteBasisInfo(job, opt.skill);
+                            const suggestedRate = quoteInfo.units > 0 && quoteInfo.suggestedTotal > 0
+                                ? Math.max(1, Math.round(quoteInfo.suggestedTotal / quoteInfo.units))
+                                : '';
+                            const currentRate = quoteRates[opt.skill] || '';
+                            const rateValue = currentRate || suggestedRate || '';
+                            const totalQuote = rateValue ? Math.max(1, Math.round(Number(rateValue) * quoteInfo.units)) : 0;
                             return (
-                                <motion.button
+                                <motion.div
                                     key={opt.skill}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => toggle(opt.skill)}
-                                    className={`w-full flex items-start gap-3 p-3 sm:p-4 rounded-2xl border-2 text-left transition-all active:scale-98 ${
+                                    className={`w-full flex items-start gap-3 p-3 sm:p-4 rounded-2xl border-2 text-left transition-all active:scale-98 cursor-pointer ${
                                         isSel ? 'border-orange-400 bg-gradient-to-r from-orange-50 to-amber-50' : 'border-gray-200 bg-white hover:border-orange-200'
                                     }`}
                                 >
@@ -292,11 +566,31 @@ function SkillSelectModal({ job, workerSkills, onClose, onApply }) {
                                         {opt.hoursEstimated && (
                                             <p className="text-xs text-gray-500 mt-1">~{opt.hoursEstimated}h estimated</p>
                                         )}
-                                        {perW && (
-                                            <p className="text-xs text-green-600 font-bold mt-1">₹{perW.toLocaleString()} earnings</p>
+                                        <p className="text-xs text-gray-500 mt-1">Quote basis: {quoteInfo.basisLabel} · {quoteInfo.durationText}</p>
+                                        {rateValue ? (
+                                            <p className="text-xs text-green-600 font-bold mt-1">Quoted total: {formatQuoteAmount(totalQuote)}</p>
+                                        ) : (
+                                            <p className="text-xs text-gray-400 mt-1">Optional rate, final quote is hidden until you enter it</p>
+                                        )}
+                                        {isSel && (
+                                            <div className="mt-3 space-y-2">
+                                                <div onClick={(e) => e.stopPropagation()}>
+                                                    <label className="block text-[11px] font-bold text-gray-600 mb-1">Your rate {quoteInfo.basisLabel}</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        step="1"
+                                                        value={quoteRates[opt.skill] || ''}
+                                                        onChange={(e) => setQuoteRates((prev) => ({ ...prev, [opt.skill]: e.target.value }))}
+                                                        placeholder={suggestedRate ? String(suggestedRate) : 'Optional'}
+                                                        className="w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none"
+                                                    />
+                                                </div>
+                                                <p className="text-[11px] text-gray-500">Total quote: {rateValue ? formatQuoteAmount(totalQuote) : 'Not quoted'}</p>
+                                            </div>
                                         )}
                                     </div>
-                                </motion.button>
+                                </motion.div>
                             );
                         })}
                     </div>
@@ -345,12 +639,36 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
         })();
     }, [jobId]);
 
-    const handleApplyWithSkills = async (selectedSkills) => {
-        await applyForJob(jobId, selectedSkills);
+    const handleApplyWithSkills = async (selectedSkills, quotedApplications = []) => {
+        await applyForJob(jobId, selectedSkills, { quotedApplications });
         toast.success(`Applied for: ${selectedSkills.join(', ')}!`);
-        if (onApplied) onApplied(jobId);
-        setJob(j => j ? { ...j, hasApplied: true, myAppliedSkills: selectedSkills } : j);
+        if (onApplied) onApplied(jobId, selectedSkills);
+        setJob((prev) => {
+            if (!prev) return prev;
+            const merged = [...new Set([...(prev.myAppliedSkills || []), ...selectedSkills].map(normSkill))];
+            return { ...prev, hasApplied: true, myAppliedSkills: merged };
+        });
     };
+
+    const handleApplySubTask = async () => {
+        const parentId = job.parentJobId?._id || job.parentJobId;
+        if (!parentId || !job?._id) {
+            toast.error('Parent sub-task mapping is missing.');
+            return;
+        }
+        await applyForSubTask(parentId, job._id);
+        toast.success(`Applied for ${job.subTaskSkill || 'sub-task'}!`);
+        if (onApplied) onApplied(job._id, [normSkill(job.subTaskSkill || 'general')]);
+        setJob((prev) => prev ? {
+            ...prev,
+            hasApplied: true,
+            myAppliedSkills: [normSkill(prev.subTaskSkill || 'general')],
+        } : prev);
+    };
+
+    const remainingOpenSkills = getRemainingOpenSkills(job || {});
+    const applyBlocked = isCommuteApplyBlocked(job?.commute);
+    const quoteBasisInfo = getQuoteBasisInfo(job || {}, job?.subTaskSkill || (job?.skills || [])[0] || (job?.workerSlots || [])[0]?.skill || 'general');
 
     if (loading) {
         return (
@@ -458,6 +776,13 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                                 )}
                             </div>
                         )}
+
+                        <div className={`rounded-2xl border p-3 ${job?.commute?.available ? 'border-gray-200 bg-gray-50' : 'border-red-200 bg-red-50'}`}>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Travel Distance & ETA</p>
+                            <p className={`text-sm font-semibold ${getCommuteToneClass(job?.commute)}`}>{formatCommuteText(job?.commute)}</p>
+                            {job?.commute?.isLocationStale && <p className="text-[11px] text-amber-700 mt-1">Live location is stale. Update Daily Dashboard for better ETA.</p>}
+                            {applyBlocked && <p className="text-[11px] text-red-600 mt-1">Apply allowed only within 20 km and if ETA reaches before job start.</p>}
+                        </div>
 
                         {/* Client Info */}
                         {job.postedBy && (
@@ -572,7 +897,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                                                     )}
                                                     {perW && (
                                                         <span className="text-green-600 font-bold flex items-center gap-1">
-                                                            <IndianRupee size={10} /> ₹{perW.toLocaleString()}
+                                                            <IndianRupee size={10} /> {perW.toLocaleString()}
                                                         </span>
                                                     )}
                                                 </div>
@@ -632,11 +957,9 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                                 <p className="text-sm text-gray-700 break-words">
                                     <span className="font-semibold">Method:</span> {formatPaymentMethod(job.paymentMethod)}
                                 </p>
-                                {job.negotiable && Number(job.minBudget || 0) > 0 && (
-                                    <p className="text-sm text-gray-700 break-words">
-                                        <span className="font-semibold">Negotiable Minimum:</span> ₹{Number(job.minBudget).toLocaleString()}
-                                    </p>
-                                )}
+                                <p className="text-sm text-gray-700 break-words">
+                                    <span className="font-semibold">Quote basis:</span> {quoteBasisInfo.basisLabel} · {quoteBasisInfo.durationText}
+                                </p>
                             </div>
                         </div>
 
@@ -678,8 +1001,23 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                                         {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
                                     </p>
                                 )}
+                                {job.location?.buildingName && (
+                                    <p className="text-sm text-gray-700 break-words">
+                                        <span className="font-semibold">Building/Home:</span> {job.location.buildingName}
+                                    </p>
+                                )}
+                                {job.location?.unitNumber && (
+                                    <p className="text-sm text-gray-700 break-words">
+                                        <span className="font-semibold">Flat/Home No.:</span> {job.location.unitNumber}
+                                    </p>
+                                )}
+                                {job.location?.floorNumber && (
+                                    <p className="text-sm text-gray-700 break-words">
+                                        <span className="font-semibold">Floor:</span> {job.location.floorNumber}
+                                    </p>
+                                )}
                             </div>
-                            {job.location?.lat && job.location?.lng && (
+                            {Number.isFinite(Number(job.location?.lat)) && Number.isFinite(Number(job.location?.lng)) && (
                                 <>
                                     <MiniMap lat={job.location.lat} lng={job.location.lng} />
                                     <button
@@ -723,7 +1061,28 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
 
                     {/* Footer */}
                     <div className="sticky bottom-0 bg-white border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-5 pt-3 sm:pt-4 flex-shrink-0">
-                        {job.hasApplied ? (
+                        {job.isSubTask ? (
+                            job.hasApplied ? (
+                                <div className="w-full text-center py-3 sm:py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200 text-sm">
+                                    ✓ Applied for this sub-task
+                                </div>
+                            ) : job.isAssigned ? (
+                                <div className="w-full text-center py-3 sm:py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200 text-sm">
+                                    ✓ You're Assigned
+                                </div>
+                            ) : isAvailable && !applyBlocked ? (
+                                <button
+                                    onClick={handleApplySubTask}
+                                    className="w-full py-3 sm:py-3.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-black rounded-2xl text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-lg active:scale-98"
+                                >
+                                    <Briefcase size={16} /> Apply For This Sub-task
+                                </button>
+                            ) : (
+                                <div className="w-full text-center py-3 sm:py-3.5 bg-red-50 border border-red-200 text-red-600 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2">
+                                    <AlertCircle size={14} /> {applyBlocked ? 'Distance/time rule blocked this application' : 'Turn ON availability to apply'}
+                                </div>
+                            )
+                        ) : remainingOpenSkills.length === 0 && (job.myAppliedSkills || []).length > 0 ? (
                             <div className="w-full text-center py-3 sm:py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200 text-sm">
                                 ✓ Applied{job.myAppliedSkills?.length > 0 ? ` for: ${job.myAppliedSkills.slice(0, 2).join(', ')}${job.myAppliedSkills.length > 2 ? '...' : ''}` : ''}
                             </div>
@@ -731,7 +1090,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                             <div className="w-full text-center py-3 sm:py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-2xl font-bold border border-green-200 text-sm">
                                 ✓ You're Assigned
                             </div>
-                        ) : isAvailable ? (
+                        ) : isAvailable && !applyBlocked ? (
                             <button
                                 onClick={() => setShowSkillPicker(true)}
                                 className="w-full py-3 sm:py-3.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-black rounded-2xl text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-lg active:scale-98"
@@ -740,7 +1099,7 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
                             </button>
                         ) : (
                             <div className="w-full text-center py-3 sm:py-3.5 bg-red-50 border border-red-200 text-red-600 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2">
-                                <AlertCircle size={14} /> Turn ON availability to apply
+                                <AlertCircle size={14} /> {applyBlocked ? 'Distance/time rule blocked this application' : 'Turn ON availability to apply'}
                             </div>
                         )}
                     </div>
@@ -793,9 +1152,10 @@ function DetailModal({ jobId, workerSkills, isAvailable, semanticMatch, onClose,
 }
 
 // ── Sub-Task Card (Mobile Optimized) ───────────────────────────────────────────
-function SubTaskCard({ job, isAvailable, applying, onApply }) {
+function SubTaskCard({ job, isAvailable, applying, onApply, onViewDetails }) {
     const earnings = (job.relevantBudgetBlocks || []).reduce((s, b) => s + (b.subtotal || 0), 0);
     const hours = job.workerSlots?.[0]?.hoursEstimated;
+    const applyBlocked = isCommuteApplyBlocked(job?.commute);
 
     return (
         <motion.div
@@ -845,7 +1205,19 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
                     )}
                 </div>
 
-                <div className="flex items-center justify-end pt-2 border-t border-gray-100">
+                <p className={`text-xs mb-3 font-semibold ${getCommuteToneClass(job?.commute)}`}>
+                    {formatCommuteText(job?.commute)}
+                    {job?.commute?.isLocationStale ? ' • stale location' : ''}
+                </p>
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onViewDetails?.(job)}
+                        className="text-xs px-3 sm:px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-xl font-semibold transition-all active:scale-95"
+                    >
+                        View Details
+                    </button>
                     {job.hasApplied ? (
                         <span className="text-xs px-3 sm:px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200">
                             Applied ✓
@@ -856,10 +1228,10 @@ function SubTaskCard({ job, isAvailable, applying, onApply }) {
                         </span>
                     ) : (
                         <button
-                            onClick={() => isAvailable ? onApply(job) : toast.error('Turn ON availability to apply.')}
-                            disabled={applying[job._id]}
+                            onClick={() => isAvailable && !applyBlocked ? onApply(job) : toast.error(applyBlocked ? 'You cannot apply due to distance/time constraint.' : 'Turn ON availability to apply.')}
+                            disabled={applying[job._id] || applyBlocked}
                             className={`text-xs px-4 sm:px-5 py-2 rounded-xl font-bold disabled:opacity-60 transition-all active:scale-95 ${
-                                isAvailable 
+                                isAvailable && !applyBlocked
                                     ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-md' 
                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             }`}
@@ -886,6 +1258,8 @@ export default function JobRequests() {
     const [applyModal, setApplyModal] = useState(null);
     const [applying, setApplying] = useState({});
     const [isAvailable, setIsAvailable] = useState(true);
+    const [activeTaskBlock, setActiveTaskBlock] = useState(null);
+    const [countdownNow, setCountdownNow] = useState(Date.now());
     const [showFilters, setShowFilters] = useState(false);
 
     const localUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -905,9 +1279,10 @@ export default function JobRequests() {
     const loadJobs = async () => {
         try {
             setLoading(true);
-            const [jobsRes, profileRes] = await Promise.all([
+            const [jobsRes, profileRes, bookingsRes] = await Promise.all([
                 getAvailableJobs(),
                 getWorkerProfile(),
+                getWorkerBookings(),
             ]);
 
             const semanticRes = await getSemanticJobsForWorker({ topK: 100, minScore: 0.15 }).catch(() => ({ data: { matches: [] } }));
@@ -920,6 +1295,7 @@ export default function JobRequests() {
             setSemanticMatchesByJob(semanticMap);
             setJobs(Array.isArray(jobsRes.data) ? jobsRes.data : []);
             setIsAvailable(profileRes.data?.availability !== false);
+            setActiveTaskBlock(getActiveTaskBlockFromBookings(bookingsRes?.data || [], workerId));
         } catch {
             toast.error('Failed to load jobs.');
         } finally {
@@ -929,8 +1305,22 @@ export default function JobRequests() {
 
     useEffect(() => { loadJobs(); }, []);
 
-    const handleApplied = (jobId) =>
-        setJobs(p => p.map(j => j._id === jobId ? { ...j, hasApplied: true } : j));
+    useEffect(() => {
+        if (!activeTaskBlock) return undefined;
+        const timer = setInterval(() => setCountdownNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [activeTaskBlock]);
+
+    const remainingSeconds = Number.isFinite(activeTaskBlock?.endMs)
+        ? Math.max(0, Math.floor((activeTaskBlock.endMs - countdownNow) / 1000))
+        : null;
+
+    const handleApplied = (jobId, selectedSkills = []) =>
+        setJobs((prev) => prev.map((j) => {
+            if (j._id !== jobId) return j;
+            const mergedSkills = [...new Set([...(j.myAppliedSkills || []), ...selectedSkills].map(normSkill))];
+            return { ...j, hasApplied: true, myAppliedSkills: mergedSkills };
+        }));
 
     const handleSubTaskApply = async (job) => {
         try {
@@ -938,7 +1328,7 @@ export default function JobRequests() {
             const parentId = job.parentJobId?._id || job.parentJobId;
             await applyForSubTask(parentId, job._id);
             toast.success(`Applied for ${job.subTaskSkill || 'sub-task'}!`);
-            setJobs(p => p.map(j => j._id === job._id ? { ...j, hasApplied: true } : j));
+            setJobs(p => p.map(j => j._id === job._id ? { ...j, hasApplied: true, myAppliedSkills: [normSkill(job.subTaskSkill || 'general')] } : j));
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to apply.');
         } finally {
@@ -946,12 +1336,12 @@ export default function JobRequests() {
         }
     };
 
-    const handleQuickApplySkills = async (job, selectedSkills) => {
+    const handleQuickApplySkills = async (job, selectedSkills, quotedApplications = []) => {
         try {
             setApplying(p => ({ ...p, [job._id]: true }));
-            await applyForJob(job._id, selectedSkills);
+            await applyForJob(job._id, selectedSkills, { quotedApplications });
             toast.success(`Applied for: ${selectedSkills.join(', ')}!`);
-            handleApplied(job._id);
+            handleApplied(job._id, selectedSkills);
             setApplyModal(null);
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to apply.');
@@ -1018,6 +1408,12 @@ export default function JobRequests() {
         return bRank - aRank;
     });
 
+    const requestJobs = rankedFiltered.filter((j) => {
+        const hasAnyHistory = !!j.hasApplicationHistory || !!j.hasApplied || getAppliedSkillList(j).length > 0;
+        if (hasAnyHistory) return false;
+        return !isFullyAppliedForOpenSlots(j);
+    });
+
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center h-96 px-4">
@@ -1054,7 +1450,7 @@ export default function JobRequests() {
                             <Briefcase size={10} /> {jobs.length} Total Jobs
                         </span>
                         <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm">
-                            <Sparkles size={10} /> {filtered.length} Showing
+                            <Sparkles size={10} /> {requestJobs.length} New Applications
                         </span>
                         {workerSkills.length > 0 && (
                             <span className="flex items-center gap-1 bg-white/20 rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm">
@@ -1066,6 +1462,39 @@ export default function JobRequests() {
 
                 {/* Availability Banner */}
                 <AnimatePresence>
+                    {activeTaskBlock && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="bg-amber-50 border-2 border-amber-200 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3"
+                        >
+                            <div className="flex items-start gap-2 sm:gap-3">
+                                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <Clock size={16} className="text-amber-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs sm:text-sm font-bold text-amber-800">
+                                        Apply is blocked until client marks your task Done
+                                    </p>
+                                    <p className="text-[10px] sm:text-xs text-amber-700 mt-0.5 truncate">
+                                        Active task: {activeTaskBlock.skill} in {activeTaskBlock.jobTitle}
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
+                                        <span className="px-2.5 py-1 bg-amber-100 text-amber-900 rounded-lg text-xs font-black tracking-wide">
+                                            {remainingSeconds === null ? 'Countdown: --:--:--' : `Countdown: ${formatDurationHMS(remainingSeconds)}`}
+                                        </span>
+                                        <span className="text-[10px] sm:text-xs text-amber-700">
+                                            Duration: {Math.max(0, Number(activeTaskBlock.durationHours || 0))}h
+                                        </span>
+                                        <span className="text-[10px] sm:text-xs text-amber-700">
+                                            Expected end: {formatDateTime(activeTaskBlock.endMs)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
                     {!isAvailable && (
                         <motion.div
                             initial={{ opacity: 0, y: -10 }}
@@ -1181,14 +1610,14 @@ export default function JobRequests() {
                         <p className="font-bold text-gray-800 text-lg sm:text-xl mb-2">No jobs posted yet</p>
                         <p className="text-gray-400 text-xs sm:text-sm px-4">Check back later for new opportunities</p>
                     </motion.div>
-                ) : rankedFiltered.length === 0 ? (
+                ) : requestJobs.length === 0 ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         className="text-center py-12 sm:py-20 bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100 mx-2 sm:mx-0"
                     >
                         <Search size={40} className="text-gray-300 mx-auto mb-3" />
-                        <p className="font-bold text-gray-800 text-lg sm:text-xl mb-2">No matches found</p>
+                        <p className="font-bold text-gray-800 text-lg sm:text-xl mb-2">No new applications found</p>
                         <p className="text-gray-400 text-xs sm:text-sm mb-4">Try adjusting your filters</p>
                         <button
                             onClick={() => { setSearch(''); setFilterSkill('all'); setFilterCity('all'); }}
@@ -1198,9 +1627,9 @@ export default function JobRequests() {
                         </button>
                     </motion.div>
                 ) : (
-                    <div className="space-y-3 sm:space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         <AnimatePresence>
-                            {rankedFiltered.map(job => (
+                            {requestJobs.map(job => (
                                 job.isSubTask ? (
                                     <SubTaskCard
                                         key={job._id}
@@ -1208,6 +1637,7 @@ export default function JobRequests() {
                                         isAvailable={isAvailable}
                                         applying={applying}
                                         onApply={handleSubTaskApply}
+                                        onViewDetails={handleOpenDetails}
                                     />
                                 ) : (
                                     <motion.div
@@ -1216,12 +1646,38 @@ export default function JobRequests() {
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -20 }}
                                         whileHover={{ y: -2 }}
-                                        className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all cursor-pointer overflow-hidden"
+                                        className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all cursor-pointer overflow-hidden h-full min-h-[460px] flex flex-col"
                                         onClick={() => handleOpenDetails(job)}
                                     >
-                                        <div className={`h-1 ${job.urgent ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-100'}`} />
+                                        {job.photos?.[0] && (
+                                            <div className="relative h-36 border-b border-gray-100 overflow-hidden">
+                                                <img
+                                                    src={getImageUrl(job.photos[0])}
+                                                    alt={job.title}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                    }}
+                                                />
+                                            <div className="absolute top-3 left-3 flex flex-wrap gap-1">
+                                                {job.urgent && (
+                                                    <span className="text-xs bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                        <Zap size={10} /> Urgent
+                                                    </span>
+                                                )}
+                                                {job.invitedForMe && (
+                                                    <span className="text-xs bg-gradient-to-r from-indigo-100 to-blue-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
+                                                        Direct Invite
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {job.negotiable && (
+                                                <span className="absolute top-3 right-3 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">🤝 Nego</span>
+                                            )}
+                                            </div>
+                                        )}
 
-                                        <div className="p-4 sm:p-5">
+                                        <div className="p-4 sm:p-5 flex-1 flex flex-col">
                                             <div className="flex items-start gap-3 sm:gap-4">
                                                 <img
                                                     src={getImageUrl(job.postedBy?.photo)}
@@ -1252,9 +1708,6 @@ export default function JobRequests() {
                                                                 <span className="text-xs bg-gradient-to-r from-indigo-100 to-blue-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
                                                                     Direct Invite
                                                                 </span>
-                                                            )}
-                                                            {job.negotiable && (
-                                                                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">🤝 Nego</span>
                                                             )}
                                                         </div>
                                                     </div>
@@ -1346,10 +1799,16 @@ export default function JobRequests() {
                                                         {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                                                     </span>
                                                 )}
-                                                {job.location?.city && (
+                                                {job.scheduledTime && (
                                                     <span className="flex items-center gap-1">
+                                                        <Clock size={10} />
+                                                        {job.scheduledTime}
+                                                    </span>
+                                                )}
+                                                {(job.location?.locality || job.location?.city) && (
+                                                    <span className="flex items-center gap-1 truncate">
                                                         <MapPin size={10} />
-                                                        {job.location.city}
+                                                        {[job.location?.locality, job.location?.city].filter(Boolean).join(', ')}
                                                     </span>
                                                 )}
                                                 {job.applicantCount > 0 && (
@@ -1360,60 +1819,65 @@ export default function JobRequests() {
                                                 )}
                                             </div>
 
+                                            <p className={`mt-2 text-xs font-semibold ${getCommuteToneClass(job?.commute)}`}>
+                                                {formatCommuteText(job?.commute)}
+                                                {job?.commute?.isLocationStale ? ' • stale location' : ''}
+                                            </p>
+
                                             {/* Footer */}
-                                            <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 gap-3">
-                                                <div className="flex-shrink-0">
+                                            <div className="mt-auto pt-2 border-t border-gray-100 space-y-1.5">
+                                                <div>
                                                     {(() => {
-                                                        const total = (job.relevantBudgetBlocks || []).reduce(
-                                                            (sum, b) => sum + Math.round(b.subtotal / (b.count || 1)), 0
-                                                        );
-                                                        return total > 0 ? (
-                                                            <>
-                                                                <div className="text-base sm:text-lg font-black text-green-600">₹{total.toLocaleString()}</div>
-                                                                <div className="text-[8px] sm:text-[10px] text-gray-400">Your earning</div>
-                                                            </>
-                                                        ) : job.payment > 0 ? (
-                                                            <>
-                                                                <div className="text-base sm:text-lg font-black text-green-600">₹{job.payment.toLocaleString()}</div>
-                                                                <div className="text-[8px] sm:text-[10px] text-gray-400">Budget</div>
-                                                            </>
-                                                        ) : (
-                                                            <div className="text-xs text-gray-400">Tap for details</div>
+                                                        const blocks = (job.relevantBudgetBlocks || []).slice(0, 2);
+                                                        if (!blocks.length) return <div className="text-xs text-gray-400">Tap for skill-wise cost</div>;
+                                                        return (
+                                                            <div className="space-y-1">
+                                                                {blocks.map((b, i) => {
+                                                                    const perWorker = Math.round(Number(b.subtotal || 0) / Math.max(1, Number(b.count || 1)));
+                                                                    const nego = Number(b.negotiationAmount || 0);
+                                                                    return (
+                                                                        <div key={`${job._id}-cost-${i}`} className="text-[11px]">
+                                                                            <span className="font-bold text-green-700 capitalize">{b.skill}:</span>{' '}
+                                                                            <span className="font-black text-green-600">₹{perWorker.toLocaleString()}</span>
+                                                                            {job.negotiable && nego > 0 && (
+                                                                                <span className="text-orange-600"> · Nego ₹{nego.toLocaleString()}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         );
                                                     })()}
                                                     <div className="mt-1 text-[10px] text-gray-500">
                                                         {formatPaymentMethod(job.paymentMethod)}
-                                                        {job.negotiable && Number(job.minBudget || 0) > 0
-                                                            ? ` · Min ₹${Number(job.minBudget).toLocaleString()}`
-                                                            : ''}
                                                     </div>
                                                 </div>
 
-                                                <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                                                    {job.location?.lat && job.location?.lng && (
-                                                        <button
-                                                            onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
-                                                            className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 font-bold transition-all active:scale-95"
-                                                        >
-                                                            <Navigation size={12} className="inline mr-1" />
-                                                            Maps
-                                                        </button>
-                                                    )}
+                                                <div className="grid grid-cols-3 gap-2" onClick={e => e.stopPropagation()}>
+                                                    <button
+                                                        onClick={() => Number.isFinite(Number(job.location?.lat)) && Number.isFinite(Number(job.location?.lng))
+                                                            ? openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })
+                                                            : toast.error('Location not available')}
+                                                        className="text-xs px-2 py-2 border-2 border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 font-bold transition-all active:scale-95"
+                                                    >
+                                                        <Navigation size={12} className="inline mr-1" />
+                                                        Maps
+                                                    </button>
                                                     <button
                                                         onClick={() => handleOpenDetails(job)}
-                                                        className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-all active:scale-95"
+                                                        className="text-xs px-2 py-2 border-2 border-orange-200 text-orange-600 rounded-xl hover:bg-orange-50 font-bold transition-all active:scale-95"
                                                     >
                                                         <Eye size={12} className="inline mr-1" />
                                                         Details
                                                     </button>
-                                                    {!job.hasApplied ? (
+                                                    {!isFullyAppliedForOpenSlots(job) ? (
                                                         <button
                                                             onClick={() => isAvailable
-                                                                ? setApplyModal(job)
+                                                                ? handleOpenDetails(job)
                                                                 : toast.error('Turn ON availability to apply.')}
-                                                            disabled={applying[job._id]}
-                                                            className={`text-xs px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-bold disabled:opacity-60 transition-all active:scale-95 ${
-                                                                isAvailable
+                                                            disabled={applying[job._id] || isCommuteApplyBlocked(job?.commute)}
+                                                            className={`text-xs px-2 py-2 rounded-xl font-bold disabled:opacity-60 transition-all active:scale-95 ${
+                                                                isAvailable && !isCommuteApplyBlocked(job?.commute)
                                                                     ? 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-md'
                                                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                                             }`}
@@ -1421,8 +1885,8 @@ export default function JobRequests() {
                                                             {applying[job._id] ? <Loader2 size={12} className="animate-spin" /> : 'Apply'}
                                                         </button>
                                                     ) : (
-                                                        <span className="text-xs px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200 whitespace-nowrap">
-                                                            ✓ Applied
+                                                        <span className="text-xs px-2 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 rounded-xl font-bold border border-green-200 whitespace-nowrap text-center">
+                                                            ✓ Already Applied
                                                         </span>
                                                     )}
                                                 </div>
@@ -1456,7 +1920,7 @@ export default function JobRequests() {
                         job={applyModal}
                         workerSkills={workerSkills}
                         onClose={() => setApplyModal(null)}
-                        onApply={(skills) => handleQuickApplySkills(applyModal, skills)}
+                        onApply={(skills, quotedApplications) => handleQuickApplySkills(applyModal, skills, quotedApplications)}
                     />
                 )}
             </AnimatePresence>

@@ -34,6 +34,7 @@ const locationRoutes             = require('./routes/locationRoutes');
 const semanticMatchingRoutes     = require('./routes/semanticMatchingRoutes');
 const { rebuildAllIndexes }      = require('./services/semanticMatchingService');
 const { ensureAdminAccounts }    = require('./utils/adminAccounts');
+const { sweepDirectHirePayments } = require('./controllers/directHireController');
 
 // ── Shop & Coupon routes ──────────────────────────────────────────────────────
 const shopRoutes       = require('./routes/shopRoutes');
@@ -292,6 +293,8 @@ const shouldRunPricingCron = () => {
     return !disable;
 };
 
+const shouldRunDirectHireSweep = () => String(process.env.DISABLE_DIRECT_HIRE_SWEEP || '').toLowerCase() !== 'true';
+
 const server = app.listen(PORT, HOST, () => {
     console.log(`🚀  Server running on port ${PORT}`);
 
@@ -305,6 +308,17 @@ const server = app.listen(PORT, HOST, () => {
         console.log('✅  Pricing engine cron scheduled: every Sunday 02:00 UTC');
     } else {
         console.log('ℹ️   Pricing engine cron disabled by DISABLE_PRICING_CRON=true');
+    }
+
+    if (shouldRunDirectHireSweep()) {
+        setInterval(() => {
+            sweepDirectHirePayments().catch((err) => {
+                console.error('❌  Direct hire payment sweep failed:', err.message);
+            });
+        }, 10 * 60 * 1000);
+        console.log('✅  Direct hire payment sweep scheduled: every 10 minutes');
+    } else {
+        console.log('ℹ️   Direct hire payment sweep disabled by DISABLE_DIRECT_HIRE_SWEEP=true');
     }
 
     // Auto-rebuild semantic index on startup (non-blocking)

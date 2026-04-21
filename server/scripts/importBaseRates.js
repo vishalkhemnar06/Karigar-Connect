@@ -104,20 +104,20 @@ async function importCSV() {
                 currency: row.Currency || 'INR',
                 
                 // Hourly rates (nullable)
-                localHourlyMin: parseNumber(row.Local_Hourly_Min || row.LocalHourlyMin),
-                localHourlyMax: parseNumber(row.Local_Hourly_Max || row.LocalHourlyMax),
-                platformHourlyMin: parseNumber(row.Platform_Hourly_Min || row.PlatformHourlyMin),
-                platformHourlyMax: parseNumber(row.Platform_Hourly_Max || row.PlatformHourlyMax),
+                localHourlyMin: parseNumber(row.Local_Hourly_Min_INR || row.Local_Hourly_Min || row.LocalHourlyMin),
+                localHourlyMax: parseNumber(row.Local_Hourly_Max_INR || row.Local_Hourly_Max || row.LocalHourlyMax),
+                platformHourlyMin: parseNumber(row.Platform_Hourly_Min_INR || row.Platform_Hourly_Min || row.PlatformHourlyMin),
+                platformHourlyMax: parseNumber(row.Platform_Hourly_Max_INR || row.Platform_Hourly_Max || row.PlatformHourlyMax),
                 
                 // Day rates (nullable)
-                localDayMin: parseNumber(row.Local_Day_Min || row.LocalDayMin),
-                localDayMax: parseNumber(row.Local_Day_Max || row.LocalDayMax),
-                platformDayMin: parseNumber(row.Platform_Day_Min || row.PlatformDayMin),
-                platformDayMax: parseNumber(row.Platform_Day_Max || row.PlatformDayMax),
+                localDayMin: parseNumber(row.Local_Day_Min_INR || row.Local_Day_Min || row.LocalDayMin),
+                localDayMax: parseNumber(row.Local_Day_Max_INR || row.Local_Day_Max || row.LocalDayMax),
+                platformDayMin: parseNumber(row.Platform_Day_Min_INR || row.Platform_Day_Min || row.PlatformDayMin),
+                platformDayMax: parseNumber(row.Platform_Day_Max_INR || row.Platform_Day_Max || row.PlatformDayMax),
                 
                 // Cost ranges
-                platformCostMin: parseNumber(row.Platform_Cost_Min || row.PlatformCostMin),
-                platformCostMax: parseNumber(row.Platform_Cost_Max || row.PlatformCostMax),
+                platformCostMin: parseNumber(row.Platform_Cost_Min_INR || row.Platform_Cost_Min || row.PlatformCostMin),
+                platformCostMax: parseNumber(row.Platform_Cost_Max_INR || row.Platform_Cost_Max || row.PlatformCostMax),
                 
                 // Metadata
                 source: row.Source || 'csv_import',

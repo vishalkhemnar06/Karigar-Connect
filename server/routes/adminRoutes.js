@@ -16,6 +16,10 @@ const {
     getUserByIdOrKarigarId,
     proxyDocument,
 } = require('../controllers/adminController');
+const {
+    listAdminPendingDirectHirePayments,
+    unblockClientFromDirectHire,
+} = require('../controllers/directHireController');
 const { fraudNotify } = require('../controllers/adminFraudController');
 
 const { protect, admin } = require('../middleware/authMiddleware');
@@ -31,6 +35,8 @@ router.delete('/user/:id',              protect, admin, deleteUser);
 // Dashboard/supporting endpoints used by frontend admin panel
 router.get('/stats', protect, admin, getAdminStats);
 router.get('/jobs',  protect, admin, getAllJobs);
+router.get('/direct-hires/pending-payments', protect, admin, listAdminPendingDirectHirePayments);
+router.post('/direct-hires/:jobId/unblock-client', protect, admin, unblockClientFromDirectHire);
 router.post('/fraud-notify', fraudNotify);
 
 // Notifications controller

@@ -130,6 +130,15 @@ const userSchema = new mongoose.Schema({
     termsDisputePolicyAccepted: { type: Boolean, default: false },
     termsDataPrivacyAccepted: { type: Boolean, default: false },
     termsWorkerProtectionAccepted: { type: Boolean, default: false },
+
+    // Payment lock for direct hire work: used to block selected client sections
+    paymentLock: {
+        active: { type: Boolean, default: false },
+        sections: { type: [String], default: [] },
+        jobIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Job' }],
+        reason: { type: String, default: '' },
+        updatedAt: { type: Date, default: null },
+    },
     
     // Legacy fields
     workplaceInfo: { type: String },

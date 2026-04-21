@@ -6,7 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import LiveMap from '../../components/LiveMap';
 import { getJobLocationData, initClientLocation } from '../../api';
 import toast from 'react-hot-toast';
-import { MapPin, Navigation, AlertCircle, CheckCircle, Clock, User, Phone } from 'lucide-react';
+import { MapPin, Navigation, AlertCircle, CheckCircle, Clock, User, Phone, X } from 'lucide-react';
 
 const POLL_INTERVAL = 5000; // ms — refresh worker positions
 
@@ -31,8 +31,9 @@ function timeAgo(dateStr) {
     return `${Math.floor(s / 3600)}h ago`;
 }
 
-export default function ClientLiveTracking() {
-    const { jobId } = useParams();
+export default function ClientLiveTracking({ embedded = false, jobId: jobIdProp = null, onClose = null }) {
+    const { jobId: routeJobId } = useParams();
+    const jobId = jobIdProp || routeJobId;
     const navigate = useNavigate();
 
     const [locationData, setLocationData] = useState(null);
@@ -211,16 +212,10 @@ export default function ClientLiveTracking() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50">
-            <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
+        <div className={`${embedded ? 'h-full' : 'min-h-screen'} bg-gradient-to-br from-orange-50 to-amber-50`}>
+            <div className={`max-w-4xl mx-auto px-4 py-6 ${embedded ? 'pb-6' : 'pb-24'}`}>
                 {/* Header */}
                 <div className="flex flex-wrap items-center gap-3 mb-6">
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-all active:scale-95"
-                    >
-                        ← Back
-                    </button>
                     <div className="flex-1">
                         <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
                             Live Worker Tracking
@@ -229,6 +224,20 @@ export default function ClientLiveTracking() {
                             Real-time location updates every 5 seconds
                         </p>
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (embedded && onClose) {
+                                onClose();
+                                return;
+                            }
+                            navigate(-1);
+                        }}
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 transition-all"
+                        aria-label="Close live tracking"
+                    >
+                        <X size={18} />
+                    </button>
                     {lastRefresh && (
                         <div className="flex items-center gap-1 text-[11px] text-gray-400 bg-white px-3 py-1.5 rounded-full">
                             <Clock size={12} />

@@ -12,6 +12,34 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
 
+// const LOCKED_SECTION_RULES = {
+//     dashboard: ['/api/worker/all', '/api/worker/public', '/api/worker/leaderboard'],
+//     favorites: ['/api/client/star/worker', '/api/client/workers'],
+//     ai: ['/api/ai', '/api/client/ai'],
+//     job_post: ['/api/client/jobs/post'],
+//     history: ['/api/client/jobs'],
+//     groups: ['/api/groups'],
+// };
+
+// const isDirectHireSafePath = (pathname = '') => (
+//     pathname.startsWith('/api/client/direct-hires')
+//     || pathname.startsWith('/api/client/notifications')
+//     || pathname.startsWith('/api/client/profile')
+//     || pathname.startsWith('/api/client/account')
+// );
+
+// const getLockedSectionHit = (pathname = '', sections = []) => {
+//     const safePath = String(pathname || '');
+//     if (!sections.length || isDirectHireSafePath(safePath)) return null;
+
+//     for (const section of sections) {
+//         const rules = LOCKED_SECTION_RULES[String(section || '').trim()];
+//         if (!rules) continue;
+//         if (rules.some((prefix) => safePath.startsWith(prefix))) return section;
+//     }
+//     return null;
+// };
+
 // ── PROTECT: Verify JWT, attach user to request ──────────────────────────────
 exports.protect = async (req, res, next) => {
     let token;
@@ -27,6 +55,24 @@ exports.protect = async (req, res, next) => {
             if (!user) {
                 return res.status(401).json({ message: 'Not authorized — user no longer exists' });
             }
+
+            // const paymentLock = user.paymentLock || {};
+            // const lockedSection = user.role === 'client'
+            //     ? getLockedSectionHit(req.originalUrl || req.path || '', Array.isArray(paymentLock.sections) ? paymentLock.sections : [])
+            //     : null;
+            // if (lockedSection) {
+            //     return res.status(403).json({
+            //         message: 'Payment pending for a direct hire ticket. Access to this section is temporarily restricted until the worker is paid.',
+            //         paymentLock: {
+            //             active: Boolean(paymentLock.active),
+            //             sections: Array.isArray(paymentLock.sections) ? paymentLock.sections : [],
+            //             lockedSection,
+            //             reason: String(paymentLock.reason || ''),
+            //             updatedAt: paymentLock.updatedAt || null,
+            //         },
+            //     });
+            // }
+
             req.user = user;
             return next();
         } catch (err) {

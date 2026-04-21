@@ -28,6 +28,7 @@ const SKILL_KEY_MAP = {
     'ac_technician': 'ac_technician',
     'ac technician': 'ac_technician',
     'deep_cleaning': 'deep_cleaning',
+    'cleaner': 'deep_cleaning',
     'cleaning': 'deep_cleaning',
     'housekeeping': 'deep_cleaning',
     'pest_control': 'pest_control',
@@ -84,6 +85,19 @@ const normalizeSkillKey = (skill) => {
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+const normalizeBillingUnit = (value) => {
+    const unit = String(value || '').trim().toLowerCase();
+    if (['hour', 'hours', 'hr', 'hrs', 'hourly'].includes(unit)) return 'hour';
+    if (['day', 'days', 'daily'].includes(unit)) return 'day';
+    if (['visit', 'visits', 'job', 'task'].includes(unit)) return 'visit';
+    return 'day';
+};
+
+const safeQuantity = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+};
+
 const firstPositiveNumber = (...values) => {
     for (const value of values) {
         const n = Number(value);
@@ -91,6 +105,8 @@ const firstPositiveNumber = (...values) => {
     }
     return 0;
 };
+
+const roundToNearestTen = (value) => Math.round((Number(value) || 0) / 10) * 10;
 
 /**
  * Fetch base rate from CSV bootstrap
@@ -203,9 +219,74 @@ const getDemandSupplyMultiplier = async (skillKey, cityKey) => {
  * Main: Fetch price with fallback strategy
  * Returns: { source, basePrice, p50, p75, p90 }
  */
-const fetchPrice = async (skillKey, cityKey, locality) => {
+const fetchPrice = async (skillKey, cityKey, locality, options = {}) => {
+    const { preferBaseRate = false } = options;
     skillKey = normalizeSkillKey(skillKey);
     cityKey = normalizeCityKey(cityKey);
+
+    const resolveBaseRatePrice = async () => {
+        let baseRate = await fetchBaseRate(skillKey, cityKey);
+        if (!baseRate) {
+            const nearbyBaseRates = await BaseRate.find({
+                skillKey: skillKey,
+                isActive: true,
+            }).limit(5);
+
+            if (nearbyBaseRates.length) {
+                baseRate = nearbyBaseRates[0];
+            }
+        }
+
+        if (!baseRate) return null;
+
+        // Build local market daily rates as primary baseline.
+        // Platform cost columns can be useful as guardrails, but should not dominate
+        // short-job expected prices for local service estimates.
+        const localMin = firstPositiveNumber(
+            baseRate.localDayMin,
+            firstPositiveNumber(baseRate.localHourlyMin) * 8,
+            baseRate.platformDayMin,
+            firstPositiveNumber(baseRate.platformHourlyMin) * 8,
+            800
+        );
+        const localMax = firstPositiveNumber(
+            baseRate.localDayMax,
+            firstPositiveNumber(baseRate.localHourlyMax) * 8,
+            baseRate.platformDayMax,
+            firstPositiveNumber(baseRate.platformHourlyMax) * 8,
+            baseRate.platformCostMax,
+            localMin
+        );
+        const localMid = firstPositiveNumber((localMin + localMax) / 2, localMin, 1000);
+        const p50 = roundToNearestTen(localMid);
+        const p75 = roundToNearestTen(firstPositiveNumber(localMax, localMid * 1.08, p50));
+        const p90 = roundToNearestTen(firstPositiveNumber(localMax * 1.15, p75 * 1.1, p75));
+        const hourlyMid = firstPositiveNumber(
+            baseRate.localHourlyMin && baseRate.localHourlyMax
+                ? (Number(baseRate.localHourlyMin) + Number(baseRate.localHourlyMax)) / 2
+                : 0,
+            p50 / 8,
+            120
+        );
+
+        return {
+            source: 'base_rate',
+            cityKey,
+            skillKey,
+            p50,
+            p75,
+            p90,
+            avgHours: 8,
+            hourlyMid: roundToNearestTen(hourlyMid),
+            confidence: baseRate.confidence || 0.5,
+            dataPoints: 0,
+        };
+    };
+
+    if (preferBaseRate) {
+        const preferredBase = await resolveBaseRatePrice();
+        if (preferredBase) return preferredBase;
+    }
     
     // Step 1: Try market rates (best data)
     let marketRate = await fetchMarketRate(skillKey, cityKey);
@@ -240,58 +321,8 @@ const fetchPrice = async (skillKey, cityKey, locality) => {
     }
     
     // Step 3: Fall back to base rates (CSV bootstrap)
-    let baseRate = await fetchBaseRate(skillKey, cityKey);
-    if (!baseRate) {
-        // If exact city not found, try nearby
-        const nearbyBaseRates = await BaseRate.find({
-            skillKey: skillKey,
-            isActive: true,
-        }).limit(5);
-        
-        if (nearbyBaseRates.length) {
-            baseRate = nearbyBaseRates[0];
-        }
-    }
-    
-    if (baseRate) {
-        // Convert base-rate rows to resilient platform estimates.
-        // Some CSV rows only have per-visit or platform-cost columns.
-        const localMin = firstPositiveNumber(
-            baseRate.localDayMin,
-            firstPositiveNumber(baseRate.localHourlyMin) * 8,
-            baseRate.platformDayMin,
-            firstPositiveNumber(baseRate.platformHourlyMin) * 8,
-            baseRate.platformCostMin
-        );
-        const localMax = firstPositiveNumber(
-            baseRate.localDayMax,
-            firstPositiveNumber(baseRate.localHourlyMax) * 8,
-            baseRate.platformDayMax,
-            firstPositiveNumber(baseRate.platformHourlyMax) * 8,
-            baseRate.platformCostMax,
-            localMin
-        );
-        const localMid = firstPositiveNumber(
-            (localMin > 0 && localMax > 0) ? (localMin + localMax) / 2 : 0,
-            baseRate.platformCostMin,
-            localMin,
-            1000
-        );
-        const p75 = firstPositiveNumber(baseRate.platformCostMax, localMax, localMid, 1200);
-        const p90 = firstPositiveNumber(baseRate.platformCostMax, localMax, p75, 1500);
-        
-        return {
-            source: 'base_rate',
-            cityKey,
-            skillKey,
-            p50: localMid,
-            p75,
-            p90,
-            avgHours: 8,  // default assumption
-            confidence: baseRate.confidence || 0.5,
-            dataPoints: 0,  // bootstrap has no job data
-        };
-    }
+    const fallbackBase = await resolveBaseRatePrice();
+    if (fallbackBase) return fallbackBase;
     
     // Ultimate fallback: generic price
     return {
@@ -302,6 +333,7 @@ const fetchPrice = async (skillKey, cityKey, locality) => {
         p75: 1500,
         p90: 2000,
         avgHours: 8,
+        hourlyMid: 150,
         confidence: 0.3,
         dataPoints: 0,
     };
@@ -320,6 +352,8 @@ const calculateFinalPrice = async (priceData, multipliers = {}) => {
         demandSupplyMultiplier = 1.0,
         urgency = false,
         complexity = 'normal',
+        quantity = 1,
+        unit = 'day',
     } = multipliers;
     
     // Complexity multipliers
@@ -335,12 +369,28 @@ const calculateFinalPrice = async (priceData, multipliers = {}) => {
     
     // Apply all multipliers
     const totalMultiplier = localityMultiplier * demandSupplyMultiplier * complexityFactor * urgencyFactor;
+    const billingUnit = normalizeBillingUnit(unit);
+    const qty = safeQuantity(quantity);
+    const hoursPerDay = Math.max(1, Number(avgHours) || 8);
+
+    const toAmountForUnit = (dailyAmount) => {
+        const safeDaily = Math.max(0, Number(dailyAmount) || 0);
+        if (billingUnit === 'hour') return (safeDaily / hoursPerDay) * qty;
+        if (billingUnit === 'visit') return safeDaily * qty;
+        return safeDaily * qty;
+    };
+
+    const minDaily = p50 * totalMultiplier * 0.9;
+    const expectedDaily = p75 * totalMultiplier;
+    const maxDaily = p90 * totalMultiplier * 1.1;
     
     return {
-        min: Math.round(p50 * totalMultiplier * 0.9),    // 10% below expected
-        expected: Math.round(p75 * totalMultiplier),
-        max: Math.round(p90 * totalMultiplier * 1.1),    // 10% above p90
+        min: Math.round(toAmountForUnit(minDaily)),    // 10% below expected
+        expected: Math.round(toAmountForUnit(expectedDaily)),
+        max: Math.round(toAmountForUnit(maxDaily)),    // 10% above p90
         avgHours,
+        quantity: qty,
+        unit: billingUnit,
         multipliers: {
             locality: localityMultiplier,
             demandSupply: demandSupplyMultiplier,
@@ -362,10 +412,11 @@ const estimatePrice = async ({
     unit = 'day',
     urgent = false,
     complexity = 'normal',
+    preferBaseRate = false,
 }) => {
     try {
         // Fetch base price
-        const priceData = await fetchPrice(skillKey, cityKey, locality);
+        const priceData = await fetchPrice(skillKey, cityKey, locality, { preferBaseRate });
         
         // Get multipliers
         const localityMult = await getLocalityMultiplier(normalizeCityKey(cityKey), locality);
@@ -377,6 +428,8 @@ const estimatePrice = async ({
             demandSupplyMultiplier: demandMult,
             urgency: urgent,
             complexity,
+            quantity,
+            unit,
         });
         
         return {
@@ -399,12 +452,16 @@ const estimatePrice = async ({
  * Calculate structured budget from AI skill blocks (backward compatible with rateTable)
  * Used by aiAssistantController to estimate prices with new engine while maintaining same output format
  */
-const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = false) => {
+const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = false, options = {}) => {
+    const { preferBaseRate = false } = options;
     try {
         const breakdown = [];
         let subtotal = 0;
         let subtotalMin = 0;
         let subtotalMax = 0;
+        let hourlyModelSubtotal = 0;
+        let dailyModelSubtotal = 0;
+        let visitModelSubtotal = 0;
         
         for (const block of skillBlocks) {
             const skillKey = normalizeSkillKey(block.skill);
@@ -419,6 +476,7 @@ const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = f
                 // Apply urgency once at grand-total level to avoid double counting.
                 urgent: false,
                 complexity: block.complexity || 'normal',
+                preferBaseRate,
             });
             
             if (!estimateResult.success) {
@@ -430,11 +488,19 @@ const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = f
                     max: 1600,
                     avgHours: block.hours || 8,
                 };
+                estimateResult.priceData = {
+                    source: 'fallback',
+                    confidence: 0.45,
+                    hourlyMid: 150,
+                };
+                estimateResult.confidence = 0.45;
+                estimateResult.source = 'fallback';
             }
             
             const priceData = estimateResult.priceRange;
             const ratePerDay = priceData.expected;
-            const ratePerHour = Math.round(ratePerDay / 8);
+            const rawHourly = firstPositiveNumber(estimateResult.priceData?.hourlyMid, ratePerDay / 8, 120);
+            const ratePerHour = roundToNearestTen(rawHourly);
             const sourceConfidence = Number(estimateResult.confidence || 0.55);
             const confidenceFloor = estimateResult.source === 'market_rate' || estimateResult.source === 'nearby_market_rate'
                 ? 0.7
@@ -449,31 +515,52 @@ const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = f
                         ? 0.85
                         : 0.65;
             const adjustedConfidence = clamp(sourceConfidence + 0.22, confidenceFloor, confidenceCeiling);
+            const urgencyFactor = urgent ? 1.2 : 1;
             
-            // Hours from AI block or default
+            // AI provides total hours for this skill block (not per worker)
             const hours = Math.max(1, Number(block.hours || priceData.avgHours || 8));
             
             // Worker count from AI block
             const count = Math.max(1, Math.round(block.count || 1));
             
-            // Cost per worker
-            const perWorkerCost = hours <= 8
-                ? Math.round(ratePerDay * (hours / 8))
-                : Math.round(ratePerDay * Math.ceil(hours / 8));
-            const perWorkerMinCost = hours <= 8
-                ? Math.round(priceData.min * (hours / 8))
-                : Math.round(priceData.min * Math.ceil(hours / 8));
-            const perWorkerMaxCost = hours <= 8
-                ? Math.round(priceData.max * (hours / 8))
-                : Math.round(priceData.max * Math.ceil(hours / 8));
+            // Convert total skill-hours into per-worker billed hours.
+            // This prevents under/over estimation when quantity-driven workloads adjust hours.
+            const perWorkerHours = Math.max(0.5, hours / count);
+            const minimumServiceCharge = ratePerDay * 0.6;
+            const minimumServiceChargeMin = priceData.min * 0.6;
+            const minimumServiceChargeMax = priceData.max * 0.6;
+
+            const perWorkerHourlyModel = roundToNearestTen((ratePerHour * perWorkerHours) * urgencyFactor);
+            const perWorkerDailyModel = roundToNearestTen((ratePerDay * Math.max(1, Math.ceil(perWorkerHours / 8))) * urgencyFactor);
+            const perWorkerVisitModel = roundToNearestTen(Math.max(perWorkerHourlyModel, minimumServiceCharge * urgencyFactor));
+
+            const perWorkerCostBase = perWorkerHours <= 8
+                ? Math.max(ratePerHour * perWorkerHours, minimumServiceCharge)
+                : ratePerDay * Math.ceil(perWorkerHours / 8);
+            const perWorkerMinBase = perWorkerHours <= 8
+                ? Math.max((priceData.min / 8) * perWorkerHours, minimumServiceChargeMin)
+                : priceData.min * Math.ceil(perWorkerHours / 8);
+            const perWorkerMaxBase = perWorkerHours <= 8
+                ? Math.max((priceData.max / 8) * perWorkerHours, minimumServiceChargeMax)
+                : priceData.max * Math.ceil(perWorkerHours / 8);
+
+            const perWorkerCost = roundToNearestTen(perWorkerCostBase * urgencyFactor);
+            const perWorkerMinCost = roundToNearestTen(perWorkerMinBase * urgencyFactor);
+            const perWorkerMaxCost = roundToNearestTen(perWorkerMaxBase * urgencyFactor);
             const ratePerVisit = perWorkerCost;
             
             const skillSubtotal = perWorkerCost * count;
             const skillSubtotalMin = perWorkerMinCost * count;
             const skillSubtotalMax = perWorkerMaxCost * count;
+            const skillHourlySubtotal = perWorkerHourlyModel * count;
+            const skillDailySubtotal = perWorkerDailyModel * count;
+            const skillVisitSubtotal = perWorkerVisitModel * count;
             subtotal += skillSubtotal;
             subtotalMin += skillSubtotalMin;
             subtotalMax += skillSubtotalMax;
+            hourlyModelSubtotal += skillHourlySubtotal;
+            dailyModelSubtotal += skillDailySubtotal;
+            visitModelSubtotal += skillVisitSubtotal;
             
             breakdown.push({
                 skill: skillKey,
@@ -482,33 +569,51 @@ const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = f
                 complexity: block.complexity || 'normal',
                 count,
                 hours,
+                sourceRatePerDayBase: ratePerDay,
+                sourceRatePerHourBase: ratePerHour,
+                sourceRatePerVisitBase: ratePerVisit,
                 ratePerDay,
                 ratePerHour,
                 ratePerVisit,
                 perWorkerCost,
                 perWorkerMinCost,
                 perWorkerMaxCost,
+                perWorkerHourlyModel,
+                perWorkerDailyModel,
+                perWorkerVisitModel,
                 subtotal: skillSubtotal,
                 subtotalMin: skillSubtotalMin,
                 subtotalMax: skillSubtotalMax,
+                subtotalHourlyModel: skillHourlySubtotal,
+                subtotalDailyModel: skillDailySubtotal,
+                subtotalVisitModel: skillVisitSubtotal,
                 rateRange: {
                     min: priceData.min,
                     max: priceData.max,
                 },
                 priceSource: estimateResult.source,
                 confidence: adjustedConfidence,
+                urgencyApplied: !!urgent,
             });
         }
-        
-        const urgencyMult = urgent ? 1.2 : 1.0;
-        const totalMinEstimated = Math.round(subtotalMin * urgencyMult);
-        const totalMaxEstimated = Math.round(subtotalMax * urgencyMult);
-        const totalEstimated = Math.round(subtotal * urgencyMult);
+
+        const distinctSkills = breakdown.length;
+        const coordinationFactor = clamp(1 + Math.max(0, distinctSkills - 1) * 0.06, 1, 1.35);
+        const handoffOverhead = Math.max(0, distinctSkills - 1) * 120;
+        const baseExpected = Math.max(subtotal, visitModelSubtotal);
+        let totalEstimated = Math.round((baseExpected * coordinationFactor) + handoffOverhead);
+        const totalMinEstimated = Math.round(Math.max(subtotalMin, hourlyModelSubtotal * (1 + Math.max(0, distinctSkills - 1) * 0.02)));
+        const totalMaxEstimated = Math.round(Math.max(subtotalMax, dailyModelSubtotal * coordinationFactor * 1.08));
+        totalEstimated = Math.max(totalMinEstimated, Math.min(totalEstimated, totalMaxEstimated));
         const totalWorkers = breakdown.reduce((s, b) => s + b.count, 0);
         const durationDays = Math.max(1, Math.ceil(
-            Math.max(...breakdown.map(b => b.hours || 8)) / 8
+            Math.max(...breakdown.map((b) => {
+                const skillHours = Number(b.hours) || 8;
+                const workerCount = Math.max(1, Number(b.count) || 1);
+                return skillHours / (workerCount * 8);
+            }))
         ));
-        const totalHours = breakdown.reduce((s, b) => s + ((Number(b.hours) || 0) * (Number(b.count) || 0)), 0);
+        const totalHours = breakdown.reduce((s, b) => s + (Number(b.hours) || 0), 0);
         
         return {
             breakdown,
@@ -516,13 +621,19 @@ const calculateStructuredBudget = async (skillBlocks = [], city = '', urgent = f
             subtotalMin,
             subtotalMax,
             urgent,
-            urgencyMult,
             totalMinEstimated,
             totalMaxEstimated,
             totalEstimated,
             totalWorkers,
             totalHours,
             durationDays,
+            pricingModels: {
+                hourly: Math.round(hourlyModelSubtotal),
+                daily: Math.round(dailyModelSubtotal),
+                visit: Math.round(visitModelSubtotal),
+                coordinationFactor: Number(coordinationFactor.toFixed(2)),
+                handoffOverhead,
+            },
             city,
             cityTier: 'dynamic',
             globalComplexity: 'normal',

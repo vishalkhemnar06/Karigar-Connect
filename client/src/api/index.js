@@ -138,15 +138,26 @@ export const getShopPublicProducts = (shopId)   => API.get(`/api/shop/public/${s
 // ── WORKER ────────────────────────────────────────────────────────────────────
 export const getAvailableJobs               = ()              => API.get('/api/worker/jobs');
 export const getJobDetails                  = (jobId)         => API.get(`/api/worker/jobs/${jobId}/details`);
-export const applyForJob                    = (jobId, skills) => API.post(`/api/worker/jobs/${jobId}/apply`, { selectedSkills: skills });
+export const applyForJob                    = (jobId, skills, extra = {}) => {
+    const payload = Array.isArray(skills)
+        ? { selectedSkills: skills, ...extra }
+        : { ...skills, ...extra };
+    return API.post(`/api/worker/jobs/${jobId}/apply`, payload);
+};
+export const cancelPendingJobApplication    = (jobId)         => API.patch(`/api/worker/jobs/${jobId}/application/cancel`);
 export const workerCancelJob                = (jobId, reason) => API.patch(`/api/worker/jobs/${jobId}/cancel`, { reason });
 export const getWorkerBookings              = ()              => API.get('/api/worker/bookings');
 export const getWorkerAnalytics             = ()              => API.get('/api/worker/analytics');
 export const getNearClients                 = ()              => API.get('/api/worker/near-clients');
 export const getDirectInvites               = ()              => API.get('/api/worker/invites/direct');
+export const getWorkerDirectHires           = ()              => API.get('/api/worker/direct-hires');
 export const acceptDirectInvite             = (jobId)         => API.post(`/api/worker/invites/${jobId}/accept`);
 export const rejectDirectInvite             = (jobId)         => API.post(`/api/worker/invites/${jobId}/reject`);
+export const acceptDirectHireTicket         = (jobId)         => API.post(`/api/worker/direct-hires/${jobId}/accept`);
+export const rejectDirectHireTicket         = (jobId)         => API.post(`/api/worker/direct-hires/${jobId}/reject`);
 export const getWorkerProfile               = ()              => API.get('/api/worker/profile');
+export const getWorkerDailyProfile          = ()              => API.get('/api/worker/daily-profile');
+export const updateWorkerDailyProfile       = (body)          => API.put('/api/worker/daily-profile', body);
 export const updateWorkerProfile            = (fd)            => API.put('/api/worker/profile/update',         fd, mp);
 export const toggleAvailability             = (d = {})        => API.post('/api/worker/availability',           d);
 export const deleteAccount                  = ()              => API.delete('/api/worker/account/delete');
@@ -189,21 +200,33 @@ export const deleteClientAccount        = ()      => API.delete('/api/client/acc
 export const getWorkerFullProfile       = (wId)   => API.get(`/api/client/workers/${wId}/profile`);
 export const generateWorkerProfileSummary = (wId) => API.get(`/api/client/workers/${wId}/profile-summary`);
 export const toggleStarWorker           = (wId)   => API.post('/api/client/star/worker',            { workerId: wId });
+export const getDirectHireSuggestedAmount = (body) => API.post('/api/client/direct-hires/amount', body);
+export const createDirectHireTicket       = (body) => API.post('/api/client/direct-hires', body);
+export const getClientDirectHireTickets   = ()     => API.get('/api/client/direct-hires');
+export const logDirectHireCallIntent    = (jobId) => API.post(`/api/client/direct-hires/${jobId}/call-intent`);
+export const sendDirectHireStartOtp     = (jobId) => API.post(`/api/client/direct-hires/${jobId}/start-otp/send`);
+export const verifyDirectHireStartOtp   = (jobId, body) => API.post(`/api/client/direct-hires/${jobId}/start-otp/verify`, body);
+export const sendDirectHireCompletionOtp = (jobId, body = {}) => API.post(`/api/client/direct-hires/${jobId}/completion-otp/send`, body);
+export const verifyDirectHireCompletionOtp = (jobId, body) => API.post(`/api/client/direct-hires/${jobId}/completion-otp/verify`, body);
 
 export const getClientJobs              = ()                              => API.get('/api/client/jobs');
 export const postJob                    = (fd)                            => API.post('/api/client/jobs/post',              fd, mp);
 export const deleteClientJob            = (id)                            => API.delete(`/api/client/jobs/${id}`);
+export const permanentlyDeleteHistoryJob = (id)                           => API.delete(`/api/client/jobs/${id}/permanent`);
+export const permanentlyDeleteSelectedHistoryJobs = (jobIds = [])         => API.post('/api/client/jobs/history/delete-selected', { jobIds });
+export const permanentlyDeleteAllHistoryJobs = ()                         => API.delete('/api/client/jobs/history/delete-all');
 export const updateJobStatus            = (id, status, options = {})      => API.patch(`/api/client/jobs/${id}/status`,    { status, ...options });
 export const cancelJob                  = (id, reason)                    => API.patch(`/api/client/jobs/${id}/cancel`,    { reason });
 export const startJob                   = (id)                            => API.patch(`/api/client/jobs/${id}/start`);
 export const toggleJobApplications      = (id)                            => API.patch(`/api/client/jobs/${id}/toggle-applications`);
 export const removeAssignedWorker       = (id, workerId, reason, slotId)  => API.patch(`/api/client/jobs/${id}/remove-worker`, { workerId, reason, slotId });
-export const completeWorkerTask         = (id, workerId, slotId)          => API.patch(`/api/client/jobs/${id}/complete-worker-task`, { workerId, slotId });
+export const completeWorkerTask         = (id, workerId, slotId, options = {}) => API.patch(`/api/client/jobs/${id}/complete-worker-task`, { workerId, slotId, ...options });
 export const completeSubTask            = (id, subTaskId)                 => API.patch(`/api/client/jobs/${id}/subtask/complete`,     { subTaskId });
 export const uploadCompletionPhotos     = (id, fd)                        => API.post(`/api/client/jobs/${id}/completion-photos`,     fd, mp);
+export const removeCompletionPhoto      = (id, photoIndex)                => API.delete(`/api/client/jobs/${id}/completion-photos/${photoIndex}`);
 export const getJobApplicants           = (jobId)                         => API.get(`/api/client/jobs/${jobId}/applicants`);
 export const getJobSmartSuggestions     = (jobId)                         => API.get(`/api/client/jobs/${jobId}/smart-suggestions`);
-export const inviteWorkersToJob         = (jobId, workerIds = [])         => API.post(`/api/client/jobs/${jobId}/invite`, { workerIds });
+export const inviteWorkersToJob         = (jobId, workerIds = [], inviteSkill = '') => API.post(`/api/client/jobs/${jobId}/invite`, { workerIds, inviteSkill });
 export const respondToApplicant         = (jobId, d)                      => API.post(`/api/client/jobs/${jobId}/respond`,  d);
 export const hireWorker                 = (jobId, wId)                    => API.post(`/api/client/jobs/${jobId}/hire`,    { workerId: wId });
 export const submitRating               = (jobId, d)                      => API.post(`/api/client/jobs/${jobId}/rate`,    d);
@@ -241,6 +264,8 @@ export const markAdminNotificationRead     = (id) => API.patch(`/api/admin/notif
 export const markAllAdminNotificationsRead = ()   => API.patch('/api/admin/notifications/mark-all-read');
 export const deleteAdminNotification       = (id) => API.delete(`/api/admin/notifications/${id}`);
 export const clearAllAdminNotifications    = ()   => API.delete('/api/admin/notifications/clear-all');
+export const getAdminPendingDirectHirePayments = () => API.get('/api/admin/direct-hires/pending-payments');
+export const adminUnblockDirectHireClient      = (jobId) => API.post(`/api/admin/direct-hires/${jobId}/unblock-client`);
 
 // ── CLIENT COMPLAINTS ─────────────────────────────────────────────────────────
 export const searchWorkerForComplaint = (query) => API.get('/api/client/complaints/search-worker', { params: { query } });

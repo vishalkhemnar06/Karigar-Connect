@@ -3,6 +3,7 @@ import { getClientProfile, getWorkerFullProfile, getImageUrl } from '../../api/i
 import { Star, Phone, MapPin, Award, Briefcase } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
+import DirectHireModal from '../../components/DirectHireModal';
 
 const openMap = (lat, lng) => {
     const nLat = Number(lat);
@@ -17,12 +18,16 @@ const openMap = (lat, lng) => {
 export default function ClientFavorites() {
     const [loading, setLoading] = useState(true);
     const [workers, setWorkers] = useState([]);
+    const [client, setClient] = useState(null);
+    const [isDirectHireModalOpen, setIsDirectHireModalOpen] = useState(false);
+    const [directHireSelectedWorker, setDirectHireSelectedWorker] = useState(null);
 
     useEffect(() => {
         let active = true;
         (async () => {
             try {
                 const { data: profile } = await getClientProfile();
+                if (active) setClient(profile || null);
                 const ids = Array.isArray(profile?.starredWorkers) ? profile.starredWorkers : [];
                 if (ids.length === 0) {
                     if (active) setWorkers([]);
@@ -85,7 +90,7 @@ export default function ClientFavorites() {
                                 <p className="text-gray-700"><span className="font-semibold">City:</span> {worker.address?.city || 'Not provided'}</p>
                             </div>
 
-                            <div className="mt-4 grid grid-cols-2 gap-2">
+                            <div className={`mt-4 grid gap-2 ${/smart|android|iphone|ios/.test(String(worker.phoneType || '').toLowerCase()) ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                 <a
                                     href={worker.mobile ? `tel:${worker.mobile}` : undefined}
                                     onClick={(e) => { if (!worker.mobile) { e.preventDefault(); toast.error('Worker phone not available.'); } }}
@@ -93,6 +98,18 @@ export default function ClientFavorites() {
                                 >
                                     <Phone size={14} /> Call Now
                                 </a>
+                                {/smart|android|iphone|ios/.test(String(worker.phoneType || '').toLowerCase()) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDirectHireSelectedWorker(worker);
+                                            setIsDirectHireModalOpen(true);
+                                        }}
+                                        className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold"
+                                    >
+                                        <Briefcase size={14} /> Hire Directly
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => openMap(worker.address?.latitude, worker.address?.longitude)}
                                     className="inline-flex items-center justify-center gap-2 px-3 py-2 border border-orange-200 text-orange-700 rounded-xl text-sm font-bold hover:bg-orange-50"
@@ -112,6 +129,16 @@ export default function ClientFavorites() {
                     ))}
                 </div>
             )}
+
+            <DirectHireModal
+                isOpen={isDirectHireModalOpen}
+                worker={directHireSelectedWorker}
+                client={client}
+                onClose={() => setIsDirectHireModalOpen(false)}
+                onSuccess={() => {
+                    // No immediate list mutation needed for favorites after request creation.
+                }}
+            />
         </div>
     );
 }

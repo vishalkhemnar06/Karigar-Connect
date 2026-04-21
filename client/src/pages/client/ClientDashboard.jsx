@@ -10,6 +10,7 @@ import React, {
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
 import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
+import DirectHireModal from '../../components/DirectHireModal';
 import {
   Search,
   MapPin,
@@ -183,7 +184,7 @@ const formatSummaryPoint = point => {
    KARIGAR CARD
 ───────────────────────────────────────────── */
 
-const KarigarCard = ({ karigar, index }) => {
+const KarigarCard = ({ karigar, index, onHireDirect }) => {
   const [imageError, setImageError] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -210,6 +211,8 @@ const KarigarCard = ({ karigar, index }) => {
   const isAvailable = karigar.availability !== false;
   const rating = karigar.avgStars || 0;
   const skills = Array.isArray(karigar.skills) ? karigar.skills : [];
+  const normalizedPhoneType = String(karigar.phoneType || '').toLowerCase();
+  const canDirectHire = /smart|android|iphone|ios/.test(normalizedPhoneType);
 
   const loadSummary = useCallback(async () => {
     if (!karigar?._id) {
@@ -431,7 +434,7 @@ const KarigarCard = ({ karigar, index }) => {
               )}
 
               {/* Actions */}
-              <div className="flex gap-2 pt-2">
+              <div className={`grid gap-2 pt-2 ${canDirectHire ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 {karigar.mobile && (
                   <a
                     href={`tel:${karigar.mobile}`}
@@ -439,6 +442,16 @@ const KarigarCard = ({ karigar, index }) => {
                   >
                     <Phone size={12} /> Contact
                   </a>
+                )}
+
+                {canDirectHire && (
+                  <button
+                    type="button"
+                    onClick={() => onHireDirect?.(karigar)}
+                    className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-orange-600 to-amber-500 text-white py-2 rounded-xl text-[11px] sm:text-xs font-bold hover:shadow-lg transition-all active:scale-95"
+                  >
+                    Hire Directly
+                  </button>
                 )}
 
                 <button
@@ -610,6 +623,8 @@ const ClientDashboard = () => {
   const [karigars, setKarigars] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isDirectHireModalOpen, setIsDirectHireModalOpen] = useState(false);
+  const [directHireSelectedWorker, setDirectHireSelectedWorker] = useState(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
@@ -707,6 +722,11 @@ const ClientDashboard = () => {
     setExperienceFilter('');
     setShowFilters(false);
   };
+
+  const handleHireDirect = useCallback((worker) => {
+    setDirectHireSelectedWorker(worker);
+    setIsDirectHireModalOpen(true);
+  }, []);
 
   const greeting = getGreeting();
   const firstName = client?.name?.split(' ')[0] || null;
@@ -990,10 +1010,20 @@ const ClientDashboard = () => {
       ) : (
         <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {filteredKarigars.map((karigar, idx) => (
-            <KarigarCard key={karigar._id || idx} karigar={karigar} index={idx} />
+            <KarigarCard key={karigar._id || idx} karigar={karigar} index={idx} onHireDirect={handleHireDirect} />
           ))}
         </section>
       )}
+
+      <DirectHireModal
+        isOpen={isDirectHireModalOpen}
+        worker={directHireSelectedWorker}
+        client={client}
+        onClose={() => setIsDirectHireModalOpen(false)}
+        onSuccess={() => {
+          fetchDashboardData(true);
+        }}
+      />
     </div>
   );
 };

@@ -5,7 +5,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "semantic:run": "python semantic_match_service/main.py"
+    "semantic:run": "python semantic_match_service/main.py",
+    "smoke:commute": "node scripts/smokeCommuteFlows.js",
+    "jobs:cleanup:dry": "node scripts/cleanupJobLegacyFields.js --dry-run",
+    "jobs:cleanup:apply": "node scripts/cleanupJobLegacyFields.js --apply"
   },
   "keywords": [],
   "author": "",

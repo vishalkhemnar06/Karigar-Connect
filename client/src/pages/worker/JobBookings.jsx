@@ -4,13 +4,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getWorkerBookings, workerCancelJob, getImageUrl, getJobDetails } from '../../api/index';
+import { getWorkerBookings, workerCancelJob, cancelPendingJobApplication, getImageUrl, getJobDetails } from '../../api/index';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     Star, Shield, AlertCircle, CheckCircle, XCircle, Truck,
-    Phone, Mail, ExternalLink, ChevronDown, ChevronUp,
+    Phone, Mail, ExternalLink,
     Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle, X, Eye
 } from 'lucide-react';
 
@@ -31,6 +31,21 @@ const formatPaymentMethod = (method) => {
         case 'bank_transfer': return 'Direct Bank Account';
         default: return 'Flexible (Any)';
     }
+};
+
+const formatCommuteText = (commute) => {
+    if (!commute) return 'Distance unavailable';
+    if (!commute.available) return 'Location unavailable';
+    const distance = commute.distanceText || `${Number(commute.distanceKm || 0).toFixed(1)} km`;
+    const eta = commute.etaText ? `ETA ${commute.etaText}` : '';
+    return [distance, eta].filter(Boolean).join(' • ');
+};
+
+const getCommuteToneClass = (commute) => {
+    if (!commute?.available) return 'text-gray-500';
+    if (commute.distanceColor === 'green') return 'text-emerald-700';
+    if (commute.distanceColor === 'yellow') return 'text-amber-700';
+    return 'text-rose-700';
 };
 
 const openGoogleMapsDirections = ({ lat, lng }) => {
@@ -88,6 +103,7 @@ const useStatusConfig = () => {
         running:             { label: t('common.running', 'Running'),   color: 'bg-yellow-500',bg: 'bg-yellow-50', text: 'text-yellow-700', icon: Truck },
         completed:           { label: t('common.completed', 'Completed'), color: 'bg-emerald-500',bg:'bg-emerald-50',text: 'text-emerald-700',icon: CheckCircle },
         cancelled_by_client: { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
+        cancelled_by_worker: { label: t('job_bookings.cancelled_by_worker', 'Cancelled by Worker'), color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', icon: XCircle },
         cancelled:           { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
     };
 };
@@ -397,11 +413,6 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                     <p className="text-sm text-gray-700 break-words">
                                         <span className="font-semibold">Method:</span> {formatPaymentMethod(job.paymentMethod)}
                                     </p>
-                                    {job.negotiable && Number(job.minBudget || 0) > 0 && (
-                                        <p className="text-sm text-gray-700 break-words">
-                                            <span className="font-semibold">Negotiable Minimum:</span> ₹{Number(job.minBudget).toLocaleString()}
-                                        </p>
-                                    )}
                                 </div>
                             </div>
 
@@ -429,12 +440,34 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                         <MapPin size={12} /> Location
                                     </p>
                                     <div className="bg-gray-50 rounded-2xl p-3">
+                                        {job.location?.fullAddress && (
+                                            <p className="text-sm text-gray-700 break-words mb-1.5">{job.location.fullAddress}</p>
+                                        )}
                                         <p className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
                                             <MapPin size={14} />
                                             {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
                                         </p>
+                                        {job.location?.buildingName && (
+                                            <p className="text-sm text-gray-700 break-words mt-1">
+                                                <span className="font-semibold">Building/Home:</span> {job.location.buildingName}
+                                            </p>
+                                        )}
+                                        {job.location?.unitNumber && (
+                                            <p className="text-sm text-gray-700 break-words mt-1">
+                                                <span className="font-semibold">Flat/Home No.:</span> {job.location.unitNumber}
+                                            </p>
+                                        )}
+                                        {job.location?.floorNumber && (
+                                            <p className="text-sm text-gray-700 break-words mt-1">
+                                                <span className="font-semibold">Floor:</span> {job.location.floorNumber}
+                                            </p>
+                                        )}
+                                        <p className={`text-xs font-semibold mt-2 ${getCommuteToneClass(job?.commute)}`}>
+                                            {formatCommuteText(job?.commute)}
+                                            {job?.commute?.isLocationStale ? ' • stale location' : ''}
+                                        </p>
                                     </div>
-                                    {job.location?.lat && job.location?.lng && (
+                                    {Number.isFinite(Number(job.location?.lat)) && Number.isFinite(Number(job.location?.lng)) && (
                                         <button
                                             type="button"
                                             onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
@@ -538,7 +571,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // ── Job Card (Mobile Optimized) ──────────────────────────────────────────────────
-function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, activeSection }) {
+function JobCard({ job, workerId, onCancel, onCancelPending, onViewDetails, activeSection, cancellingPending }) {
     const navigate = useNavigate();
     const { t } = useTranslation();
 
@@ -556,9 +589,48 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
             return appId === workerId;
         } catch { return false; }
     });
+    const pendingApps = myApps.filter((a) => a?.status === 'pending');
+    const rejectedApps = myApps.filter((a) => a?.status === 'rejected' && !a?.workerCancelled);
+    const cancelledByYouApps = myApps.filter((a) => !!a?.workerCancelled);
+    const quotedEntriesFromApps = myApps
+        .filter((a) => Number(a?.quotedPrice || 0) > 0)
+        .map((a, i) => ({ key: `app-${i}`, amount: Number(a?.quotedPrice || 0), skill: a?.skill || '' }));
+    const quotedEntriesFromSlots = mySlots
+        .filter((s) => Number(s?.workerQuotedPrice || s?.quotedPrice || 0) > 0)
+        .map((s, i) => ({ key: `slot-${i}`, amount: Number(s?.workerQuotedPrice || s?.quotedPrice || 0), skill: s?.skill || '' }));
+    const quoteEntryMap = new Map();
+    [...quotedEntriesFromApps, ...quotedEntriesFromSlots].forEach((entry) => {
+        const dedupeKey = `${entry.skill || 'general'}-${entry.amount}`;
+        if (!quoteEntryMap.has(dedupeKey)) quoteEntryMap.set(dedupeKey, entry);
+    });
+    const myQuotedEntries = Array.from(quoteEntryMap.values());
+
+    const paidEntriesFromSlots = mySlots
+        .filter((s) => Number(s?.finalPaidPrice || 0) > 0)
+        .map((s, i) => ({ key: `slot-paid-${i}`, amount: Number(s?.finalPaidPrice || 0), skill: s?.skill || '' }));
+    const paidEntriesFromPricingMeta = (Array.isArray(job?.pricingMeta?.skillFinalPaid) ? job.pricingMeta.skillFinalPaid : [])
+        .filter((row) => {
+            const rowWorkerId = String(row?.workerId?._id || row?.workerId || '');
+            return rowWorkerId === String(workerId || '') && Number(row?.amount || 0) > 0;
+        })
+        .map((row, i) => ({ key: `meta-paid-${i}`, amount: Number(row?.amount || 0), skill: row?.skill || '' }));
+    const paidEntryMap = new Map();
+    [...paidEntriesFromSlots, ...paidEntriesFromPricingMeta].forEach((entry) => {
+        const dedupeKey = `${entry.skill || 'general'}-${entry.amount}`;
+        if (!paidEntryMap.has(dedupeKey)) paidEntryMap.set(dedupeKey, entry);
+    });
+    const myPaidEntries = Array.from(paidEntryMap.values());
+    const myPaidTotal = myPaidEntries.reduce((sum, entry) => sum + Number(entry?.amount || 0), 0);
+
+    const showApplicationState = activeSection === 'open' && mySlots.length === 0;
+    const cancelledByWorker = String(job?.cancelledWorkerId || '') === String(workerId || '');
+    const cancelledByClient = ['cancelled', 'cancelled_by_client'].includes(String(job?.status || '').toLowerCase());
+    const displayStatus = activeSection === 'cancelled'
+        ? (cancelledByWorker ? 'cancelled_by_worker' : (cancelledByClient ? 'cancelled_by_client' : 'cancelled'))
+        : job?.status;
+    const jobPhoto = job?.photos?.[0] ? getImageUrl(job.photos[0]) : '';
 
     const cancelInfo = getCancelInfo(job);
-    const isExpanded = expanded === job?._id;
 
     if (!job) return null;
 
@@ -568,16 +640,22 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             whileHover={{ y: -2 }}
-            className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden"
+            className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col"
         >
-            {/* Card Header - Mobile optimized with larger tap area */}
-            <div 
-                className="flex items-start gap-3 p-4 active:bg-gray-50 cursor-pointer touch-manipulation" 
-                onClick={() => onToggle(job._id)}
-                role="button"
-                tabIndex={0}
-                onKeyPress={(e) => e.key === 'Enter' && onToggle(job._id)}
-            >
+            {jobPhoto && (
+                <div className="relative h-32 border-b border-gray-100 overflow-hidden">
+                    <img
+                        src={jobPhoto}
+                        alt={job?.title || 'Job'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            e.target.style.display = 'none';
+                        }}
+                    />
+                </div>
+            )}
+
+            <div className="flex items-start gap-3 p-4">
                 <div className="relative flex-shrink-0">
                     <img
                         src={getImageUrl(job?.postedBy?.photo)}
@@ -596,7 +674,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
                     <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className="font-bold text-gray-900 text-sm leading-tight line-clamp-2 flex-1">{job?.title || 'Untitled Job'}</h3>
                         <div className="flex-shrink-0">
-                            <SBadge status={job?.status} />
+                            <SBadge status={displayStatus} />
                         </div>
                     </div>
                     <p className="text-xs text-gray-500 flex items-center gap-1 mb-1.5">
@@ -617,12 +695,50 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
                         </div>
                     )}
 
-                    {/* Pending apps */}
-                    {mySlots.length === 0 && myApps.filter(a => a?.status === 'pending').length > 0 && (
+                    {/* Application tags */}
+                    {showApplicationState && (pendingApps.length > 0 || rejectedApps.length > 0 || cancelledByYouApps.length > 0) && (
                         <div className="flex flex-wrap gap-1.5 mb-1.5">
-                            {myApps.filter(a => a?.status === 'pending').map((a, i) => (
+                            {pendingApps.map((a, i) => (
                                 <span key={i} className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                                    <Clock size={10} /> {t('job_bookings.applied_label', { skill: a?.skill || 'general' })}
+                                    <Clock size={10} /> Applied
+                                </span>
+                            ))}
+                            {rejectedApps.length > 0 && (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                                    <XCircle size={10} /> Rejected
+                                </span>
+                            )}
+                            {cancelledByYouApps.length > 0 && (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                    <X size={10} /> Cancelled by You
+                                </span>
+                            )}
+                            {rejectedApps.length > 0 && rejectedApps[0]?.feedback && (
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                                    Reason: {String(rejectedApps[0].feedback)}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {myQuotedEntries.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                            {myQuotedEntries.map((entry) => (
+                                <span key={`quote-${entry.key}`} className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <IndianRupee size={10} /> Quoted: {Number(entry.amount).toLocaleString('en-IN')}{entry?.skill ? ` · ${entry.skill}` : ''}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
+                    {myPaidEntries.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                            <span className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                <IndianRupee size={10} /> Paid: {Number(myPaidTotal || 0).toLocaleString('en-IN')}
+                            </span>
+                            {myPaidEntries.map((entry) => (
+                                <span key={`paid-${entry.key}`} className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    <IndianRupee size={10} /> {Number(entry.amount).toLocaleString('en-IN')}{entry?.skill ? ` · ${entry.skill}` : ''}
                                 </span>
                             ))}
                         </div>
@@ -630,7 +746,7 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
 
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span className="flex items-center gap-1 font-bold text-green-600">
-                            <IndianRupee size={11} /> ₹{job?.payment?.toLocaleString() || '0'}
+                            <IndianRupee size={11} /> {job?.payment?.toLocaleString() || '0'}
                         </span>
                         {job?.scheduledDate && (
                             <span className="flex items-center gap-1">
@@ -641,159 +757,59 @@ function JobCard({ job, workerId, expanded, onToggle, onCancel, onViewDetails, a
                         {job?.scheduledTime && <span className="flex items-center gap-1"><Clock size={10} /> {job.scheduledTime}</span>}
                         {job?.location?.city && <span className="flex items-center gap-1"><MapPin size={10} /> {job.location.city}</span>}
                     </div>
-                </div>
 
-                <div className="flex-shrink-0 text-gray-400 pt-1">
-                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    <p className={`mt-2 text-xs font-semibold ${getCommuteToneClass(job?.commute)}`}>
+                        {formatCommuteText(job?.commute)}
+                        {job?.commute?.isLocationStale ? ' • stale location' : ''}
+                    </p>
+
+                    <div className="grid grid-cols-3 gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (Number.isFinite(Number(job?.location?.lat)) && Number.isFinite(Number(job?.location?.lng))) {
+                                    openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng });
+                                }
+                            }}
+                            className="text-xs px-2 py-2 border-2 border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-bold disabled:opacity-60"
+                            disabled={!(Number.isFinite(Number(job?.location?.lat)) && Number.isFinite(Number(job?.location?.lng)))}
+                        >
+                            Maps
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onViewDetails(job._id)}
+                            className="text-xs px-2 py-2 border-2 border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 font-bold"
+                        >
+                            Details
+                        </button>
+                        <div className="text-xs px-2 py-2 rounded-lg font-bold bg-gray-100 text-gray-500 text-center">Status</div>
+                    </div>
                 </div>
             </div>
 
-            {/* Expanded Content - Mobile optimized */}
-            <AnimatePresence>
-                {isExpanded && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="border-t border-gray-100"
+            <div className="border-t border-gray-100 p-3 space-y-2">
+                {showApplicationState && pendingApps.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => onCancelPending(job)}
+                        disabled={!!cancellingPending}
+                        className="w-full py-2 border-2 border-red-200 bg-white text-red-600 rounded-xl font-bold text-xs hover:bg-red-50 disabled:opacity-60"
                     >
-                        <div className="p-4 space-y-3">
-                            {job?.description && (
-                                <div className="bg-gradient-to-r from-gray-50 to-white rounded-xl p-3">
-                                    <p className="text-xs text-gray-700 leading-relaxed">{job.description}</p>
-                                </div>
-                            )}
-
-                            {/* Pending Applications info */}
-                            {myApps.filter(a => a?.status === 'pending').length > 0 && (
-                                <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-3">
-                                    <div className="flex items-start gap-2">
-                                        <Clock size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                                        <div className="flex-1">
-                                            <p className="text-xs font-bold text-amber-700 mb-1">{t('job_bookings.pending_apps', 'Pending Applications')}</p>
-                                            <div className="flex flex-wrap gap-1.5 mb-1.5">
-                                                {myApps.filter(a => a?.status === 'pending').map((a, i) => (
-                                                    <span key={i} className="text-xs bg-white border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full font-semibold capitalize">
-                                                        {a?.skill || 'general'}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <p className="text-xs text-amber-600">{t('job_bookings.waiting_client', 'Waiting for client to confirm')}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Client Info - Mobile friendly */}
-                            {job?.postedBy && (
-                                <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-3 flex items-center gap-2">
-                                    <img 
-                                        src={getImageUrl(job.postedBy.photo)} 
-                                        alt="" 
-                                        className="w-10 h-10 rounded-full object-cover border-2 border-orange-200 flex-shrink-0" 
-                                        onError={e => { e.target.src = '/admin.png'; }} 
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-gray-800 truncate">{job.postedBy.name}</p>
-                                        {job.postedBy.mobile && (
-                                            <a 
-                                                href={`tel:${job.postedBy.mobile}`} 
-                                                className="text-xs text-blue-600 inline-flex items-center gap-1 mt-0.5 touch-manipulation"
-                                            >
-                                                <Phone size={10} /> <span className="truncate">{job.postedBy.mobile}</span>
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Location */}
-                            {job?.location?.city && (
-                                <div className="bg-gray-50 rounded-xl p-3">
-                                    <div className="flex items-start gap-2">
-                                        <MapPin size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
-                                        <div className="flex-1">
-                                            <p className="text-xs font-semibold text-gray-700 break-words">
-                                                {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
-                                            </p>
-                                            {job?.location?.lat && job?.location?.lng && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
-                                                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-all"
-                                                >
-                                                    <Navigation size={12} /> View Location In Google Maps
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Running notice */}
-                            {job?.status === 'running' && (
-                                <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-3">
-                                    <div className="flex items-start gap-2">
-                                        <Truck size={16} className="text-yellow-600 flex-shrink-0 mt-0.5" />
-                                        <div className="flex-1">
-                                            <p className="text-xs font-bold text-yellow-700 mb-0.5">{t('job_bookings.sections.in_progress', 'In Progress')}</p>
-                                            <p className="text-xs text-yellow-600">{t('job_manage.in_progress_job', 'Job is currently in progress')}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Live Location Button - Larger tap target for mobile */}
-                            {['scheduled', 'running'].includes(job?.status) && mySlots.length > 0 && (
-                                <motion.button
-                                    whileTap={{ scale: 0.97 }}
-                                    onClick={() => navigate(`/worker/live-tracking/${job._id}`)}
-                                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold text-sm transition-all shadow-lg active:opacity-80 touch-manipulation"
-                                >
-                                    <Navigation size={16} /> {t('job_bookings.share_location', 'Share Live Location')}
-                                </motion.button>
-                            )}
-
-                            <motion.button
-                                whileTap={{ scale: 0.97 }}
-                                onClick={() => onViewDetails(job._id)}
-                                className="w-full flex items-center justify-center gap-2 py-3.5 border-2 border-orange-200 bg-orange-50 text-orange-700 rounded-xl font-bold text-sm hover:bg-orange-100 transition-all active:bg-orange-100 touch-manipulation"
-                            >
-                                <Eye size={16} /> View Full Details
-                            </motion.button>
-
-                            {/* Cancel Button */}
-                            {cancelInfo.show && (
-                                cancelInfo.allowed ? (
-                                    <motion.button
-                                        whileTap={{ scale: 0.97 }}
-                                        onClick={() => onCancel({ job, mySlot: myPrimary })}
-                                        className="w-full py-3.5 border-2 border-red-200 bg-white text-red-500 rounded-xl font-bold text-sm hover:bg-red-50 transition-all active:bg-red-50 touch-manipulation"
-                                    >
-                                        {t('job_bookings.cancel_assignment', 'Cancel Assignment')}
-                                    </motion.button>
-                                ) : cancelInfo.reason === 'too_close' ? (
-                                    <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-center">
-                                        <p className="text-xs font-bold text-red-600 mb-0.5">{t('job_manage.cannot_cancel', 'Cannot Cancel')}</p>
-                                        <p className="text-xs text-red-500">
-                                            {t('job_manage.cancel_window_closed', { mins: cancelInfo.minsLeft })}
-                                        </p>
-                                    </div>
-                                ) : null
-                            )}
-
-                            {job?.status === 'running' && (
-                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
-                                    <p className="text-xs text-gray-500 font-medium flex items-center justify-center gap-1.5">
-                                        <Lock size={11} /> {t('job_bookings.cancel_locked', 'Cannot cancel job in progress')}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
+                        {cancellingPending ? 'Cancelling Application...' : 'Cancel Application'}
+                    </button>
                 )}
-            </AnimatePresence>
+
+                {cancelInfo.show && cancelInfo.allowed && (
+                    <button
+                        type="button"
+                        onClick={() => onCancel({ job, mySlot: myPrimary })}
+                        className="w-full py-2 border-2 border-red-200 bg-white text-red-500 rounded-xl font-bold text-xs hover:bg-red-50"
+                    >
+                        {t('job_bookings.cancel_assignment', 'Cancel Assignment')}
+                    </button>
+                )}
+            </div>
         </motion.div>
     );
 }
@@ -807,9 +823,9 @@ export default function JobBookings() {
     const [loading, setLoading] = useState(true);
     const [cancelData, setCancelData] = useState(null);
     const [detailId, setDetailId] = useState(null);
-    const [expanded, setExpanded] = useState(null);
     const [activeSection, setActiveSection] = useState('in_progress');
     const [error, setError] = useState(null);
+    const [cancellingPendingByJob, setCancellingPendingByJob] = useState({});
 
     const workerData = JSON.parse(localStorage.getItem('user') || '{}');
     const workerId = String(workerData._id || workerData.id || '');
@@ -848,16 +864,20 @@ export default function JobBookings() {
                 return appId === wid;
             });
             const isAssignedToMe = mySlots.length > 0 || inAssignedTo;
+            const cancelledByWorkerAfterAssignment = String(job.cancelledWorkerId || '') === String(wid);
 
             if (['cancelled_by_client', 'cancelled'].includes(job.status) && (isAssignedToMe || myApps.length > 0)) return 'cancelled';
+            if (cancelledByWorkerAfterAssignment) return 'cancelled';
             if (job.status === 'completed') return 'completed';
             if (mySlots.length > 0 && mySlots.every(s => s?.status === 'task_completed')) return 'completed';
             if (job.status === 'running') return 'in_progress';
             if (mySlots.some(s => ['filled', 'running'].includes(s?.status))) return 'in_progress';
             if (job.status === 'scheduled' && (mySlots.length > 0 || inAssignedTo)) return 'in_progress';
-            if (myApps.some(a => a?.status === 'pending')) return 'open';
+            if (!isAssignedToMe && myApps.some(a => a?.status === 'pending')) return 'open';
+            if (!isAssignedToMe && myApps.some(a => a?.status === 'rejected')) return 'open';
+            if (!isAssignedToMe && myApps.some(a => a?.workerCancelled)) return 'open';
             if (myApps.some(a => a?.status === 'accepted')) return 'in_progress';
-            if (job.status === 'open') return 'open';
+            if (!isAssignedToMe && job.status === 'open' && myApps.length > 0) return 'open';
             if (job.status === 'scheduled' && myApps.length === 0 && !isAssignedToMe) return 'open';
             return 'others';
         } catch { 
@@ -893,11 +913,25 @@ export default function JobBookings() {
     const sectionMeta = [
         { key: 'running',     title: t('job_bookings.sections.running', 'Running'),     icon: Truck,        color: 'yellow', empty: t('job_bookings.empty.running', 'No running jobs') },
         { key: 'in_progress', title: t('job_bookings.sections.in_progress', 'In Progress'), icon: Zap,          color: 'orange', empty: t('job_bookings.empty.in_progress', 'No jobs in progress') },
-        { key: 'open',        title: t('job_bookings.sections.open', 'Open'),        icon: Award,         color: 'green',  empty: t('job_bookings.empty.open', 'No open jobs') },
+        { key: 'open',        title: 'Applied and Rejected',        icon: Award,         color: 'green',  empty: 'No applied or rejected jobs' },
         { key: 'completed',   title: t('job_bookings.sections.completed', 'Completed'),   icon: CheckCircle,  color: 'emerald',empty: t('job_bookings.empty.completed', 'No completed jobs') },
         { key: 'cancelled',   title: t('job_bookings.sections.cancelled', 'Cancelled'),   icon: XCircle,      color: 'red',    empty: t('job_bookings.empty.cancelled', 'No cancelled jobs') },
         { key: 'others',      title: t('job_bookings.sections.others', 'Others'),      icon: AlertCircle,  color: 'gray',   empty: t('job_bookings.empty.others', 'No other jobs') },
     ];
+
+    const handleCancelPendingApplication = useCallback(async (job) => {
+        if (!job?._id) return;
+        try {
+            setCancellingPendingByJob((prev) => ({ ...prev, [job._id]: true }));
+            const { data } = await cancelPendingJobApplication(job._id);
+            toast.success(data?.message || 'Application cancelled.');
+            await loadBookings();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to cancel application.');
+        } finally {
+            setCancellingPendingByJob((prev) => ({ ...prev, [job._id]: false }));
+        }
+    }, [loadBookings]);
 
     const handleCancelled = useCallback(async () => { 
         await loadBookings(); 
@@ -998,7 +1032,7 @@ export default function JobBookings() {
                                             <motion.button
                                                 key={section.key}
                                                 whileTap={{ scale: 0.96 }}
-                                                onClick={() => { setExpanded(null); setActiveSection(section.key); }}
+                                                onClick={() => setActiveSection(section.key)}
                                                 className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap touch-manipulation ${
                                                     active
                                                         ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
@@ -1038,17 +1072,17 @@ export default function JobBookings() {
                                     }
 
                                     return (
-                                        <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                                        <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                                             {list.map(job => (
                                                 <JobCard
                                                     key={job._id}
                                                     job={job}
                                                     workerId={workerId}
-                                                    expanded={expanded}
-                                                    onToggle={(id) => setExpanded(expanded === id ? null : id)}
                                                     onCancel={setCancelData}
+                                                    onCancelPending={handleCancelPendingApplication}
                                                     onViewDetails={setDetailId}
                                                     activeSection={activeSection}
+                                                    cancellingPending={!!cancellingPendingByJob[job._id]}
                                                 />
                                             ))}
                                         </motion.div>

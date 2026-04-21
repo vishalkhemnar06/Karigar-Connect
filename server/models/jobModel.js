@@ -13,11 +13,18 @@ const applicantSchema = new mongoose.Schema({
     applicationSource: { type: String, enum: ['web', 'ivr'], default: 'web' },
     workerCancelled: { type: Boolean, default: false },
     feedback:  { type: String, default: '' },
+    quotedPrice: { type: Number, default: 0, min: 0 },
+    quoteRate: { type: Number, default: 0, min: 0 },
+    quoteBasis: { type: String, default: '' },
+    quoteQuantity: { type: Number, default: 0, min: 0 },
+    quotedAt: { type: Date, default: null },
     appliedAt: { type: Date, default: Date.now },
 });
 
 const invitedWorkerSchema = new mongoose.Schema({
     workerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    inviteSkill: { type: String, default: '' },
+    inviteSlotId: { type: mongoose.Schema.Types.ObjectId, default: null },
     invitedAt: { type: Date, default: Date.now },
 }, { _id: false });
 
@@ -29,6 +36,7 @@ const workerSlotSchema = new mongoose.Schema({
     completedAt:     { type: Date, default: null },
     actualStartTime: { type: Date, default: null },
     actualEndTime:   { type: Date, default: null },
+    finalPaidPrice:  { type: Number, default: 0, min: 0 },
     ratingSubmitted: { type: Boolean, default: false },
     autoCompleted:   { type: Boolean, default: false },
     subTaskJobId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Job', default: null },
@@ -39,6 +47,20 @@ const budgetBlockSchema = new mongoose.Schema({
     count:          { type: Number, default: 1,   min: 0 },
     hours:          { type: Number, default: 8,   min: 0 },
     baseRate:       { type: Number, default: 0,   min: 0 },
+    rateInputMode:  { type: String, default: '' },
+    sourceRatePerHourBase: { type: Number, default: 0, min: 0 },
+    sourceRatePerDayBase:  { type: Number, default: 0, min: 0 },
+    sourceRatePerVisitBase:{ type: Number, default: 0, min: 0 },
+    ratePerHourBase:       { type: Number, default: 0, min: 0 },
+    ratePerDayBase:        { type: Number, default: 0, min: 0 },
+    ratePerVisitBase:      { type: Number, default: 0, min: 0 },
+    ratePerHour:           { type: Number, default: 0, min: 0 },
+    ratePerDay:            { type: Number, default: 0, min: 0 },
+    ratePerVisit:          { type: Number, default: 0, min: 0 },
+    perWorkerCostBase:     { type: Number, default: 0, min: 0 },
+    perWorkerCost:         { type: Number, default: 0, min: 0 },
+    appliedDemandMultiplier: { type: Number, default: 1, min: 0 },
+    priceSource:           { type: String, default: '' },
     // FIX: Added 'low' and 'medium' so AI responses don't fail validation.
     // clientController.sanitiseBudgetBreakdown() normalises these to
     // 'light' / 'normal' before saving, so the DB stays clean.
@@ -46,6 +68,7 @@ const budgetBlockSchema = new mongoose.Schema({
     complexityMult: { type: Number, default: 1.2, min: 0 },
     durationFactor: { type: Number, default: 1.0, min: 0 },
     subtotal:       { type: Number, default: 0,   min: 0 },
+    negotiationAmount: { type: Number, default: 0, min: 0 },
     description:    String,
 }, { _id: false });
 
@@ -57,6 +80,55 @@ const budgetBreakdownSchema = new mongoose.Schema({
     urgencyMult:    { type: Number, default: 1.0, min: 0 },
     totalEstimated: { type: Number, default: 0,   min: 0 },
     totalWorkers:   { type: Number, default: 1,   min: 0 },
+}, { _id: false });
+
+const directHireSchema = new mongoose.Schema({
+    workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    workerPhoneType: { type: String, enum: ['Smartphone', 'Feature Phone', ''], default: '' },
+    serviceLabel: { type: String, default: '' },
+    durationValue: { type: Number, default: 1, min: 1 },
+    durationUnit: { type: String, enum: ['/hour', '/day', '/visit', 'hour', 'day', 'visit', ''], default: '' },
+    expectedStartAt: { type: Date, default: null },
+    expectedEndAt: { type: Date, default: null },
+    fetchedAmount: { type: Number, default: 0, min: 0 },
+    amountEditLimitPercent: { type: Number, default: 20, min: 0, max: 100 },
+    minEditableAmount: { type: Number, default: 0, min: 0 },
+    maxEditableAmount: { type: Number, default: 0, min: 0 },
+    fetchedRateSource: { type: String, default: '' },
+    fetchedAt: { type: Date, default: null },
+    fetchedBaseAmount: { type: Number, default: 0, min: 0 },
+    appliedDemandMultiplier: { type: Number, default: 1, min: 0 },
+    expectedAmount: { type: Number, default: 0, min: 0 },
+    paymentMode: { type: String, enum: ['cash', 'online', 'upi', 'bank_transfer', ''], default: '' },
+    oneLineJD: { type: String, default: '' },
+    callIntentAt: { type: Date, default: null },
+    callIntentCount: { type: Number, default: 0, min: 0 },
+    requestSentAt: { type: Date, default: null },
+    requestSmsSentAt: { type: Date, default: null },
+    requestStatus: { type: String, enum: ['draft', 'requested', 'accepted', 'rejected', 'cancelled'], default: 'draft' },
+    requestReason: { type: String, default: '' },
+    requestRejectedReason: { type: String, default: '' },
+    requestRejectedAt: { type: Date, default: null },
+    startOtpHash: { type: String, default: '' },
+    startOtpExpiry: { type: Date, default: null },
+    startOtpAttempts: { type: Number, default: 0, min: 0 },
+    startOtpVerifiedAt: { type: Date, default: null },
+    completionOtpHash: { type: String, default: '' },
+    completionOtpExpiry: { type: Date, default: null },
+    completionOtpAttempts: { type: Number, default: 0, min: 0 },
+    completionOtpVerifiedAt: { type: Date, default: null },
+    workerPaymentApprovalStatus: { type: String, enum: ['pending', 'approved', 'disputed'], default: 'pending' },
+    paymentStatus: { type: String, enum: ['pending', 'partial', 'paid', 'disputed'], default: 'pending' },
+    paymentAmount: { type: Number, default: 0, min: 0 },
+    paymentEditAllowed: { type: Boolean, default: true },
+    paymentEditReason: { type: String, default: '' },
+    paymentConfirmedAt: { type: Date, default: null },
+    paymentReminder30SentAt: { type: Date, default: null },
+    paymentReminder60SentAt: { type: Date, default: null },
+    adminEscalatedAt: { type: Date, default: null },
+    blockedSections: { type: [String], default: [] },
+    clientLockAppliedAt: { type: Date, default: null },
+    clientUnlockedAt: { type: Date, default: null },
 }, { _id: false });
 
 const qaSchema = new mongoose.Schema({ question: String, answer: String }, { _id: false });
@@ -81,7 +153,18 @@ const jobSchema = new mongoose.Schema({
     experienceRequired:  { type: String, default: '' },
     workersRequired:     { type: Number, default: 1, min: 1 },
     urgent:              { type: Boolean, default: false },
-    location:            { city: String, pincode: String, locality: String, lat: Number, lng: Number, fullAddress: String },
+    location:            {
+        city: String,
+        pincode: String,
+        locality: String,
+        state: String,
+        lat: Number,
+        lng: Number,
+        fullAddress: String,
+        buildingName: String,
+        unitNumber: String,
+        floorNumber: String,
+    },
     photos:              [String],
     completionPhotos:    [String],
     budgetBreakdown:     { type: budgetBreakdownSchema },
@@ -107,6 +190,15 @@ const jobSchema = new mongoose.Schema({
         // Pricing ground truth (CRITICAL for learning)
         workerQuotedPrice:  { type: Number, default: 0 },         // what workers asked for
         finalPaidPrice:     { type: Number, default: 0 },         // what was actually paid (MOST IMPORTANT)
+        skillFinalPaid:     {
+            type: [{
+                slotId:   { type: mongoose.Schema.Types.ObjectId, default: null },
+                skill:    { type: String, default: '' },
+                workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+                amount:   { type: Number, default: 0 },
+            }],
+            default: [],
+        },
         
         // Market factors
         demandSupplyRatio:  { type: Number, default: 1.0 },       // (activeJobs / activeWorkers) at time of job
@@ -147,6 +239,8 @@ const jobSchema = new mongoose.Schema({
     cancelledWorkerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     applicants:         [applicantSchema],
     invitedWorkers:     { type: [invitedWorkerSchema], default: [] },
+    hireMode:           { type: String, enum: ['posted', 'direct'], default: 'posted' },
+    directHire:         { type: directHireSchema, default: () => ({}) },
     assignedTo:         [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     ratingsSubmitted:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     groupId:            { type: mongoose.Schema.Types.ObjectId, ref: 'Group' },

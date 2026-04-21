@@ -446,6 +446,12 @@ class WorkerPayload(BaseModel):
     expectedMinPay: float = 0
     expectedMaxPay: float = 0
     bio: str = ""
+    photo: str = ""
+    points: int = 0
+    avgStars: float = 0
+    ratingCount: int = 0
+    karigarId: str = ""
+    mobile: str = ""
 
 
 class JobPayload(BaseModel):

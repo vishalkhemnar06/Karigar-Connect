@@ -81,10 +81,18 @@ const PublicProfile = ({ workerId: workerIdProp, inline = false, onClose }) => {
   const age = getAge(worker?.dob);
   const travelMethodLabel = {
     cycle: 'Cycle',
-    bike: 'Bike',
+    motorcycle: 'Motorcycle',
+    bike: 'Motorcycle',
     bus: 'Bus',
+    lift: 'Using Lift',
     other: 'Other',
-  }[String(worker?.travelMethod || 'other').toLowerCase()] || 'Other';
+  }[String(worker?.dailyProfile?.travelMethod || worker?.travelMethod || 'other').toLowerCase()] || 'Other';
+  const paymentMethodLabel = {
+    cash: 'Cash',
+    online: 'Online',
+    flexible: 'Flexible',
+  }[String(worker?.dailyProfile?.paymentMethod || 'flexible').toLowerCase()] || 'Flexible';
+  const dailySkillRates = Array.isArray(worker?.dailyProfile?.skillRates) ? worker.dailyProfile.skillRates : [];
   const addressText = worker?.address
     ? [worker.address.houseNumber, worker.address.locality, worker.address.city, worker.address.pincode]
         .filter(Boolean)
@@ -267,6 +275,77 @@ const PublicProfile = ({ workerId: workerIdProp, inline = false, onClose }) => {
                 </div>
               )}
             </div>
+
+            {worker?.dailyProfile && (
+              <div className="bg-gradient-to-br from-orange-50 via-white to-amber-50 rounded-2xl border border-orange-100 p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-orange-500">Daily Details</p>
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900">Work location and global prices</h3>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-white border border-orange-200 text-orange-700 font-bold">Public</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="bg-white rounded-xl p-3 border border-orange-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Travel</p>
+                    <p className="text-sm font-bold text-gray-900 mt-1">{travelMethodLabel}</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-orange-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Payment</p>
+                    <p className="text-sm font-bold text-gray-900 mt-1">{paymentMethodLabel}</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-orange-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Phone</p>
+                    <p className="text-sm font-bold text-gray-900 mt-1">{worker?.dailyProfile?.phoneType || 'Not specified'}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl p-3 border border-orange-100">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Live location</p>
+                    {worker?.dailyProfile?.liveLocation?.latitude && worker?.dailyProfile?.liveLocation?.longitude && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${worker.dailyProfile.liveLocation.latitude},${worker.dailyProfile.liveLocation.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-black uppercase tracking-wide text-orange-600"
+                      >
+                        Open Map
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">
+                    {worker?.dailyProfile?.liveLocation?.latitude && worker?.dailyProfile?.liveLocation?.longitude
+                      ? `${worker.dailyProfile.liveLocation.latitude}, ${worker.dailyProfile.liveLocation.longitude}`
+                      : 'Not shared yet'}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">Skill pricing</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {dailySkillRates.length ? dailySkillRates.map((skill, index) => (
+                      <div key={`${skill.skillName || 'skill'}-${index}`} className="bg-white rounded-xl p-3 border border-orange-100">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">{skill.skillName || 'Skill'}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Preference {skill.preferenceRank || 1}</p>
+                          </div>
+                          <div className="text-right text-[11px] font-bold text-gray-600">
+                            <p>/hour: ₹{Number(skill.hourlyPrice || 0).toLocaleString('en-IN')}</p>
+                            <p>/day: ₹{Number(skill.dailyPrice || 0).toLocaleString('en-IN')}</p>
+                            <p>/visit: ₹{Number(skill.visitPrice || 0).toLocaleString('en-IN')}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="text-xs text-gray-500">No skill pricing has been added yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Skills Section - Collapsible */}
             <div className="border-t border-gray-100 pt-4">

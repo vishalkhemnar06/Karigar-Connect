@@ -8,14 +8,14 @@ import { useLocation } from 'react-router-dom';
 import {
     Users, UserCheck, UserX, Clock, ShieldX,
     AlertTriangle, MessageSquare, Store, X as CloseIcon,
-    ShieldAlert, BarChart3
+    ShieldAlert, BarChart3, Briefcase
 } from 'lucide-react';
 
 const NAV_SECTIONS = [
     {
         label: 'Overview',
         items: [
-            { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3, isFilter: false, isSection: true },
+            { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3, isFilter: false, isSection: true, section: 'dashboard' },
         ]
     },
     {
@@ -37,6 +37,7 @@ const NAV_SECTIONS = [
         label: 'Monitoring',
         items: [
             { path: '/admin/fraud', label: 'Fraud Monitor', icon: ShieldAlert, isFilter: false },
+            { path: '/admin/direct-hires', label: 'Direct Hire Payments', icon: Briefcase, isFilter: false, isSection: true, section: 'direct-hires' },
         ]
     },
     {
@@ -92,7 +93,7 @@ const AdminSidebar = ({
             }
             onViewModeChange('records');
         } else if (item.isSection) {
-            onSectionChange('dashboard');
+            onSectionChange(item.section || 'dashboard');
             onViewModeChange('stats');
         } else {
             const sectionMap = {
@@ -110,13 +111,14 @@ const AdminSidebar = ({
 
     const isActive = (item) => {
         if (item.isFilter) return activeFilter === item.filter;
-        if (item.isSection) return currentSection === 'dashboard';
+        if (item.isSection) return currentSection === (item.section || 'dashboard');
         const sectionMap = {
             '/admin/fraud': 'fraud',
             '/admin/complaints': 'complaints',
             '/admin/worker-complaints': 'worker-complaints',
             '/admin/community': 'community',
             '/admin/shops': 'shops',
+            '/admin/direct-hires': 'direct-hires',
         };
         return currentSection === (sectionMap[item.path] || 'dashboard');
     };

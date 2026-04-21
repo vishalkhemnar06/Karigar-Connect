@@ -152,7 +152,7 @@ export default function ActiveGroupJobs() {
                                 <div>
                                     <p className="text-[9px] md:text-xs text-gray-500 font-medium">Total Value</p>
                                     <p className="text-sm md:text-base font-black text-blue-700">
-                                        ₹{totalPayment.toLocaleString('en-IN')}
+                                        {totalPayment.toLocaleString('en-IN')}
                                     </p>
                                 </div>
                             </div>
@@ -310,7 +310,7 @@ export default function ActiveGroupJobs() {
                                                 {job.payment > 0 && (
                                                     <span className="inline-flex items-center gap-0.5 md:gap-1 bg-green-50 text-green-700 px-2 md:px-3 py-0.5 md:py-1 rounded-lg text-[9px] md:text-xs font-semibold">
                                                         <IndianRupee size={10} className="md:size-3" />
-                                                        ₹{job.payment.toLocaleString('en-IN')}
+                                                        {job.payment.toLocaleString('en-IN')}
                                                     </span>
                                                 )}
                                                 {job.duration && (

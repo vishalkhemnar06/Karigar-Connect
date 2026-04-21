@@ -516,6 +516,8 @@ const AdminDashboard = () => {
     const [isLoggedIn,     setIsLoggedIn]     = useState(true);
     const [currentSection, setCurrentSection] = useState(navState.currentSection || 'dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops'
     const [viewMode, setViewMode] = useState(navState.viewMode || 'stats'); // 'stats' or 'records'
+    const [directHirePayments, setDirectHirePayments] = useState([]);
+    const [directHireLoading, setDirectHireLoading] = useState(false);
     const [dashboardStats, setDashboardStats] = useState({
         ivrStats: {},
         shops: 0,
@@ -568,10 +570,28 @@ const AdminDashboard = () => {
         }
     };
 
+    const fetchDirectHirePayments = async () => {
+        try {
+            setDirectHireLoading(true);
+            const response = await api.getAdminPendingDirectHirePayments();
+            setDirectHirePayments(Array.isArray(response?.data?.jobs) ? response.data.jobs : []);
+        } catch (err) {
+            console.error('Error fetching direct hire payments:', err);
+        } finally {
+            setDirectHireLoading(false);
+        }
+    };
+
     useEffect(() => { 
         fetchData();
         fetchDashboardStats();
     }, []);
+
+    useEffect(() => {
+        if (currentSection === 'direct-hires') {
+            fetchDirectHirePayments();
+        }
+    }, [currentSection]);
 
     useEffect(() => {
         if (navState.activeFilter) setActiveFilter(navState.activeFilter);
@@ -1196,6 +1216,66 @@ const AdminDashboard = () => {
                     )}
 
                     {currentSection === 'fraud' && <FraudMonitor />}
+                    {currentSection === 'direct-hires' && (
+                        <div className="space-y-4">
+                            <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div>
+                                        <h2 className="text-xl font-black text-gray-900">Direct Hire Pending Payments</h2>
+                                        <p className="text-sm text-gray-500">Jobs overdue by more than 30 minutes after the expected end time.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={fetchDirectHirePayments}
+                                        className="px-4 py-2 rounded-xl bg-orange-600 text-white font-bold"
+                                    >
+                                        Refresh
+                                    </button>
+                                </div>
+                            </div>
+
+                            {directHireLoading ? (
+                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">Loading pending direct hire payments...</div>
+                            ) : directHirePayments.length === 0 ? (
+                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">No pending direct hire payments found.</div>
+                            ) : (
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                    {directHirePayments.map(({ job, overdueMinutes }) => (
+                                        <div key={job._id} className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5 space-y-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <h3 className="text-lg font-black text-gray-900">{job.title}</h3>
+                                                    <p className="text-sm text-gray-500">{job.postedBy?.name} • {job.directHire?.workerId?.name || 'Worker'}</p>
+                                                </div>
+                                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-100">{overdueMinutes} min overdue</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-gray-600">
+                                                <div><span className="font-semibold text-gray-800">Amount:</span> ₹{Number(job.directHire?.expectedAmount || 0).toLocaleString('en-IN')}</div>
+                                                <div><span className="font-semibold text-gray-800">Payment:</span> {job.directHire?.paymentStatus || 'pending'}</div>
+                                                <div><span className="font-semibold text-gray-800">Client:</span> {job.postedBy?.mobile || 'N/A'}</div>
+                                            </div>
+                                            <div className="flex gap-2 flex-wrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        try {
+                                                            await api.adminUnblockDirectHireClient(job._id);
+                                                            await fetchDirectHirePayments();
+                                                        } catch (err) {
+                                                            console.error('Unblock failed:', err);
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold"
+                                                >
+                                                    Unblock Client
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {currentSection === 'complaints' && <AdminComplaints />}
                     {currentSection === 'worker-complaints' && <AdminWorkerComplaints />}
                     {currentSection === 'community' && <AdminCommunity />}

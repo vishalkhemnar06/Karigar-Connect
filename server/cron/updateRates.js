@@ -42,6 +42,27 @@ const normalizeSkillKey = (skill) => {
         .replace(/^_|_$/g, '');
 };
 
+const extractSkillPriceRows = (job) => {
+    const city = job?.location?.city || 'unknown';
+    const rows = Array.isArray(job?.pricingMeta?.skillFinalPaid) ? job.pricingMeta.skillFinalPaid : [];
+    const normalizedRows = rows
+        .map((row) => ({
+            skill: row?.skill || job?.skills?.[0] || 'other',
+            city,
+            amount: Number(row?.amount || 0),
+        }))
+        .filter((row) => Number.isFinite(row.amount) && row.amount > 0);
+
+    if (normalizedRows.length) return normalizedRows;
+
+    const fallback = Number(job?.pricingMeta?.finalPaidPrice || 0);
+    if (Number.isFinite(fallback) && fallback > 0) {
+        return [{ skill: job?.skills?.[0] || 'other', city, amount: fallback }];
+    }
+
+    return [];
+};
+
 /**
  * Calculate percentiles from an array of values
  */
@@ -97,8 +118,11 @@ async function updateMarketRates() {
         // Fetch completed jobs with pricing metadata
         const completedJobs = await Job.find({
             status: 'completed',
-            'pricingMeta.finalPaidPrice': { $gt: 0 },
             'pricingMeta.capturedAt': { $exists: true },
+            $or: [
+                { 'pricingMeta.finalPaidPrice': { $gt: 0 } },
+                { 'pricingMeta.skillFinalPaid.0': { $exists: true } },
+            ],
         }).select('skills location pricingMeta').lean();
         
         console.log(`Found ${completedJobs.length} completed jobs with pricing data`);
@@ -106,29 +130,28 @@ async function updateMarketRates() {
         // Group by (skillKey, cityKey)
         const jobsBySkillCity = {};
         completedJobs.forEach(job => {
-            const skill = job.skills?.[0] || 'other';
-            const skillKey = normalizeSkillKey(skill);
-            const city = job.location?.city || 'unknown';
-            const cityKey = normalizeCityKey(city);
-            
-            const key = `${skillKey}|${cityKey}`;
-            if (!jobsBySkillCity[key]) {
-                jobsBySkillCity[key] = {
-                    skillKey,
-                    cityKey,
-                    prices: [],
-                    hours: [],
-                    dataPoints: 0,
-                };
-            }
-            
-            if (job.pricingMeta?.finalPaidPrice > 0) {
-                jobsBySkillCity[key].prices.push(job.pricingMeta.finalPaidPrice);
-            }
-            if (job.pricingMeta?.actualHours > 0) {
-                jobsBySkillCity[key].hours.push(job.pricingMeta.actualHours);
-            }
-            jobsBySkillCity[key].dataPoints++;
+            const skillPriceRows = extractSkillPriceRows(job);
+            skillPriceRows.forEach((row) => {
+                const skillKey = normalizeSkillKey(row.skill);
+                const cityKey = normalizeCityKey(row.city);
+                const key = `${skillKey}|${cityKey}`;
+
+                if (!jobsBySkillCity[key]) {
+                    jobsBySkillCity[key] = {
+                        skillKey,
+                        cityKey,
+                        prices: [],
+                        hours: [],
+                        dataPoints: 0,
+                    };
+                }
+
+                jobsBySkillCity[key].prices.push(row.amount);
+                if (job.pricingMeta?.actualHours > 0) {
+                    jobsBySkillCity[key].hours.push(job.pricingMeta.actualHours);
+                }
+                jobsBySkillCity[key].dataPoints++;
+            });
         });
         
         // Calculate and upsert market rates
@@ -198,14 +221,19 @@ async function updateLocalityFactors() {
         
         const completedJobs = await Job.find({
             status: 'completed',
-            'pricingMeta.finalPaidPrice': { $gt: 0 },
-        }).select('location pricingMeta').lean();
+            $or: [
+                { 'pricingMeta.finalPaidPrice': { $gt: 0 } },
+                { 'pricingMeta.skillFinalPaid.0': { $exists: true } },
+            ],
+        }).select('skills location pricingMeta').lean();
         
         completedJobs.forEach(job => {
             const city = job.location?.city || 'unknown';
             const cityKey = normalizeCityKey(city);
             const locality = job.location?.locality || 'general';
-            const price = job.pricingMeta?.finalPaidPrice || 0;
+            const skillRows = extractSkillPriceRows(job);
+            if (!skillRows.length) return;
+            const price = skillRows.reduce((sum, row) => sum + row.amount, 0) / skillRows.length;
             
             // City-wide average
             const cityKeyOnly = `${cityKey}|general`;

@@ -6,7 +6,8 @@ const { protect, client } = require('../middleware/authMiddleware');
 const {
     getClientProfile, updateClientProfile,
     getClientJobs, postJob, deleteJob, cancelJob, updateJobStatus,
-    uploadCompletionPhotos, startJob, toggleJobApplications,
+    permanentlyDeleteHistoryJob, permanentlyDeleteSelectedHistoryJobs, permanentlyDeleteAllHistoryJobs,
+    uploadCompletionPhotos, removeCompletionPhoto, startJob, toggleJobApplications,
     removeAssignedWorker, completeWorkerTask,
     repostMissingSkill, cancelSlotRequirement, respondToSubTaskApplicant, completeSubTask,
     getJobApplicants, getSmartWorkerSuggestions, inviteWorkersToJob, respondToApplicant, hireWorker, submitRating,
@@ -20,8 +21,18 @@ const {
     verifyClientPasswordChangeOtp,
     changeClientPasswordWithOtp,
 } = require('../controllers/clientController');
+const {
+    getDirectHireSuggestedAmount,
+    createDirectHireTicket,
+    getClientDirectHireTickets,
+    logDirectHireCallIntent,
+    sendDirectHireStartOtp,
+    verifyDirectHireStartOtp,
+    sendDirectHireCompletionOtp,
+    verifyDirectHireCompletionOtp,
+} = require('../controllers/directHireController');
 const { getNotifications, markRead, markAllRead, deleteNotification, clearAllNotifications } = require('../controllers/notificationController');
-const { jobPhotoUploader, profilePhotoUploader, mixedUploader } = require('../utils/cloudinary');
+const { jobPhotoUploader, profilePhotoUploader, mixedUploader, clientJobPhotoUploader } = require('../utils/cloudinary');
 const faceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/profile',        protect, client, getClientProfile);
@@ -35,7 +46,11 @@ router.put('/profile/update', protect, client, mixedUploader.fields([
 router.post('/face/verify-assigned-worker', protect, client, faceUpload.single('livePhoto'), verifyAssignedWorkerFace);
 
 router.get('/jobs',       protect, client, getClientJobs);
-router.post('/jobs/post', protect, client, jobPhotoUploader.array('photos', 5), postJob);
+router.post('/jobs/post', protect, client, clientJobPhotoUploader.array('photos', 3), postJob);
+
+router.post('/jobs/history/delete-selected',   protect, client, permanentlyDeleteSelectedHistoryJobs);
+router.delete('/jobs/history/delete-all',      protect, client, permanentlyDeleteAllHistoryJobs);
+router.delete('/jobs/:id/permanent',           protect, client, permanentlyDeleteHistoryJob);
 
 router.delete('/jobs/:id',                     protect, client, deleteJob);
 router.patch('/jobs/:id/status',               protect, client, updateJobStatus);
@@ -45,6 +60,7 @@ router.patch('/jobs/:id/toggle-applications',  protect, client, toggleJobApplica
 router.patch('/jobs/:id/remove-worker',        protect, client, removeAssignedWorker);
 router.patch('/jobs/:id/complete-worker-task', protect, client, completeWorkerTask);
 router.post('/jobs/:id/completion-photos',     protect, client, jobPhotoUploader.array('photos', 10), uploadCompletionPhotos);
+router.delete('/jobs/:id/completion-photos/:photoIndex', protect, client, removeCompletionPhoto);
 
 // Missing-skill sub-task system
 router.post('/jobs/:id/repost-skill',    protect, client, repostMissingSkill);
@@ -58,6 +74,16 @@ router.post('/jobs/:jobId/invite', protect, client, inviteWorkersToJob);
 router.post('/jobs/:jobId/respond',   protect, client, respondToApplicant);
 router.post('/jobs/:jobId/hire',      protect, client, hireWorker);
 router.post('/jobs/:jobId/rate',      protect, client, submitRating);
+
+// Direct hire flow
+router.get('/direct-hires', protect, client, getClientDirectHireTickets);
+router.post('/direct-hires/amount', protect, client, getDirectHireSuggestedAmount);
+router.post('/direct-hires', protect, client, createDirectHireTicket);
+router.post('/direct-hires/:jobId/call-intent', protect, client, logDirectHireCallIntent);
+router.post('/direct-hires/:jobId/start-otp/send', protect, client, sendDirectHireStartOtp);
+router.post('/direct-hires/:jobId/start-otp/verify', protect, client, verifyDirectHireStartOtp);
+router.post('/direct-hires/:jobId/completion-otp/send', protect, client, sendDirectHireCompletionOtp);
+router.post('/direct-hires/:jobId/completion-otp/verify', protect, client, verifyDirectHireCompletionOtp);
 
 router.get('/workers/:workerId/profile', protect, client, getWorkerPublicProfile);
 router.get('/workers/:workerId/profile-summary', protect, client, generateWorkerProfileSummary);

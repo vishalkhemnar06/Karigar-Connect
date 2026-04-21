@@ -2,13 +2,15 @@
 // Professional AI Advisor with Complete Report - Orange Theme
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     aiGenerateQuestions, getAIAdvisorReport,
     saveAIAnalysis, getClientAIHistory, getAIHistoryItem,
     updateAIHistoryItem, deleteAIHistoryItem, clearClientAIHistory,
-    getImageUrl, getRateTableCities,
+    getClientProfile, toggleStarWorker, getImageUrl, getRateTableCities,
 } from '../../api/index';
 import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
+import DirectHireModal from '../../components/DirectHireModal';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -17,7 +19,8 @@ import {
     AlertCircle, CheckCircle, FileText, Image, Camera,
     Settings, TrendingUp, Award, Calendar, Download, Save,
     Trash2, Edit2, Plus, X, Loader2, Sparkles, Target,
-    Layers, HardHat, Palette, Wrench, Truck, PenTool
+    Layers, HardHat, Palette, Wrench, Truck, PenTool,
+    Heart, Phone, Star
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +36,36 @@ const PHASE_LABELS = {
     image: 'Visual Reference',
     loading: 'Analysis',
     report: 'Report'
+};
+
+const REPORT_TAB_OPTIONS = [
+    { id: 'warnings', label: 'Important Warnings' },
+    { id: 'costEstimate', label: 'Cost Estimate (Detailed)' },
+    { id: 'priceReasoning', label: 'Price Reasoning' },
+    { id: 'costSavingSuggestions', label: 'Cost Saving Suggestions' },
+    { id: 'scenarioRange', label: 'Best / Expected / Worst' },
+    { id: 'localMarketInsight', label: 'Local Market Insight' },
+    { id: 'negotiationRange', label: 'Negotiation Range' },
+    { id: 'workPlan', label: 'Work Plan' },
+    { id: 'timeEstimate', label: 'Time Estimate' },
+    { id: 'expectedOutcome', label: 'Expected Outcome' },
+    { id: 'designRecommendations', label: 'Design Recommendations' },
+    { id: 'addNote', label: 'Add Note' },
+];
+
+const getFirstAvailableReportTab = (report) => {
+    if (!report) return 'costEstimate';
+    if (report.warnings?.length) return 'warnings';
+    if (report.priceReasoning?.length) return 'priceReasoning';
+    if (report.costSavingSuggestions?.length) return 'costSavingSuggestions';
+    if (report.bestCaseTotal || report.expectedTotal || report.worstCaseTotal) return 'scenarioRange';
+    if (report.localMarketInsight) return 'localMarketInsight';
+    if (report.negotiationRange) return 'negotiationRange';
+    if (report.workPlan?.length) return 'workPlan';
+    if (report.timeEstimate) return 'timeEstimate';
+    if (report.expectedOutcome?.length) return 'expectedOutcome';
+    if (report.colourAndStyleAdvice || report.designSuggestions?.length > 0 || report.improvementIdeas?.length > 0) return 'designRecommendations';
+    return 'costEstimate';
 };
 
 const formatCurrency = (amount) => {
@@ -52,6 +85,67 @@ const formatDate = (date) => {
     });
 };
 
+const formatDateWithDay = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('en-IN', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    });
+};
+
+const formatTimeLabel = (value = '') => {
+    if (!value) return '';
+    const [h, m] = String(value).split(':').map((v) => Number(v));
+    if (Number.isNaN(h) || Number.isNaN(m)) return String(value);
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+};
+
+const parseTimeToMinutes = (value = '') => {
+    const [h, m] = String(value).split(':').map((v) => Number(v));
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+};
+
+const getDayPeriodLabel = (value = '') => {
+    const minutes = parseTimeToMinutes(value);
+    if (minutes === null) return '';
+
+    if (minutes < 12 * 60) return 'Morning';
+    if (minutes < 17 * 60) return 'Afternoon';
+    return 'Evening';
+};
+
+const isValidJobStartTime = (value = '') => {
+    const minutes = parseTimeToMinutes(value);
+    if (minutes === null) return false;
+
+    const minMinutes = 7 * 60;   // 07:00 AM
+    const maxMinutes = 19 * 60;  // 07:00 PM
+    return minutes >= minMinutes && minutes <= maxMinutes;
+};
+
+const openWorkerMap = (worker = {}) => {
+    const lat = Number(worker.latitude);
+    const lng = Number(worker.longitude);
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank', 'noopener,noreferrer');
+        return;
+    }
+
+    const query = [worker.locality, worker.city].filter(Boolean).join(', ');
+    if (query) {
+        window.open(`https://www.google.com/maps?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+        return;
+    }
+
+    toast.error('Live location is not available for this worker.');
+};
+
 const sanitizeNumber = (value) => {
     if (value === '') return '';
     const sanitized = String(value).replace(/[^\d.]/g, '');
@@ -61,6 +155,21 @@ const sanitizeNumber = (value) => {
 
 const MIN_AI_DESCRIPTION_CHARS = 10;
 const OTHER_CITY_OPTION = '__OTHER_CITY__';
+const AI_ADVISOR_DRAFT_KEY = 'client_ai_advisor_draft_v1';
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.readAsDataURL(file);
+});
+
+const dataUrlToFile = async (dataUrl, fallbackName = 'reference-image.jpg', fallbackType = 'image/jpeg') => {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const fileType = blob.type || fallbackType;
+    return new File([blob], fallbackName, { type: fileType });
+};
 
 const SUPPORTED_UI_LANGUAGES = new Set(['en', 'hi', 'mr']);
 
@@ -81,15 +190,78 @@ const normalizeQuestionList = (items = [], prefix = 'q') => {
             const options = Array.isArray(item.options)
                 ? item.options.map((opt) => String(opt || '').trim()).filter(Boolean)
                 : [];
+            const normalizedOptions = type === 'select'
+                ? Array.from(new Set([...options, 'N/A']))
+                : options;
             return {
                 id,
                 question: String(item.question || '').trim(),
                 type,
-                options,
+                options: normalizedOptions,
                 required: !!item.required,
+                multiSelect: type === 'select' ? item.multiSelect === true : false,
             };
         })
         .filter((item) => item.question);
+};
+
+const hasValidAnswer = (value) => {
+    if (Array.isArray(value)) {
+        return value.some((entry) => String(entry || '').trim());
+    }
+    return !!String(value || '').trim();
+};
+
+const normalizeQuestionLookupKey = (value = '') => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const buildQuestionContextKey = ({ description = '', city = '', locality = '' }) => [description, city, locality]
+    .map((v) => String(v || '').trim().toLowerCase())
+    .join('||');
+
+const buildAnswerByIdFromQuestionText = (questionSet = [], answerTextMap = {}) => {
+    const map = {};
+    const source = answerTextMap && typeof answerTextMap === 'object' ? answerTextMap : {};
+    (Array.isArray(questionSet) ? questionSet : []).forEach((q) => {
+        const key = q?.question;
+        if (!key || source[key] === undefined) return;
+        map[q.id] = source[key];
+    });
+    return map;
+};
+
+const buildQuestionSetFromAnswerTextMap = (answerTextMap = {}, prefix = 'q') => {
+    const entries = Object.entries(answerTextMap || {}).filter(([q, a]) => String(q || '').trim() && hasValidAnswer(a));
+    return entries.map(([question], idx) => ({
+        id: `${prefix}${idx + 1}`,
+        question: String(question).trim(),
+        type: 'text',
+        options: [],
+        required: true,
+        multiSelect: false,
+    }));
+};
+
+const remapAnswersByQuestionText = ({ oldQuestions = [], oldAnswersById = {}, newQuestions = [] }) => {
+    const sourceMap = new Map();
+    (Array.isArray(oldQuestions) ? oldQuestions : []).forEach((q) => {
+        const key = normalizeQuestionLookupKey(q?.question);
+        if (!key) return;
+        const value = oldAnswersById?.[q.id];
+        if (!hasValidAnswer(value)) return;
+        sourceMap.set(key, value);
+    });
+
+    const remapped = {};
+    (Array.isArray(newQuestions) ? newQuestions : []).forEach((q) => {
+        const key = normalizeQuestionLookupKey(q?.question);
+        if (!key || !sourceMap.has(key)) return;
+        remapped[q.id] = sourceMap.get(key);
+    });
+    return remapped;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +316,27 @@ const PhaseIndicator = ({ currentPhase }) => {
 
 const QuestionField = ({ question, value, onChange }) => {
     if (question.type === 'select') {
+        const selected = Array.isArray(value) ? value : value ? [value] : [];
+
+        const toggleOption = (option) => {
+            if (question.multiSelect) {
+                if (option === 'N/A') {
+                    onChange(question.id, ['N/A']);
+                    return;
+                }
+
+                const withoutNA = selected.filter((entry) => entry !== 'N/A');
+                const isSelected = withoutNA.includes(option);
+                const next = isSelected
+                    ? withoutNA.filter((entry) => entry !== option)
+                    : [...withoutNA, option];
+                onChange(question.id, next);
+                return;
+            }
+
+            onChange(question.id, option);
+        };
+
         return (
             <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -154,10 +347,10 @@ const QuestionField = ({ question, value, onChange }) => {
                         <button
                             key={`${question.id}-${idx}-${option}`}
                             type="button"
-                            onClick={() => onChange(question.id, option)}
+                            onClick={() => toggleOption(option)}
                             className={`
                                 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                                ${value === option
+                                ${selected.includes(option)
                                     ? 'bg-orange-500 text-white shadow-sm'
                                     : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-orange-300 hover:bg-orange-50'
                                 }
@@ -245,19 +438,25 @@ const CostBreakdownTable = ({
     optionalMaterialsBreakdown = [],
     requiredEquipmentBreakdown = [],
     optionalEquipmentBreakdown = [],
+    workerTravelCost = 0,
+    labourTotalOverride,
     clientBudget,
     grandTotal,
 }) => {
     if (!breakdown?.breakdown?.length) return null;
 
-    const labourTotal = breakdown.breakdown.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+    const derivedLabourTotal = breakdown.breakdown.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+    const labourTotal = Number.isFinite(Number(labourTotalOverride)) && Number(labourTotalOverride) > 0
+        ? Number(labourTotalOverride)
+        : derivedLabourTotal;
     const materialsTotal = materialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const equipmentTotal = equipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const requiredMaterialsTotal = requiredMaterialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const optionalMaterialsTotal = optionalMaterialsBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const requiredEquipmentTotal = requiredEquipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
     const optionalEquipmentTotal = optionalEquipmentBreakdown.reduce((sum, item) => sum + (Number(item.estimatedCost) || 0), 0);
-    const combinedTotal = Number(grandTotal) || labourTotal + materialsTotal + equipmentTotal;
+    const travelTotal = Number(workerTravelCost) || 0;
+    const combinedTotal = Number(grandTotal) || labourTotal + materialsTotal + equipmentTotal + travelTotal;
 
     return (
         <div className="space-y-4">
@@ -271,7 +470,7 @@ const CostBreakdownTable = ({
                 </div>
 
                 <div className="p-4 space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <div className="rounded-xl bg-orange-50 border border-orange-100 p-3">
                             <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider">Labour</p>
                             <p className="text-lg font-black text-gray-900">{formatCurrency(labourTotal)}</p>
@@ -289,6 +488,11 @@ const CostBreakdownTable = ({
                             <p className="text-[11px] text-gray-500 mt-1">
                                 Required {formatCurrency(requiredEquipmentTotal)} + Optional {formatCurrency(optionalEquipmentTotal)}
                             </p>
+                        </div>
+                        <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3">
+                            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Travel</p>
+                            <p className="text-lg font-black text-gray-900">{formatCurrency(travelTotal)}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">Worker travel cost</p>
                         </div>
                     </div>
 
@@ -337,6 +541,32 @@ const CostBreakdownTable = ({
                             ))}
                         </div>
                     </div>
+
+                    {breakdown?.pricingModels && (
+                        <div className="rounded-xl border border-orange-100 bg-orange-50 p-3">
+                            <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider mb-2">
+                                Labour Estimation Modes
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                                <div className="bg-white rounded-lg border border-orange-100 p-2">
+                                    <p className="text-gray-500">Per Hour Model</p>
+                                    <p className="text-sm font-bold text-gray-900">{formatCurrency(breakdown.pricingModels.hourly || 0)}</p>
+                                </div>
+                                <div className="bg-white rounded-lg border border-orange-100 p-2">
+                                    <p className="text-gray-500">Per Day Model</p>
+                                    <p className="text-sm font-bold text-gray-900">{formatCurrency(breakdown.pricingModels.daily || 0)}</p>
+                                </div>
+                                <div className="bg-white rounded-lg border border-orange-100 p-2">
+                                    <p className="text-gray-500">Per Visit Model</p>
+                                    <p className="text-sm font-bold text-gray-900">{formatCurrency(breakdown.pricingModels.visit || 0)}</p>
+                                </div>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-2">
+                                Multi-skill coordination factor: {Number(breakdown.pricingModels.coordinationFactor || 1).toFixed(2)}
+                                {Number(breakdown.pricingModels.handoffOverhead || 0) > 0 ? `, handoff overhead: ${formatCurrency(breakdown.pricingModels.handoffOverhead)}` : ''}
+                            </p>
+                        </div>
+                    )}
 
                     {materialsBreakdown?.length > 0 && (
                         <div>
@@ -431,21 +661,75 @@ const CostBreakdownTable = ({
     );
 };
 
-const WorkPlanTimeline = ({ plan, timeEstimate }) => {
+const WorkPlanTimeline = ({
+    plan,
+    timeEstimate,
+    jobDate,
+    jobStartTime,
+    jobEndDate,
+    jobEndTime,
+    festivalName,
+    demandMultipliers,
+    demandFactor,
+}) => {
     if (!plan?.length) return null;
+
+    const scheduleDays = Array.isArray(timeEstimate?.schedule?.days) ? timeEstimate.schedule.days : [];
+    const phaseHoursTotal = Array.isArray(timeEstimate?.phases)
+        ? timeEstimate.phases.reduce((sum, phase) => sum + (Number(phase?.hours) || 0), 0)
+        : 0;
+    const displayTotalHours = phaseHoursTotal > 0
+        ? phaseHoursTotal
+        : (Number(timeEstimate?.totalHours) || 0);
+    const breakHours = Number(timeEstimate?.totalBreakHours) || Number(timeEstimate?.schedule?.totalBreakHours) || 0;
+    const calendarHours = Number(timeEstimate?.totalCalendarHours) || Number(timeEstimate?.schedule?.totalCalendarHours) || (displayTotalHours + breakHours);
 
     return (
         <div className="space-y-4">
             {/* Timeline Overview */}
-            {timeEstimate?.totalHours && (
+            {displayTotalHours > 0 && (
                 <div className="bg-orange-50 rounded-lg p-3 mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Estimated Timeline</span>
-                        <span className="text-sm font-bold text-orange-600">{timeEstimate.totalHours} hours total</span>
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                        <span className="text-sm font-medium text-gray-700">Scheduled Timeline</span>
+                        <span className="text-sm font-bold text-orange-600">
+                            {displayTotalHours}h work + {breakHours}h breaks = {calendarHours}h total span
+                        </span>
                     </div>
+                    {jobDate && (
+                        <div className="text-xs text-gray-600 mb-2">
+                            Start: {formatDateWithDay(jobDate)} {jobStartTime ? `at ${formatTimeLabel(jobStartTime)}` : ''}
+                            {jobEndDate && jobEndTime ? ` | Ends: ${formatDateWithDay(jobEndDate)} at ${formatTimeLabel(jobEndTime)}` : ''}
+                        </div>
+                    )}
+                    {timeEstimate?.scheduling?.workWindow ? (
+                        <div className="text-xs text-gray-600 mb-2">
+                            Work window: {timeEstimate.scheduling.workWindow}
+                            {timeEstimate?.scheduling?.nextDayStartTime ? ` | Next day restart: ${formatTimeLabel(timeEstimate.scheduling.nextDayStartTime)}` : ''}
+                            {timeEstimate?.scheduling?.workHoursPerDay ? ` | Productive cap: ${timeEstimate.scheduling.workHoursPerDay}h/day` : ''}
+                        </div>
+                    ) : null}
+                    {(festivalName || demandFactor > 1) && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {festivalName ? (
+                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                                    Festival: {festivalName}
+                                </span>
+                            ) : null}
+                            {demandFactor > 1 ? (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                    Demand multiplier applied: x{Number(demandFactor || 1).toFixed(2)}
+                                </span>
+                            ) : null}
+                            {demandMultipliers?.dayType ? (
+                                <span className="text-xs bg-white text-gray-700 px-2 py-1 rounded-full border border-orange-200 capitalize">
+                                    {demandMultipliers.dayType} / {demandMultipliers.timePeriod || 'morning'}
+                                </span>
+                            ) : null}
+                        </div>
+                    )}
                     <div className="h-2 bg-orange-200 rounded-full overflow-hidden">
                         {timeEstimate.phases?.map((phase, idx) => {
-                            const percentage = (phase.hours / timeEstimate.totalHours) * 100;
+                            const percentage = ((Number(phase?.hours) || 0) / displayTotalHours) * 100;
                             return (
                                 <div
                                     key={idx}
@@ -456,6 +740,43 @@ const WorkPlanTimeline = ({ plan, timeEstimate }) => {
                             );
                         })}
                     </div>
+                </div>
+            )}
+
+            {scheduleDays.length > 0 && (
+                <div className="space-y-3">
+                    {scheduleDays.map((day, dayIdx) => (
+                        <div key={`${day.date}-${dayIdx}`} className="border border-orange-100 rounded-lg p-3 bg-white">
+                            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                                <div className="text-sm font-semibold text-gray-900">
+                                    Day {dayIdx + 1}: {day.dayName}, {formatDate(day.date)}
+                                </div>
+                                <div className="text-xs text-gray-600">
+                                    Work: {Number(day.productiveHours || 0).toFixed(1)}h | Breaks: {Number(day.breakHours || 0).toFixed(1)}h | Span: {day.startTimeLabel} - {day.endTimeLabel}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                {(day.entries || []).map((entry, idx) => (
+                                    <div
+                                        key={`${day.date}-${idx}-${entry.title}`}
+                                        className={`rounded-md px-3 py-2 border ${entry.type === 'break' ? 'bg-gray-50 border-gray-200' : 'bg-orange-50 border-orange-200'}`}
+                                    >
+                                        <div className="flex items-center justify-between flex-wrap gap-2">
+                                            <div className="text-sm font-medium text-gray-900">
+                                                {entry.type === 'break' ? 'Break' : 'Task'}: {entry.title}
+                                            </div>
+                                            <div className="text-xs text-gray-700">
+                                                {entry.startTimeLabel} - {entry.endTimeLabel} ({entry.durationHours}h)
+                                            </div>
+                                        </div>
+                                        {entry.description ? (
+                                            <p className="text-xs text-gray-600 mt-1">{entry.description}</p>
+                                        ) : null}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -490,6 +811,15 @@ const WorkPlanTimeline = ({ plan, timeEstimate }) => {
                                         <div key={idx} className="flex items-start gap-2 text-xs text-gray-500">
                                             <span className="text-orange-400">•</span>
                                             <span>{task}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {step.scheduleWindows?.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                    {step.scheduleWindows.map((window, idx) => (
+                                        <div key={`${step.step}-w-${idx}`} className="text-xs text-gray-500 bg-orange-50 border border-orange-100 rounded px-2 py-1">
+                                            {window.dayName}, {formatDate(window.date)}: {window.startTimeLabel} - {window.endTimeLabel} ({window.durationHours}h)
                                         </div>
                                     ))}
                                 </div>
@@ -660,65 +990,123 @@ const QualityAssurance = ({ assurance }) => {
     );
 };
 
-const WorkerRecommendations = ({ workers, projectSkills }) => {
+const WorkerRecommendationCard = ({ worker, projectSkills = [], isStarred, isTogglingFavorite, onToggleFavorite, onHireDirect }) => {
+    const matchedSkills = Array.isArray(worker?.matchedSkills) && worker.matchedSkills.length
+        ? worker.matchedSkills
+        : (Array.isArray(worker?.skills) ? worker.skills.filter((skill) =>
+            projectSkills.map((s) => String(s || '').toLowerCase()).includes(String(skill || '').toLowerCase())
+        ) : []);
+
+    return (
+        <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-start gap-3">
+                <img
+                    src={getImageUrl(worker.photo)}
+                    alt={worker.name}
+                    className="w-14 h-14 rounded-xl object-cover border border-orange-200"
+                    onError={(e) => { e.currentTarget.src = '/admin.png'; }}
+                />
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900 truncate">{worker.name}</p>
+                    <p className="text-[11px] text-gray-500 truncate">{worker.karigarId || 'Karigar'}</p>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-amber-600">
+                        <Star size={12} />
+                        <span>{Number(worker.rating || 0).toFixed(1)} ({worker.ratingCount || 0})</span>
+                    </div>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${worker.availability === false ? 'bg-gray-100 text-gray-600' : 'bg-green-100 text-green-700'}`}>
+                    {worker.availability === false ? 'Busy' : 'Available'}
+                </span>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+                {(matchedSkills.length ? matchedSkills : (worker.skills || []).slice(0, 4)).map((skill, idx) => (
+                    <span key={`${skill}-${idx}`} className="text-[11px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-100 capitalize">
+                        {skill}
+                    </span>
+                ))}
+            </div>
+
+            <div className="mt-3 text-[11px] text-gray-600 space-y-1">
+                <p className="truncate">{worker.locality ? `${worker.locality}, ` : ''}{worker.city || 'Location not available'}</p>
+                {Array.isArray(worker.matchReasons) && worker.matchReasons.length > 0 && (
+                    <p className="text-orange-600 truncate">Match: {worker.matchReasons.join(' • ')}</p>
+                )}
+            </div>
+
+            <div className={`mt-3 grid gap-2 ${/smart|android|iphone|ios/.test(String(worker.phoneType || '').toLowerCase()) ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                <a
+                    href={worker.mobile ? `tel:${worker.mobile}` : undefined}
+                    onClick={(e) => {
+                        if (!worker.mobile) {
+                            e.preventDefault();
+                            toast.error('Phone number not available.');
+                        }
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-green-500 hover:bg-green-600 text-white py-2 text-xs font-bold"
+                >
+                    <Phone size={12} /> Contact
+                </a>
+                <button
+                    type="button"
+                    onClick={() => openWorkerMap(worker)}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-orange-200 text-orange-700 py-2 text-xs font-bold hover:bg-orange-50"
+                >
+                    <MapPin size={12} /> Live Location
+                </button>
+                {/smart|android|iphone|ios/.test(String(worker.phoneType || '').toLowerCase()) && (
+                    <button
+                        type="button"
+                        onClick={() => onHireDirect?.(worker)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white py-2 text-xs font-bold"
+                    >
+                        <Briefcase size={12} /> Hire Directly
+                    </button>
+                )}
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                    type="button"
+                    onClick={() => openWorkerProfilePreview(worker?._id || worker?.id || worker?.karigarId)}
+                    className="inline-flex items-center justify-center rounded-xl bg-orange-500 hover:bg-orange-600 text-white py-2 text-xs font-bold"
+                >
+                    View Profile
+                </button>
+                <button
+                    type="button"
+                    disabled={isTogglingFavorite}
+                    onClick={() => onToggleFavorite(worker)}
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold border ${isStarred ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'} disabled:opacity-60`}
+                >
+                    <Heart size={12} className={isStarred ? 'fill-red-500 text-red-500' : ''} />
+                    {isStarred ? 'Favorited' : 'Add Favorite'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const WorkerRecommendations = ({ workers, projectSkills, starredWorkerIds, favoriteUpdatingId, onToggleFavorite, onHireDirect }) => {
     if (!workers?.length) return null;
 
     return (
         <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-                Based on your project requirements ({projectSkills?.join(', ') || 'various skills'}), 
-                here are experienced professionals in your area:
-            </p>
-            <div className="space-y-2">
-                {workers.map((worker, idx) => (
-                    <div key={idx} className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
-                        <img
-                            src={getImageUrl(worker.photo)}
-                            alt={worker.name}
-                            className="w-12 h-12 rounded-full object-cover border-2 border-orange-200"
-                            onError={(e) => { e.target.src = '/admin.png'; }}
-                        />
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900">{worker.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                                {worker.skills?.slice(0, 3).map((skill, idx) => (
-                                    <span key={idx} className="text-xs text-orange-600 bg-white px-2 py-0.5 rounded-full">
-                                        {skill}
-                                    </span>
-                                ))}
-                            </div>
-                            <div className="flex items-center gap-3 mt-1">
-                                {worker.experience && (
-                                    <span className="text-xs text-gray-500">{worker.experience} years exp</span>
-                                )}
-                                {worker.rating && (
-                                    <span className="text-xs text-amber-500">★ {worker.rating}</span>
-                                )}
-                                {worker.completedJobs && (
-                                    <span className="text-xs text-gray-500">{worker.completedJobs} jobs</span>
-                                )}
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <div className="text-sm font-bold text-orange-600">
-                                {formatCurrency(worker.rate)}/day
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => openWorkerProfilePreview(worker?._id || worker?.karigarId)}
-                                className="mt-1 text-xs text-orange-600 hover:text-orange-700 font-medium"
-                            >
-                                View Profile
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-orange-100">
-                <p className="text-xs text-gray-500">
-                    💡 Tip: Contact multiple workers to compare quotes and availability before making a decision.
-                </p>
-            </div>
+            {workers.map((worker, idx) => {
+                const workerId = String(worker?._id || worker?.id || worker?.karigarId || idx);
+                const isStarred = starredWorkerIds.has(workerId);
+                return (
+                    <WorkerRecommendationCard
+                        key={workerId}
+                        worker={worker}
+                        projectSkills={projectSkills}
+                        isStarred={isStarred}
+                        isTogglingFavorite={favoriteUpdatingId === workerId}
+                        onToggleFavorite={onToggleFavorite}
+                        onHireDirect={onHireDirect}
+                    />
+                );
+            })}
         </div>
     );
 };
@@ -728,37 +1116,68 @@ const WorkerRecommendations = ({ workers, projectSkills }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ClientAIAssist() {
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('advisor');
     const [phase, setPhase] = useState('describe');
     const [isLoading, setIsLoading] = useState({ questions: false, report: false });
     
+    // Direct Hire Modal
+    const [isDirectHireModalOpen, setIsDirectHireModalOpen] = useState(false);
+    const [directHireSelectedWorker, setDirectHireSelectedWorker] = useState(null);
+    const [directHireClientData, setDirectHireClientData] = useState(null);
+    
     // Form data
     const [description, setDescription] = useState('');
     const [city, setCity] = useState('');
+    const [locality, setLocality] = useState('');
     const [urgent, setUrgent] = useState(false);
     const [clientBudget, setClientBudget] = useState('');
+    const [includeTravelCost, setIncludeTravelCost] = useState(false);
     const [breakdownMode, setBreakdownMode] = useState('full_project');
     const [includeMaterialCost, setIncludeMaterialCost] = useState(true);
     const [includeEquipmentCost, setIncludeEquipmentCost] = useState(true);
     const [ownedMaterials, setOwnedMaterials] = useState('');
     const [ownedEquipment, setOwnedEquipment] = useState('');
+    const [jobDate, setJobDate] = useState('');
+    const [jobStartTime, setJobStartTime] = useState('09:00');
     const [questions, setQuestions] = useState([]);
     const [preferenceQuestions, setPreferenceQuestions] = useState([]);
     const [answers, setAnswers] = useState({});
     const [preferences, setPreferences] = useState({});
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
+    const [imageDraft, setImageDraft] = useState(null);
     const [report, setReport] = useState(null);
     const [savedId, setSavedId] = useState(null);
     const [historyItems, setHistoryItems] = useState([]);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+    const [clearAllHistoryConfirmOpen, setClearAllHistoryConfirmOpen] = useState(false);
+    const [isClearingAllHistory, setIsClearingAllHistory] = useState(false);
+    const [deleteHistoryTarget, setDeleteHistoryTarget] = useState(null);
+    const [editHistoryTarget, setEditHistoryTarget] = useState(null);
+    const [editHistoryTitle, setEditHistoryTitle] = useState('');
+    const [noteEditorOpen, setNoteEditorOpen] = useState(false);
+    const [noteDraft, setNoteDraft] = useState('');
+    const [starredWorkerIds, setStarredWorkerIds] = useState(() => new Set());
+    const [favoriteUpdatingId, setFavoriteUpdatingId] = useState('');
     const [cityOptions, setCityOptions] = useState([]);
     const [isOtherCityMode, setIsOtherCityMode] = useState(false);
+    const [questionContextKey, setQuestionContextKey] = useState('');
+    const [selectedReportTab, setSelectedReportTab] = useState('costEstimate');
+
+    const handleHireDirect = useCallback((worker) => {
+        setDirectHireSelectedWorker(worker);
+        setIsDirectHireModalOpen(true);
+    }, []);
 
     const isKnownCity = cityOptions.some((opt) => opt.label === city);
     const citySelectValue = (isOtherCityMode || (city && !isKnownCity)) ? OTHER_CITY_OPTION : (city || '');
     
     const imageInputRef = useRef(null);
+    const draftPersistWarnedRef = useRef(false);
+    const startTimeValid = isValidJobStartTime(jobStartTime);
+    const selectedTimeLabel = jobStartTime ? formatTimeLabel(jobStartTime) : '';
+    const selectedPeriodLabel = jobStartTime ? getDayPeriodLabel(jobStartTime) : '';
 
     const applyBreakdownMode = useCallback((mode) => {
         setBreakdownMode(mode);
@@ -807,6 +1226,31 @@ export default function ClientAIAssist() {
         let active = true;
         (async () => {
             try {
+                const { data } = await getClientProfile();
+                if (!active) return;
+                const ids = Array.isArray(data?.starredWorkers)
+                    ? data.starredWorkers.map((id) => String(id))
+                    : [];
+                setStarredWorkerIds(new Set(ids));
+                setDirectHireClientData(data);
+            } catch {
+                if (!active) return;
+                setStarredWorkerIds(new Set());
+            }
+        })();
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (phase === 'report' && report) {
+            setSelectedReportTab(getFirstAvailableReportTab(report));
+        }
+    }, [phase, report]);
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
                 const { data } = await getRateTableCities();
                 if (!active) return;
                 setCityOptions(Array.isArray(data?.cities) ? data.cities : []);
@@ -818,6 +1262,146 @@ export default function ClientAIAssist() {
         return () => { active = false; };
     }, []);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        const restoreDraft = async () => {
+            try {
+                const rawDraft = sessionStorage.getItem(AI_ADVISOR_DRAFT_KEY);
+                if (!rawDraft) return;
+                const draft = JSON.parse(rawDraft);
+                if (!draft || typeof draft !== 'object') return;
+
+                setActiveTab(draft.activeTab === 'history' ? 'history' : 'advisor');
+                setPhase(PHASES.includes(draft.phase) ? draft.phase : 'describe');
+                setDescription(String(draft.description || ''));
+                setCity(String(draft.city || ''));
+                setLocality(String(draft.locality || ''));
+                setUrgent(Boolean(draft.urgent));
+                setClientBudget(String(draft.clientBudget || ''));
+                setIncludeTravelCost(Boolean(draft.includeTravelCost));
+                applyBreakdownMode(String(draft.breakdownMode || 'full_project'));
+                setIncludeMaterialCost(draft.includeMaterialCost !== false);
+                setIncludeEquipmentCost(draft.includeEquipmentCost !== false);
+                setOwnedMaterials(String(draft.ownedMaterials || ''));
+                setOwnedEquipment(String(draft.ownedEquipment || ''));
+                setJobDate(String(draft.jobDate || ''));
+                setJobStartTime(String(draft.jobStartTime || '09:00'));
+                setQuestions(Array.isArray(draft.questions) ? draft.questions : []);
+                setPreferenceQuestions(Array.isArray(draft.preferenceQuestions) ? draft.preferenceQuestions : []);
+                setAnswers(draft.answers && typeof draft.answers === 'object' ? draft.answers : {});
+                setPreferences(draft.preferences && typeof draft.preferences === 'object' ? draft.preferences : {});
+                setQuestionContextKey(String(draft.questionContextKey || ''));
+                setReport(draft.report && typeof draft.report === 'object' ? draft.report : null);
+                setSavedId(draft.savedId ? String(draft.savedId) : null);
+                setIsOtherCityMode(Boolean(draft.isOtherCityMode));
+
+                const allowedTabs = new Set(['all', ...REPORT_TAB_OPTIONS.map((tab) => tab.id)]);
+                const restoredTab = String(draft.selectedReportTab || 'costEstimate');
+                setSelectedReportTab(allowedTabs.has(restoredTab) ? restoredTab : 'costEstimate');
+
+                const restoredImageDraft = draft.imageDraft && typeof draft.imageDraft === 'object'
+                    ? {
+                        name: String(draft.imageDraft.name || 'reference-image.jpg'),
+                        type: String(draft.imageDraft.type || 'image/jpeg'),
+                        size: Math.max(0, Number(draft.imageDraft.size) || 0),
+                        dataUrl: String(draft.imageDraft.dataUrl || ''),
+                    }
+                    : null;
+
+                if (restoredImageDraft?.dataUrl?.startsWith('data:image/')) {
+                    setImageDraft(restoredImageDraft);
+                    setImagePreview(restoredImageDraft.dataUrl);
+                    try {
+                        const restoredFile = await dataUrlToFile(
+                            restoredImageDraft.dataUrl,
+                            restoredImageDraft.name,
+                            restoredImageDraft.type,
+                        );
+                        if (!cancelled) setImageFile(restoredFile);
+                    } catch {
+                        if (!cancelled) setImageFile(null);
+                    }
+                } else {
+                    setImageDraft(null);
+                    setImageFile(null);
+                    setImagePreview(null);
+                }
+            } catch {
+                // Ignore malformed draft payload.
+            }
+        };
+
+        restoreDraft();
+        return () => { cancelled = true; };
+    }, [applyBreakdownMode]);
+
+    useEffect(() => {
+        const draftPayload = {
+            activeTab,
+            phase,
+            description,
+            city,
+            locality,
+            urgent,
+            clientBudget,
+            includeTravelCost,
+            breakdownMode,
+            includeMaterialCost,
+            includeEquipmentCost,
+            ownedMaterials,
+            ownedEquipment,
+            jobDate,
+            jobStartTime,
+            questions,
+            preferenceQuestions,
+            answers,
+            preferences,
+            imageDraft,
+            report,
+            savedId,
+            isOtherCityMode,
+            questionContextKey,
+            selectedReportTab,
+        };
+
+        try {
+            sessionStorage.setItem(AI_ADVISOR_DRAFT_KEY, JSON.stringify(draftPayload));
+            draftPersistWarnedRef.current = false;
+        } catch {
+            if (!draftPersistWarnedRef.current) {
+                toast.error('Session draft is full. Some AI Advisor fields may not persist on refresh.');
+                draftPersistWarnedRef.current = true;
+            }
+        }
+    }, [
+        activeTab,
+        phase,
+        description,
+        city,
+        locality,
+        urgent,
+        clientBudget,
+        includeTravelCost,
+        breakdownMode,
+        includeMaterialCost,
+        includeEquipmentCost,
+        ownedMaterials,
+        ownedEquipment,
+        jobDate,
+        jobStartTime,
+        questions,
+        preferenceQuestions,
+        answers,
+        preferences,
+        imageDraft,
+        report,
+        savedId,
+        isOtherCityMode,
+        questionContextKey,
+        selectedReportTab,
+    ]);
+
     const handleAnswerChange = (id, value) => {
         setAnswers(prev => ({ ...prev, [id]: value }));
     };
@@ -826,11 +1410,22 @@ export default function ClientAIAssist() {
         setPreferences(prev => ({ ...prev, [id]: value }));
     };
 
-    const handleImageUpload = (e) => {
+    const handleImageUpload = async (e) => {
         const file = e.target.files?.[0];
         if (file) {
-            setImageFile(file);
-            setImagePreview(URL.createObjectURL(file));
+            try {
+                const dataUrl = await readFileAsDataUrl(file);
+                setImageFile(file);
+                setImagePreview(dataUrl);
+                setImageDraft({
+                    name: file.name || 'reference-image.jpg',
+                    type: file.type || 'image/jpeg',
+                    size: Number(file.size) || 0,
+                    dataUrl,
+                });
+            } catch {
+                toast.error('Unable to read image. Please try another file.');
+            }
         }
     };
 
@@ -847,16 +1442,45 @@ export default function ClientAIAssist() {
             toast.error(`Please enter at least ${MIN_AI_DESCRIPTION_CHARS} characters before generating questions`);
             return;
         }
+        if (!startTimeValid) {
+            toast.error('Start time must be between 7:00 AM and 7:00 PM.');
+            return;
+        }
+
+        const currentContextKey = buildQuestionContextKey({ description, city, locality });
+        if (questions.length > 0 && currentContextKey === questionContextKey) {
+            setPhase('questions');
+            return;
+        }
+
+        const previousQuestions = questions;
+        const previousPreferenceQuestions = preferenceQuestions;
+        const previousAnswers = answers;
+        const previousPreferences = preferences;
 
         setIsLoading(prev => ({ ...prev, questions: true }));
         try {
             const { data } = await aiGenerateQuestions({
                 workDescription: description,
                 city: city,
+                locality: locality,
                 preferredLanguage: getPreferredUiLanguage(),
             });
-            setQuestions(normalizeQuestionList(data.questions, 'q'));
-            setPreferenceQuestions(normalizeQuestionList(data.opinionQuestions, 'op'));
+            const nextQuestions = normalizeQuestionList(data.questions, 'q');
+            const nextPreferenceQuestions = normalizeQuestionList(data.opinionQuestions, 'op');
+            setQuestions(nextQuestions);
+            setPreferenceQuestions(nextPreferenceQuestions);
+            setAnswers(remapAnswersByQuestionText({
+                oldQuestions: previousQuestions,
+                oldAnswersById: previousAnswers,
+                newQuestions: nextQuestions,
+            }));
+            setPreferences(remapAnswersByQuestionText({
+                oldQuestions: previousPreferenceQuestions,
+                oldAnswersById: previousPreferences,
+                newQuestions: nextPreferenceQuestions,
+            }));
+            setQuestionContextKey(currentContextKey);
             setPhase('questions');
         } catch (error) {
             console.error('Failed to generate questions:', error);
@@ -878,8 +1502,13 @@ export default function ClientAIAssist() {
             setPhase('describe');
             return;
         }
+        if (!startTimeValid) {
+            toast.error('Start time must be between 7:00 AM and 7:00 PM.');
+            setPhase('describe');
+            return;
+        }
 
-        const unansweredRequired = questions.filter((q) => q.required && !String(answers[q.id] || '').trim());
+        const unansweredRequired = questions.filter((q) => q.required && !hasValidAnswer(answers[q.id]));
         if (unansweredRequired.length > 0) {
             toast.error('Please answer the required condition questions before generating the report');
             setPhase('questions');
@@ -891,12 +1520,18 @@ export default function ClientAIAssist() {
         try {
             const answersMap = {};
             questions.forEach(q => {
-                if (answers[q.id]) answersMap[q.question] = answers[q.id];
+                if (!hasValidAnswer(answers[q.id])) return;
+                answersMap[q.question] = Array.isArray(answers[q.id])
+                    ? answers[q.id].join(', ')
+                    : answers[q.id];
             });
 
             const preferencesMap = {};
             preferenceQuestions.forEach(q => {
-                if (preferences[q.id]) preferencesMap[q.question] = preferences[q.id];
+                if (!hasValidAnswer(preferences[q.id])) return;
+                preferencesMap[q.question] = Array.isArray(preferences[q.id])
+                    ? preferences[q.id].join(', ')
+                    : preferences[q.id];
             });
 
             const formData = new FormData();
@@ -904,18 +1539,31 @@ export default function ClientAIAssist() {
             formData.append('answers', JSON.stringify(answersMap));
             formData.append('opinions', JSON.stringify(preferencesMap));
             formData.append('city', city);
+            formData.append('locality', locality);
             formData.append('urgent', String(urgent));
             formData.append('breakdownMode', breakdownMode);
             formData.append('includeMaterialCost', String(includeMaterialCost));
             formData.append('includeEquipmentCost', String(includeEquipmentCost));
+            formData.append('includeTravelCost', String(includeTravelCost));
             formData.append('ownedMaterials', ownedMaterials);
             formData.append('ownedEquipment', ownedEquipment);
+            formData.append('jobDate', jobDate);
+            formData.append('jobStartTime', jobStartTime);
             formData.append('preferredLanguage', getPreferredUiLanguage());
             if (clientBudget && Number(clientBudget) > 0) {
                 formData.append('clientBudget', clientBudget);
             }
-            if (imageFile) {
-                formData.append('workImage', imageFile);
+            let uploadImage = imageFile;
+            if (!uploadImage && imageDraft?.dataUrl) {
+                uploadImage = await dataUrlToFile(
+                    imageDraft.dataUrl,
+                    imageDraft.name || 'reference-image.jpg',
+                    imageDraft.type || 'image/jpeg',
+                );
+                setImageFile(uploadImage);
+            }
+            if (uploadImage) {
+                formData.append('workImage', uploadImage);
             }
 
             const { data } = await getAIAdvisorReport(formData);
@@ -926,10 +1574,18 @@ export default function ClientAIAssist() {
                 const { data: saved } = await saveAIAnalysis({
                     workDescription: description,
                     city,
+                    locality,
                     urgent,
                     clientBudget: clientBudget ? Number(clientBudget) : undefined,
                     answers: answersMap,
                     opinions: preferencesMap,
+                    answersById: answers,
+                    preferencesById: preferences,
+                    questionSet: questions,
+                    preferenceQuestionSet: preferenceQuestions,
+                    includeTravelCost,
+                    jobDate,
+                    jobStartTime,
                     report: data,
                 });
                 setSavedId(saved._id);
@@ -948,11 +1604,16 @@ export default function ClientAIAssist() {
     };
 
     const handleSaveNote = async (notes) => {
-        if (!savedId) return;
+        if (!savedId) return false;
         try {
             await updateAIHistoryItem(savedId, { notes });
+            setHistoryItems(prev => prev.map(item =>
+                item._id === savedId ? { ...item, notes } : item
+            ));
+            return true;
         } catch (error) {
             console.error('Failed to save note:', error);
+            return false;
         }
     };
 
@@ -963,11 +1624,45 @@ export default function ClientAIAssist() {
             setSavedId(data._id);
             setDescription(data.workDescription || '');
             setCity(data.city || '');
+            setLocality(data.locality || data.report?.locality || '');
             setUrgent(!!data.urgent);
             setClientBudget(data.clientBudget ? String(data.clientBudget) : '');
+            setIncludeTravelCost(!!data.report?.includeTravelCost);
+            setJobDate(data.jobDate || '');
+            setJobStartTime(data.jobStartTime || '09:00');
             applyBreakdownMode(data.report?.breakdownMode || (data.report?.includeMaterialCost && data.report?.includeEquipmentCost ? 'full_project' : data.report?.includeMaterialCost ? 'labour_plus_material' : 'labour_only'));
             setOwnedMaterials(Array.isArray(data.report?.ownedMaterials) ? data.report.ownedMaterials.join(', ') : '');
             setOwnedEquipment(Array.isArray(data.report?.ownedEquipment) ? data.report.ownedEquipment.join(', ') : '');
+            let restoredQuestions = normalizeQuestionList(data.questionSet, 'q');
+            let restoredPreferenceQuestions = normalizeQuestionList(data.preferenceQuestionSet, 'op');
+
+            if (!restoredQuestions.length && data.answers && typeof data.answers === 'object') {
+                restoredQuestions = buildQuestionSetFromAnswerTextMap(data.answers, 'q');
+            }
+            if (!restoredPreferenceQuestions.length && data.opinions && typeof data.opinions === 'object') {
+                restoredPreferenceQuestions = buildQuestionSetFromAnswerTextMap(data.opinions, 'op');
+            }
+
+            setQuestions(restoredQuestions);
+            setPreferenceQuestions(restoredPreferenceQuestions);
+
+            const restoredAnswersById = data.answersById && typeof data.answersById === 'object'
+                ? Object.fromEntries(Object.entries(data.answersById).filter(([id]) => restoredQuestions.some((q) => q.id === id)))
+                : buildAnswerByIdFromQuestionText(restoredQuestions, data.answers || {});
+            const restoredPreferencesById = data.preferencesById && typeof data.preferencesById === 'object'
+                ? Object.fromEntries(Object.entries(data.preferencesById).filter(([id]) => restoredPreferenceQuestions.some((q) => q.id === id)))
+                : buildAnswerByIdFromQuestionText(restoredPreferenceQuestions, data.opinions || {});
+
+            setAnswers(restoredAnswersById);
+            setPreferences(restoredPreferencesById);
+            setImageFile(null);
+            setImagePreview(null);
+            setImageDraft(null);
+            setQuestionContextKey(buildQuestionContextKey({
+                description: data.workDescription || '',
+                city: data.city || '',
+                locality: data.locality || data.report?.locality || '',
+            }));
             setPhase('report');
             setActiveTab('advisor');
             toast.success('Analysis loaded');
@@ -983,6 +1678,9 @@ export default function ClientAIAssist() {
             setHistoryItems(prev => prev.map(item =>
                 item._id === id ? { ...item, title } : item
             ));
+            if (savedId === id) {
+                setReport(prev => prev ? { ...prev, title } : prev);
+            }
             toast.success('Title updated');
         } catch (error) {
             console.error('Failed to update title:', error);
@@ -991,13 +1689,14 @@ export default function ClientAIAssist() {
     };
 
     const handleDeleteHistory = async (id) => {
-        if (!window.confirm('Delete this analysis? This action cannot be undone.')) return;
-        
         try {
             await deleteAIHistoryItem(id);
             setHistoryItems(prev => prev.filter(item => item._id !== id));
             if (savedId === id) {
                 setSavedId(null);
+            }
+            if (report?._id === id) {
+                setReport(null);
             }
             toast.success('Analysis deleted');
         } catch (error) {
@@ -1007,15 +1706,21 @@ export default function ClientAIAssist() {
     };
 
     const handleClearAllHistory = async () => {
-        if (!window.confirm('Delete all analyses? This action cannot be undone.')) return;
-        
+        if (isClearingAllHistory) return;
+
         try {
+            setIsClearingAllHistory(true);
             await clearClientAIHistory();
             setHistoryItems([]);
+            setSavedId(null);
+            setReport(null);
+            setClearAllHistoryConfirmOpen(false);
             toast.success('All analyses cleared');
         } catch (error) {
             console.error('Failed to clear history:', error);
             toast.error('Unable to clear history');
+        } finally {
+            setIsClearingAllHistory(false);
         }
     };
 
@@ -1023,9 +1728,13 @@ export default function ClientAIAssist() {
         setPhase('describe');
         setDescription('');
         setCity('');
+        setLocality('');
         setIsOtherCityMode(false);
         setUrgent(false);
         setClientBudget('');
+        setIncludeTravelCost(false);
+        setJobDate('');
+        setJobStartTime('09:00');
         applyBreakdownMode('full_project');
         setOwnedMaterials('');
         setOwnedEquipment('');
@@ -1033,21 +1742,102 @@ export default function ClientAIAssist() {
         setPreferenceQuestions([]);
         setAnswers({});
         setPreferences({});
+        setQuestionContextKey('');
         setImageFile(null);
         setImagePreview(null);
+        setImageDraft(null);
         setReport(null);
         setSavedId(null);
+        sessionStorage.removeItem(AI_ADVISOR_DRAFT_KEY);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handlePrint = () => {
-        window.print();
+        const previousTab = selectedReportTab;
+        let restored = false;
+
+        const restoreSelection = () => {
+            if (restored) return;
+            restored = true;
+            setSelectedReportTab(previousTab);
+            window.removeEventListener('afterprint', restoreSelection);
+        };
+
+        setSelectedReportTab('all');
+        window.addEventListener('afterprint', restoreSelection);
+
+        window.setTimeout(() => {
+            window.print();
+            window.setTimeout(restoreSelection, 1500);
+        }, 80);
     };
 
     const handleReAnalyze = () => {
         setActiveTab('advisor');
-        setPhase('describe');
+        setPhase(questions.length > 0 ? 'questions' : 'describe');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleToggleFavoriteWorker = async (worker) => {
+        const workerId = String(worker?._id || worker?.id || worker?.karigarId || '');
+        if (!workerId) {
+            toast.error('Worker id is missing.');
+            return;
+        }
+
+        setFavoriteUpdatingId(workerId);
+        try {
+            await toggleStarWorker(workerId);
+            setStarredWorkerIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(workerId)) {
+                    next.delete(workerId);
+                    toast.success('Removed from favorites');
+                } else {
+                    next.add(workerId);
+                    toast.success('Added to favorites');
+                }
+                return next;
+            });
+        } catch (error) {
+            console.error('Failed to toggle favorite worker:', error);
+            toast.error('Unable to update favorites');
+        } finally {
+            setFavoriteUpdatingId('');
+        }
+    };
+
+    const doesTabHaveContent = (tabId, currentReport = report) => {
+        if (!currentReport) return false;
+
+        switch (tabId) {
+        case 'warnings':
+            return !!currentReport.warnings?.length;
+        case 'costEstimate':
+            return true;
+        case 'priceReasoning':
+            return !!currentReport.priceReasoning?.length;
+        case 'costSavingSuggestions':
+            return !!currentReport.costSavingSuggestions?.length;
+        case 'scenarioRange':
+            return !!(currentReport.bestCaseTotal || currentReport.expectedTotal || currentReport.worstCaseTotal);
+        case 'localMarketInsight':
+            return !!currentReport.localMarketInsight;
+        case 'negotiationRange':
+            return !!currentReport.negotiationRange;
+        case 'workPlan':
+            return !!currentReport.workPlan?.length;
+        case 'timeEstimate':
+            return !!currentReport.timeEstimate;
+        case 'expectedOutcome':
+            return !!currentReport.expectedOutcome?.length;
+        case 'designRecommendations':
+            return !!(currentReport.colourAndStyleAdvice || currentReport.designSuggestions?.length > 0 || currentReport.improvementIdeas?.length > 0);
+        case 'addNote':
+            return true;
+        default:
+            return false;
+        }
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1126,7 +1916,7 @@ export default function ClientAIAssist() {
                                             </p>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                                     City <span className="text-red-500">*</span>
@@ -1163,6 +1953,19 @@ export default function ClientAIAssist() {
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Locality <span className="text-gray-400">(Optional)</span>
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={locality}
+                                                    onChange={(e) => setLocality(e.target.value)}
+                                                    placeholder="Enter locality"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">Used for better local material estimation.</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
                                                     Priority
                                                 </label>
                                                 <button
@@ -1178,11 +1981,50 @@ export default function ClientAIAssist() {
                                                     {urgent ? 'Urgent Priority' : 'Standard Timeline'}
                                                 </button>
                                             </div>
+
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Job Date <span className="text-gray-400">(Optional)</span>
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={jobDate}
+                                                    onChange={(e) => setJobDate(e.target.value)}
+                                                    min={new Date().toISOString().split('T')[0]}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Start Time <span className="text-gray-400">(Optional)</span>
+                                                </label>
+                                                <input
+                                                    type="time"
+                                                    value={jobStartTime}
+                                                    onChange={(e) => setJobStartTime(e.target.value)}
+                                                    min="07:00"
+                                                    max="19:00"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
+                                                />
+                                                {jobStartTime ? (
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Selected: {selectedTimeLabel} ({selectedPeriodLabel})
+                                                    </p>
+                                                ) : null}
+                                                {!startTimeValid ? (
+                                                    <p className="text-xs text-red-600 mt-1">
+                                                        Choose a time between 7:00 AM and 7:00 PM.
+                                                    </p>
+                                                ) : null}
+                                            </div>
                                         </div>
 
                                         <button
                                             onClick={handleGenerateQuestions}
-                                            disabled={isLoading.questions || !description.trim() || !city.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS}
+                                            disabled={isLoading.questions || !description.trim() || !city.trim() || description.trim().length < MIN_AI_DESCRIPTION_CHARS || !startTimeValid}
                                             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                         >
                                             <Sparkles size={18} className={isLoading.questions ? 'animate-pulse' : ''} />
@@ -1267,6 +2109,20 @@ export default function ClientAIAssist() {
                                                     </button>
                                                 ))}
                                             </div>
+                                        </div>
+
+                                        <div className="rounded-lg border border-gray-200 p-3 bg-orange-50/40">
+                                            <label className="flex items-start gap-3 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={includeTravelCost}
+                                                    onChange={(e) => setIncludeTravelCost(e.target.checked)}
+                                                    className="mt-1 h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+                                                />
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-800">Add worker travel cost</p>
+                                                </div>
+                                            </label>
                                         </div>
 
                                         <div className="bg-white border border-orange-100 rounded-xl p-4 space-y-4">
@@ -1403,6 +2259,7 @@ export default function ClientAIAssist() {
                                                     onClick={() => {
                                                         setImageFile(null);
                                                         setImagePreview(null);
+                                                        setImageDraft(null);
                                                     }}
                                                     className="absolute top-2 right-2 p-1 bg-white rounded-full shadow-md hover:bg-gray-100"
                                                 >
@@ -1494,8 +2351,23 @@ export default function ClientAIAssist() {
                                             </div>
                                         </div>
 
+                                        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                                            <label className="block text-xs font-semibold text-orange-700 uppercase tracking-wider mb-2">
+                                                Report Sections
+                                            </label>
+                                            <select
+                                                value={selectedReportTab === 'all' ? getFirstAvailableReportTab(report) : selectedReportTab}
+                                                onChange={(e) => setSelectedReportTab(e.target.value)}
+                                                className="w-full px-4 py-2.5 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white text-gray-800"
+                                            >
+                                                {REPORT_TAB_OPTIONS.map((tab) => (
+                                                    <option key={tab.id} value={tab.id}>{tab.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
                                         {/* Warnings Section */}
-                                        {report.warnings?.length > 0 && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'warnings') && report.warnings?.length > 0 && (
                                             <ReportSection title="Important Warnings" icon={AlertCircle} defaultOpen>
                                                 <div className="space-y-2">
                                                     {report.warnings.map((warning, idx) => (
@@ -1509,7 +2381,34 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Cost Estimate Section */}
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'costEstimate') && (
                                         <ReportSection title="Cost Estimate" icon={IndianRupee} defaultOpen badge="Detailed">
+                                            {(report.demandFactor > 1 || report.festivalName || report.jobDate) && (
+                                                <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                                        <p className="text-sm font-semibold text-gray-900">Demand Pricing Context</p>
+                                                        {report.demandFactor > 1 ? (
+                                                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                                                Multiplier applied: x{Number(report.demandFactor || 1).toFixed(2)}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="text-xs text-gray-700 mt-2 space-y-1">
+                                                        {report.jobDate ? (
+                                                            <p>
+                                                                Job window: {formatDateWithDay(report.jobDate)} {report.jobStartTime ? `at ${formatTimeLabel(report.jobStartTime)}` : ''}
+                                                                {report.jobEndDate && report.jobEndTime ? ` -> ${formatDateWithDay(report.jobEndDate)} at ${formatTimeLabel(report.jobEndTime)}` : ''}
+                                                            </p>
+                                                        ) : null}
+                                                        {report.festivalName ? <p>Festival impact: {report.festivalName}</p> : null}
+                                                        {report.labourTotalUnadjusted && report.labourTotal ? (
+                                                            <p>
+                                                                Labour before multiplier: {formatCurrency(report.labourTotalUnadjusted)} | After multiplier: {formatCurrency(report.labourTotal)}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            )}
                                             <CostBreakdownTable 
                                                 breakdown={report.budgetBreakdown} 
                                                 materialsBreakdown={report.materialsBreakdown}
@@ -1518,13 +2417,16 @@ export default function ClientAIAssist() {
                                                 optionalMaterialsBreakdown={report.optionalMaterialsBreakdown || []}
                                                 requiredEquipmentBreakdown={report.requiredEquipmentBreakdown || []}
                                                 optionalEquipmentBreakdown={report.optionalEquipmentBreakdown || []}
+                                                workerTravelCost={report.workerTravelCost || 0}
+                                                labourTotalOverride={report.labourTotal}
                                                 clientBudget={report.clientBudget}
                                                 grandTotal={report.grandTotal}
                                             />
                                         </ReportSection>
+                                        )}
 
                                         {/* Price Reasoning */}
-                                        {report.priceReasoning?.length > 0 && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'priceReasoning') && report.priceReasoning?.length > 0 && (
                                             <ReportSection title="Price Reasoning" icon={Settings} defaultOpen badge={`${report.priceReasoning.length} reasons`}>
                                                 <div className="space-y-2">
                                                     {report.priceReasoning.map((reason, idx) => (
@@ -1538,7 +2440,7 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Cost Saving Suggestions */}
-                                        {report.costSavingSuggestions?.length > 0 && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'costSavingSuggestions') && report.costSavingSuggestions?.length > 0 && (
                                             <ReportSection title="Cost Saving Suggestions" icon={Award} defaultOpen badge={`${report.costSavingSuggestions.length} tips`}>
                                                 <div className="space-y-2">
                                                     {report.costSavingSuggestions.map((tip, idx) => (
@@ -1552,30 +2454,30 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Best / Expected / Worst */}
-                                        {(report.bestCaseTotal || report.expectedTotal || report.worstCaseTotal) && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'scenarioRange') && (report.bestCaseTotal || report.expectedTotal || report.worstCaseTotal) && (
                                             <ReportSection title="Best / Expected / Worst" icon={TrendingUp} defaultOpen>
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                     <div className="rounded-xl border border-green-100 bg-green-50 p-4">
                                                         <p className="text-xs font-semibold text-green-700 uppercase tracking-wider">Best Case</p>
                                                         <p className="text-lg font-black text-gray-900">{formatCurrency(report.bestCaseTotal)}</p>
-                                                        <p className="text-xs text-gray-500 mt-1">Good wall condition / least prep</p>
+                                                        <p className="text-xs text-gray-500 mt-1">{report?.scenarioNarratives?.best || 'Most efficient execution conditions for this specific job.'}</p>
                                                     </div>
                                                     <div className="rounded-xl border border-orange-100 bg-orange-50 p-4">
                                                         <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider">Expected</p>
                                                         <p className="text-lg font-black text-gray-900">{formatCurrency(report.expectedTotal)}</p>
-                                                        <p className="text-xs text-gray-500 mt-1">Most likely real-world quote</p>
+                                                        <p className="text-xs text-gray-500 mt-1">{report?.scenarioNarratives?.expected || 'Most likely quote based on your stated scope and market conditions.'}</p>
                                                     </div>
                                                     <div className="rounded-xl border border-red-100 bg-red-50 p-4">
                                                         <p className="text-xs font-semibold text-red-700 uppercase tracking-wider">Worst Case</p>
                                                         <p className="text-lg font-black text-gray-900">{formatCurrency(report.worstCaseTotal)}</p>
-                                                        <p className="text-xs text-gray-500 mt-1">Damaged wall / extra prep</p>
+                                                        <p className="text-xs text-gray-500 mt-1">{report?.scenarioNarratives?.worst || 'Higher-cost scenario if hidden issues appear during execution.'}</p>
                                                     </div>
                                                 </div>
                                             </ReportSection>
                                         )}
 
                                         {/* Local Market Insight */}
-                                        {report.localMarketInsight && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'localMarketInsight') && report.localMarketInsight && (
                                             <ReportSection title="Local Market Insight" icon={TrendingUp} defaultOpen>
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                     <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
@@ -1595,7 +2497,7 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Negotiation Range */}
-                                        {report.negotiationRange && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'negotiationRange') && report.negotiationRange && (
                                             <ReportSection title="Negotiation Range" icon={IndianRupee} defaultOpen>
                                                 <div className="rounded-xl border border-orange-100 bg-orange-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                                     <div>
@@ -1610,16 +2512,42 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Work Plan Section */}
-                                        {report.workPlan?.length > 0 && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'workPlan') && report.workPlan?.length > 0 && (
                                             <ReportSection title="Work Plan" icon={TrendingUp} defaultOpen badge={`${report.workPlan.length} steps`}>
-                                                <WorkPlanTimeline plan={report.workPlan} timeEstimate={report.timeEstimate} />
+                                                <WorkPlanTimeline
+                                                    plan={report.workPlan}
+                                                    timeEstimate={report.timeEstimate}
+                                                    jobDate={report.jobDate}
+                                                    jobStartTime={report.jobStartTime}
+                                                    jobEndDate={report.jobEndDate}
+                                                    jobEndTime={report.jobEndTime}
+                                                    festivalName={report.festivalName}
+                                                    demandMultipliers={report.demandMultipliers}
+                                                    demandFactor={report.demandFactor}
+                                                />
                                             </ReportSection>
                                         )}
 
                                         {/* Time Estimate Section */}
-                                        {report.timeEstimate && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'timeEstimate') && report.timeEstimate && (
                                             <ReportSection title="Time Estimate" icon={Clock} defaultOpen>
+                                                {(() => {
+                                                    const phaseHoursTotal = Array.isArray(report.timeEstimate?.phases)
+                                                        ? report.timeEstimate.phases.reduce((sum, phase) => sum + (Number(phase?.hours) || 0), 0)
+                                                        : 0;
+                                                    const displayTotalHours = phaseHoursTotal > 0
+                                                        ? phaseHoursTotal
+                                                        : (Number(report.timeEstimate?.totalHours) || 0);
+                                                    return (
                                                 <div className="space-y-3">
+                                                    {report.timeEstimate?.schedule?.days?.length > 0 && (
+                                                        <div className="rounded-lg border border-orange-100 bg-orange-50 p-3">
+                                                            <p className="text-sm font-semibold text-gray-800">Calendar-based estimate</p>
+                                                            <p className="text-xs text-gray-600 mt-1">
+                                                                {report.timeEstimate.schedule.days.length} day(s), {Number(report.timeEstimate.totalHours || 0).toFixed(1)} productive hours, {Number(report.timeEstimate.totalBreakHours || 0).toFixed(1)} break hours.
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                     {report.timeEstimate.phases?.map((phase, idx) => (
                                                         <div key={idx}>
                                                             <div className="flex items-center justify-between mb-1">
@@ -1627,7 +2555,7 @@ export default function ClientAIAssist() {
                                                                 <span className="text-sm text-orange-600">{phase.hours} hours</span>
                                                             </div>
                                                             <div className="h-2 bg-orange-100 rounded-full overflow-hidden">
-                                                                <div className="h-full bg-orange-500 rounded-full" style={{ width: `${(phase.hours / report.timeEstimate.totalHours) * 100}%` }} />
+                                                                <div className="h-full bg-orange-500 rounded-full" style={{ width: `${displayTotalHours > 0 ? ((Number(phase?.hours) || 0) / displayTotalHours) * 100 : 0}%` }} />
                                                             </div>
                                                             {phase.description && (
                                                                 <p className="text-xs text-gray-500 mt-1">{phase.description}</p>
@@ -1637,7 +2565,7 @@ export default function ClientAIAssist() {
                                                     <div className="mt-3 pt-3 border-t border-orange-100">
                                                         <div className="flex items-center justify-between">
                                                             <span className="font-semibold text-gray-900">Total Estimated Time</span>
-                                                            <span className="font-bold text-orange-600">{report.timeEstimate.totalHours} hours</span>
+                                                            <span className="font-bold text-orange-600">{displayTotalHours} hours</span>
                                                         </div>
                                                         {report.durationDays && (
                                                             <p className="text-sm text-gray-600 mt-1">
@@ -1646,11 +2574,13 @@ export default function ClientAIAssist() {
                                                         )}
                                                     </div>
                                                 </div>
+                                                    );
+                                                })()}
                                             </ReportSection>
                                         )}
 
                                         {/* Expected Outcome Section */}
-                                        {report.expectedOutcome?.length > 0 && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'expectedOutcome') && report.expectedOutcome?.length > 0 && (
                                             <ReportSection title="Expected Outcome" icon={Target} defaultOpen>
                                                 <div className="space-y-2">
                                                     {report.expectedOutcome.map((outcome, idx) => (
@@ -1663,15 +2593,10 @@ export default function ClientAIAssist() {
                                             </ReportSection>
                                         )}
 
-                                        {/* Materials & Specifications */}
-                                        {report.materialsBreakdown?.length > 0 && (
-                                            <ReportSection title="Material Specifications" icon={Layers} defaultOpen badge={`${report.materialsBreakdown.length} items`}>
-                                                <MaterialSpecification materials={report.materialsBreakdown} />
-                                            </ReportSection>
-                                        )}
+                                        {/* Material Specifications section removed - already shown in Cost Breakdown */}
 
                                         {/* Design Recommendations */}
-                                        {(report.colourAndStyleAdvice || report.designSuggestions?.length > 0 || report.improvementIdeas?.length > 0) && (
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'designRecommendations') && (report.colourAndStyleAdvice || report.designSuggestions?.length > 0 || report.improvementIdeas?.length > 0) && (
                                             <ReportSection title="Design Recommendations" icon={Palette} defaultOpen>
                                                 <DesignRecommendations 
                                                     colourAdvice={report.colourAndStyleAdvice}
@@ -1682,23 +2607,14 @@ export default function ClientAIAssist() {
                                         )}
 
                                         {/* Quality Assurance */}
-                                        {report.qualityAssurance && (
+                                        {selectedReportTab === 'all' && report.qualityAssurance && (
                                             <ReportSection title="Quality Assurance" icon={CheckCircle} defaultOpen>
                                                 <QualityAssurance assurance={report.qualityAssurance} />
                                             </ReportSection>
                                         )}
 
-                                        {/* Worker Recommendations */}
-                                        {report.topWorkers?.length > 0 && (
-                                            <ReportSection title="Nearby Professionals" icon={Users} defaultOpen badge={`${report.topWorkers.length} available`}>
-                                                <WorkerRecommendations 
-                                                    workers={report.topWorkers}
-                                                    projectSkills={report.skillBlocks?.map(s => s.skill)}
-                                                />
-                                            </ReportSection>
-                                        )}
-
                                         {/* Notes Section */}
+                                        {(selectedReportTab === 'all' || selectedReportTab === 'addNote') && (
                                         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
                                             <div className="flex items-center justify-between mb-2">
                                                 <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -1707,11 +2623,8 @@ export default function ClientAIAssist() {
                                                 </label>
                                                 <button
                                                     onClick={() => {
-                                                        const notes = prompt('Add your notes:', report._notes || '');
-                                                        if (notes !== null) {
-                                                            handleSaveNote(notes);
-                                                            setReport(prev => ({ ...prev, _notes: notes }));
-                                                        }
+                                                        setNoteDraft(report._notes || '');
+                                                        setNoteEditorOpen(true);
                                                     }}
                                                     className="text-xs text-orange-600 hover:text-orange-700 font-medium"
                                                 >
@@ -1722,6 +2635,13 @@ export default function ClientAIAssist() {
                                                 {report._notes || 'No notes added yet. Click Edit to add your thoughts.'}
                                             </p>
                                         </div>
+                                        )}
+
+                                        {selectedReportTab !== 'all' && !doesTabHaveContent(selectedReportTab, report) && (
+                                            <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">
+                                                {REPORT_TAB_OPTIONS.find((tab) => tab.id === selectedReportTab)?.label || 'This section'} is not available in this report yet.
+                                            </div>
+                                        )}
 
                                         {/* Action Buttons */}
                                         <div className="flex gap-3 pt-4">
@@ -1756,7 +2676,7 @@ export default function ClientAIAssist() {
                                     <h2 className="text-lg font-semibold text-gray-900">Analysis History</h2>
                                     {historyItems.length > 0 && (
                                         <button
-                                            onClick={handleClearAllHistory}
+                                            onClick={() => setClearAllHistoryConfirmOpen(true)}
                                             className="text-sm text-red-600 hover:text-red-700"
                                         >
                                             Clear All
@@ -1814,18 +2734,16 @@ export default function ClientAIAssist() {
                                                     </div>
                                                     <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                                                         <button
-                                                            onClick={async () => {
-                                                                const newTitle = prompt('Edit title:', item.title || '');
-                                                                if (newTitle) {
-                                                                    await handleEditHistory(item._id, newTitle);
-                                                                }
+                                                            onClick={() => {
+                                                                setEditHistoryTarget(item);
+                                                                setEditHistoryTitle(item.title || item.report?.jobTitle || '');
                                                             }}
                                                             className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                                                         >
                                                             <Edit2 size={14} />
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDeleteHistory(item._id)}
+                                                            onClick={() => setDeleteHistoryTarget(item)}
                                                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                         >
                                                             <Trash2 size={14} />
@@ -1840,7 +2758,7 @@ export default function ClientAIAssist() {
                         )}
                     </div>
 
-                    {/* Sidebar - Tips */}
+                    {/* Sidebar - Tips / Worker Recommendations */}
                     {activeTab === 'advisor' && phase !== 'report' && phase !== 'loading' && (
                         <div className="lg:col-span-1">
                             <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 sticky top-8">
@@ -1881,8 +2799,219 @@ export default function ClientAIAssist() {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === 'advisor' && phase === 'report' && report && (
+                        <div className="lg:col-span-1">
+                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-4 sticky top-8">
+                                <div className="mb-3">
+                                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                                        <Users size={18} className="text-orange-500" />
+                                        Recommended Workers
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Matched by skills, location, ratings and current availability.
+                                    </p>
+                                </div>
+
+                                {report.topWorkers?.length > 0 ? (
+                                    <div className="max-h-[75vh] overflow-y-auto pr-1">
+                                        <WorkerRecommendations
+                                            workers={report.topWorkers}
+                                            projectSkills={report.skillBlocks?.map((s) => s.skill)}
+                                            starredWorkerIds={starredWorkerIds}
+                                            favoriteUpdatingId={favoriteUpdatingId}
+                                            onToggleFavorite={handleToggleFavoriteWorker}
+                                            onHireDirect={handleHireDirect}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                        No worker recommendation available for this report.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {clearAllHistoryConfirmOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+                        onClick={() => {
+                            if (!isClearingAllHistory) setClearAllHistoryConfirmOpen(false);
+                        }}
+                    />
+                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-orange-100">
+                        <h3 className="text-lg font-bold text-gray-900">Delete all analyses?</h3>
+                        <p className="mt-2 text-sm text-gray-600">
+                            This will permanently remove all saved analyses from your history. This action cannot be undone.
+                        </p>
+
+                        <div className="mt-6 flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setClearAllHistoryConfirmOpen(false)}
+                                disabled={isClearingAllHistory}
+                                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-60"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleClearAllHistory}
+                                disabled={isClearingAllHistory}
+                                className="px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 font-medium disabled:opacity-60 flex items-center gap-2"
+                            >
+                                {isClearingAllHistory && <Loader2 size={14} className="animate-spin" />}
+                                {isClearingAllHistory ? 'Deleting...' : 'Delete All'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteHistoryTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+                        onClick={() => setDeleteHistoryTarget(null)}
+                    />
+                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-orange-100">
+                        <h3 className="text-lg font-bold text-gray-900">Delete this analysis?</h3>
+                        <p className="mt-2 text-sm text-gray-600">
+                            This will permanently remove {deleteHistoryTarget.title || deleteHistoryTarget.report?.jobTitle || 'this analysis'} from your history.
+                        </p>
+
+                        <div className="mt-6 flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteHistoryTarget(null)}
+                                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const targetId = deleteHistoryTarget?._id;
+                                    setDeleteHistoryTarget(null);
+                                    if (targetId) {
+                                        await handleDeleteHistory(targetId);
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 font-medium"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {editHistoryTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+                        onClick={() => setEditHistoryTarget(null)}
+                    />
+                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-orange-100">
+                        <h3 className="text-lg font-bold text-gray-900">Edit title</h3>
+                        <p className="mt-2 text-sm text-gray-600">
+                            Update the saved title for {editHistoryTarget.report?.jobTitle || 'this analysis'}.
+                        </p>
+
+                        <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                            <input
+                                type="text"
+                                value={editHistoryTitle}
+                                onChange={(e) => setEditHistoryTitle(e.target.value)}
+                                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                                placeholder="Enter title"
+                            />
+                        </div>
+
+                        <div className="mt-6 flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setEditHistoryTarget(null)}
+                                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const targetId = editHistoryTarget?._id;
+                                    const nextTitle = editHistoryTitle.trim();
+                                    if (!nextTitle) {
+                                        toast.error('Title cannot be empty');
+                                        return;
+                                    }
+                                    setEditHistoryTarget(null);
+                                    await handleEditHistory(targetId, nextTitle);
+                                }}
+                                className="px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 font-medium"
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {noteEditorOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+                        onClick={() => setNoteEditorOpen(false)}
+                    />
+                    <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl border border-orange-100">
+                        <h3 className="text-lg font-bold text-gray-900">Edit Notes</h3>
+                        <p className="mt-2 text-sm text-gray-600">
+                            Save personal notes for this analysis.
+                        </p>
+
+                        <div className="mt-4">
+                            <textarea
+                                rows={6}
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                placeholder="Add your notes here..."
+                                className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 resize-none"
+                            />
+                        </div>
+
+                        <div className="mt-6 flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setNoteEditorOpen(false)}
+                                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const saved = await handleSaveNote(noteDraft);
+                                    setReport(prev => ({ ...prev, _notes: noteDraft }));
+                                    setNoteEditorOpen(false);
+                                    if (saved) {
+                                        toast.success('Notes saved');
+                                    } else {
+                                        toast.error('Unable to save note to history right now');
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 font-medium"
+                            >
+                                Save Notes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Print styles */}
             <style>{`
@@ -1898,6 +3027,16 @@ export default function ClientAIAssist() {
                     }
                 }
             `}</style>
+
+            <DirectHireModal
+                isOpen={isDirectHireModalOpen}
+                worker={directHireSelectedWorker}
+                client={directHireClientData}
+                onClose={() => setIsDirectHireModalOpen(false)}
+                onSuccess={() => {
+                    // Handle any post-success actions if needed
+                }}
+            />
         </div>
     );
 }

@@ -9,6 +9,7 @@
 
 const Groq = require('groq-sdk');
 const User = require('../models/userModel');
+const Rating = require('../models/ratingModel');
 const BaseRate = require('../models/baseRateModel');
 const Product = require('../models/productModel');
 const MarketRate = require('../models/marketRateModel');
@@ -24,42 +25,68 @@ const {
     translateBatch,
     normalizeLanguage,
 } = require('../services/translationService');
+const {
+    deriveConditionSignals,
+    estimateMaterialOrEquipmentItem,
+    generateFullMaterialList,
+} = require('../utils/materialEstimator');
+const {
+    calculateDemandMultipliers,
+    calculateEndTime,
+    getSeason,
+    getDayType,
+    getTimePeriod,
+} = require('../utils/demandAndFestivalService');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ── SYSTEM PROMPT: Question Generation ────────────────────────────────────────
 const QUESTIONS_SYSTEM_PROMPT = `You are KarigarConnect's smart job intake assistant for India.
 
-Given a work description and optional city, generate 6-8 targeted clarifying questions to accurately estimate labour, material and total budget.
+Your job is to generate dynamic, context-aware intake questions from the work description using strict rules.
 
-Output ONLY a valid JSON object (NOT an array at root level):
+Output ONLY valid JSON (no markdown) in this exact shape:
 {
-  "questions": [
-    { "id": "q1", "question": "...", "type": "select|number|text", "options": ["..."] }
-  ],
-  "opinionQuestions": [
-    { "id": "op1", "question": "...", "type": "select|text|color", "options": ["..."], "category": "color|style|material|preference" }
-  ]
+    "questions": [
+        {
+            "id": "q1",
+            "question": "...",
+            "type": "number|select|text",
+            "options": ["..."],
+            "multiSelect": true,
+            "allowNotSure": false,
+            "required": true
+        }
+    ],
+    "opinionQuestions": []
 }
 
-Work questions cover: trade skills needed, scope/area, complexity, hours, workers, urgency.
-Opinion questions cover: aesthetic preferences specific to this work type.
+Hard rules:
+1. Generate EXACTLY 10 work questions.
+2. Do NOT return static/template wording. Adapt to the given work description and inferred skill(s).
+3. Keep all 10 as required=true.
+4. Question 1 MUST be a number question for job scope quantity/size.
+5. Questions must cover these mandatory topics:
+     - current condition
+     - location/access complexity
+     - material responsibility (who provides materials)
+     - timeline/start expectation (no exact date/time ask)
+     - first-time vs maintenance vs redo
+6. Remaining questions must be skill-specific cost drivers (sub-task type, quality level, worker preference, constraints, safety/access issues, equipment readiness, etc.).
+7. For select questions:
+     - include meaningful options based on context
+     - ALWAYS include "Not sure" and "N/A"
+     - set multiSelect=true
+8. For number questions:
+     - keep type=number
+     - include options ["Not sure", "N/A"]
+     - set allowNotSure=true
+9. Never ask budget/cost/price.
+10. Never ask for city, locality, exact date, exact time, or urgency level (already captured elsewhere).
+11. Avoid awkward generic unit hints like "(units/items)" or "(hours or days)".
+12. No duplicates or near-duplicates.
 
-Examples of opinion questions:
-- Painting: "What colour scheme do you prefer?" (color type), "What finish do you prefer?" (Matte/Satin/Gloss/Not sure)
-- Tiling: "What tile style do you prefer?" (Modern/Traditional/Marble-look/Not sure), "Preferred grout colour?"
-- Carpentry: "What wood finish do you prefer?" (Natural wood/Painted/Laminate/Not sure)
-- Electrical: "Do you prefer concealed or surface wiring?"
-- Plumbing: "Which fixture brand do you prefer?" (Hindware/Cera/Jaquar/Any)
-
-Rules:
-- Work questions: 6-8, SPECIFIC to the described work
-- Ensure at least 3 questions are directly about cost drivers (area/quantity, material quality, urgency/timeline, access constraints, worker count)
-- Opinion questions: 1-3, ONLY if relevant to the work type described
-- Do NOT ask opinion questions for purely repair/maintenance work (e.g., "fix a leak" needs no opinion questions)
-- Keep questions short and practical
-- Use "color" type for colour preference questions
-- Output ONLY valid JSON, NO markdown`;
+Do not generate opinion questions for this endpoint; return opinionQuestions as an empty array.`;
 
 const titleCase = (v = '') =>
     String(v)
@@ -78,7 +105,6 @@ const fallbackCityOptions = [
 ];
 
 const parseBooleanInput = (value, fallback = true) => {
-    if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'boolean') return value;
     const normalized = String(value).trim().toLowerCase();
     if (['false', '0', 'no', 'off', 'n'].includes(normalized)) return false;
@@ -124,6 +150,22 @@ const filterBreakdownByOwnership = (items = [], ownershipList = []) => {
 const sumEstimatedCost = (items = []) => items.reduce((sum, item) => sum + (Number(item?.estimatedCost) || 0), 0);
 
 const escapeRegex = (text = '') => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// ── CONFIGURATION: Travel cost by city ──────────────────────────────────────
+const TRAVEL_COST_BY_CITY = {
+    'pune': 55,
+    'mumbai': 85,
+    'delhi': 95,
+    'bangalore': 70,
+    'hyderabad': 65,
+    'kolkata': 75,
+    'default': 55,
+};
+
+const getTravelCostForCity = (city = '') => {
+    const cityKey = String(city || '').toLowerCase().trim();
+    return TRAVEL_COST_BY_CITY[cityKey] || TRAVEL_COST_BY_CITY.default;
+};
 
 const getMedian = (values = []) => {
     const sorted = [...values].sort((a, b) => a - b);
@@ -223,11 +265,9 @@ const buildMarketInsight = async ({ city = '', skillBlocks = [], budgetResult = 
 
     const demandLevel = avgRatio >= 1.25 ? 'High' : avgRatio <= 0.85 ? 'Low' : 'Normal';
     const availability = avgRatio >= 1.25 ? 'Low' : avgRatio <= 0.85 ? 'High' : 'Moderate';
-
     return {
         city,
         cityKey,
-        avgDailyRate: Math.round(avgDailyRate),
         demandLevel,
         availability,
         avgDemandRatio: Number(avgRatio.toFixed(2)),
@@ -251,10 +291,12 @@ const buildMarketInsight = async ({ city = '', skillBlocks = [], budgetResult = 
     };
 };
 
-const buildPriceReasoning = ({
+const buildPriceReasoningFallback = ({
     city,
     budgetResult = {},
     signals = {},
+    skillBlocks = [],
+    workDescription = '',
     includeMaterials = true,
     includeEquipment = true,
     ownedMaterialList = [],
@@ -266,18 +308,28 @@ const buildPriceReasoning = ({
     optionalEquipmentTotal = 0,
 }) => {
     const reasons = [];
-    const smallArea = Number(signals.areaSqft) > 0 && Number(signals.areaSqft) <= 250;
+    const skillKeys = [...new Set((Array.isArray(skillBlocks) ? skillBlocks : []).map((b) => normalizeSkillKey(b?.skill)).filter(Boolean))];
+    const desc = String(workDescription || '').toLowerCase();
+    const isLikelyFurnitureJob = skillKeys.includes('carpenter') && /furniture|wardrobe|bed|sofa|dining|modular\s*kitchen|furnishing|setup/.test(desc);
+    const isSurfaceDriven = skillKeys.some((k) => ['painter', 'mason', 'tiler'].includes(k));
 
     reasons.push(`Labour is based on current ${city || 'city'} market rates for ${Math.max(1, Number(budgetResult.totalWorkers) || 1)} worker(s) across ${Math.max(1, Number(budgetResult.durationDays) || 1)} day(s).`);
 
-    if (smallArea) {
-        reasons.push(`Small wall area (${Math.round(signals.areaSqft)} sqft) limits material usage.`);
+    if (isSurfaceDriven && Number(signals.areaSqft) > 0 && Number(signals.areaSqft) <= 250) {
+        reasons.push(`Smaller execution area (${Math.round(signals.areaSqft)} sqft) keeps material usage and labour hours tighter.`);
     }
 
-    if (signals.hasCracks) {
-        reasons.push('Surface damage is present, so extra prep material like putty may be required.');
+    if (isSurfaceDriven && signals.hasCracks) {
+        reasons.push('Surface condition indicates repair/prep effort, which can increase labour and consumable cost.');
+    } else if (isSurfaceDriven) {
+        reasons.push('Surface condition appears manageable, so heavy preparation effort is likely reduced.');
     } else {
-        reasons.push('No major surface damage detected, so heavy prep usage can be reduced.');
+        const primarySkill = titleCase(skillKeys[0] || 'handyman');
+        reasons.push(`${primarySkill} pricing is derived from job scope, quantity, and expected execution time rather than wall-preparation assumptions.`);
+    }
+
+    if (isLikelyFurnitureJob) {
+        reasons.push('Furniture/furnishing scope is evaluated component-wise (unit count, fabrication, fitting) to avoid underestimation.');
     }
 
     if (!includeMaterials) {
@@ -301,45 +353,802 @@ const buildPriceReasoning = ({
     return reasons;
 };
 
+const PRICE_REASONING_SYSTEM_PROMPT = `You are KarigarConnect's pricing auditor for Indian home services.
+Generate 3 to 5 concise reasons explaining why this estimate is priced this way.
+Output ONLY valid JSON:
+{
+  "reasons": ["...", "..."]
+}
+Rules:
+- Use the provided job, cost and market data only.
+- Do not mention wall/surface prep unless the job is surface-related (painting/masonry/tiling/plastering).
+- Keep each reason practical and human-readable.
+- No markdown.`;
+
+const buildPriceReasoning = async (params = {}) => {
+    const {
+        city,
+        budgetResult = {},
+        skillBlocks = [],
+        workDescription = '',
+        includeMaterials = true,
+        includeEquipment = true,
+        ownedMaterialList = [],
+        ownedEquipmentList = [],
+        marketInsight = {},
+        requiredMaterialsTotal = 0,
+        optionalMaterialsTotal = 0,
+        requiredEquipmentTotal = 0,
+        optionalEquipmentTotal = 0,
+    } = params;
+
+    const fallback = buildPriceReasoningFallback(params);
+    const skillKeys = [...new Set((Array.isArray(skillBlocks) ? skillBlocks : []).map((b) => normalizeSkillKey(b?.skill)).filter(Boolean))];
+
+    try {
+        const { parsed, usedFallback } = await callGroqJson({
+            systemPrompt: PRICE_REASONING_SYSTEM_PROMPT,
+            userPrompt: `Job: ${String(workDescription || '').trim() || 'Home service work'}
+City: ${city || 'Unknown'}
+Skills: ${skillKeys.join(', ') || 'handyman'}
+Workers: ${Number(budgetResult.totalWorkers) || 1}
+DurationDays: ${Number(budgetResult.durationDays) || 1}
+TotalHours: ${Number(budgetResult.totalHours) || 0}
+LabourExpected: ₹${Math.round(Number(budgetResult.totalEstimated) || 0)}
+MaterialsRequired: ₹${Math.round(Number(requiredMaterialsTotal) || 0)}
+MaterialsOptional: ₹${Math.round(Number(optionalMaterialsTotal) || 0)}
+EquipmentRequired: ₹${Math.round(Number(requiredEquipmentTotal) || 0)}
+EquipmentOptional: ₹${Math.round(Number(optionalEquipmentTotal) || 0)}
+IncludeMaterials: ${includeMaterials ? 'Yes' : 'No'}
+IncludeEquipment: ${includeEquipment ? 'Yes' : 'No'}
+OwnedMaterialsCount: ${ownedMaterialList.length}
+OwnedEquipmentCount: ${ownedEquipmentList.length}
+DemandRatio: ${Number(marketInsight.avgDemandRatio) || 1}
+DemandLevel: ${marketInsight.demandLevel || 'Normal'}`,
+            maxTokens: 450,
+            temperature: 0.2,
+            fallback: { reasons: fallback },
+        });
+
+        const reasons = Array.isArray(parsed?.reasons)
+            ? parsed.reasons.map((r) => String(r || '').trim()).filter(Boolean)
+            : [];
+
+        if (!usedFallback && reasons.length >= 2) return reasons.slice(0, 5);
+        return fallback;
+    } catch (_err) {
+        return fallback;
+    }
+};
+
+const FURNITURE_CITY_MULT = {
+    mumbai: 1.12,
+    delhi: 1.1,
+    bangalore: 1.09,
+    pune: 1.05,
+    hyderabad: 1.04,
+    chennai: 1.04,
+    kolkata: 1.02,
+    default: 1.0,
+};
+
+const normalizeFurnitureCityMult = (city = '') => {
+    const key = normalizeCityKey(city);
+    return FURNITURE_CITY_MULT[key] || FURNITURE_CITY_MULT.default;
+};
+
+const extractScopeQuantity = ({ workDescription = '', answers = {} }) => {
+    const corpus = [
+        String(workDescription || ''),
+        ...Object.entries(answers || {}).map(([q, a]) => `${q}: ${a}`),
+    ].join(' | ').toLowerCase();
+
+    const quantities = [];
+    const pushQty = (raw) => {
+        const num = Number(raw);
+        if (!Number.isFinite(num)) return;
+        if (num <= 1) return;
+        if (num > 200) return;
+        quantities.push(num);
+    };
+
+    const isScopeQuestion = (question = '') => {
+        const q = String(question || '').toLowerCase();
+        if (!q) return false;
+        if (/\bage\b|\byears?\b|\bold\b/.test(q)) return false;
+        return /how\s*many|number\s*of|count|qty|quantity|frequency|units?|items?|points?|fixtures?|devices?|fans?|lights?|switches?|sockets?|doors?|windows?/.test(q);
+    };
+
+    Object.entries(answers || {}).forEach(([question, answer]) => {
+        if (!isScopeQuestion(question)) return;
+        const match = String(answer || '').match(/\d+(?:\.\d+)?/);
+        if (match) pushQty(match[0]);
+    });
+
+    const keywordPattern = /(?:quantity|qty|count|frequency|no\.?|nos\.?|units?|pieces?|items?|points?|fixtures?|devices?)\s*(?:is|=|:)?\s*(\d{1,3})/gi;
+    let match;
+    while ((match = keywordPattern.exec(corpus)) !== null) {
+        pushQty(match[1]);
+    }
+
+    const nounPattern = /(\d{1,3})\s*(units?|pieces?|items?|points?|fixtures?|devices?|fans?|lights?|switches?|sockets?|doors?|windows?|chairs?|tables?|beds?|wardrobes?)/gi;
+    while ((match = nounPattern.exec(corpus)) !== null) {
+        pushQty(match[1]);
+    }
+
+    return quantities.length ? Math.max(...quantities) : 1;
+};
+
+const applyScopeMultiplierToSkillBlocks = (skillBlocks = [], scopeQuantity = 1) => {
+    const multiplier = Math.max(1, Number(scopeQuantity) || 1);
+    if (multiplier <= 1) return Array.isArray(skillBlocks) ? skillBlocks : [];
+
+    return (Array.isArray(skillBlocks) ? skillBlocks : []).map((block) => {
+        const baseHours = Math.max(1, Number(block?.hours) || 1);
+        const effectiveUnits = 1 + (multiplier - 1) * 0.8;
+        const scaledHours = Math.max(1, Math.round(baseHours * effectiveUnits));
+        const baseCount = Math.max(1, Math.round(Number(block?.count) || 1));
+        const scaledCount = Math.max(baseCount, Math.min(3, Math.ceil(scaledHours / 8)));
+        return {
+            ...block,
+            count: scaledCount,
+            hours: scaledHours,
+            quantity: multiplier,
+        };
+    });
+};
+
+const normalizeSkillBlocksForContext = ({ skillBlocks = [], workDescription = '', answers = {} }) => {
+    const blocks = Array.isArray(skillBlocks) ? skillBlocks : [];
+    const hints = getSkillHintsFromDescription([
+        String(workDescription || ''),
+        ...Object.entries(answers || {}).map(([q, a]) => `${q}: ${a}`),
+    ].join(' | '));
+
+    const normalized = blocks
+        .map((block) => ({
+            ...block,
+            skill: normalizeSkillKey(block?.skill),
+        }))
+        .filter((block) => block.skill && SKILL_IDENTIFIERS.has(block.skill));
+
+    if (!normalized.length) {
+        return hints.slice(0, 4).map((skill) => ({
+            skill,
+            count: 1,
+            hours: 3,
+            complexity: 'normal',
+            description: `Detected ${titleCase(skill)} work from job context.`,
+        }));
+    }
+
+    if (normalized.length === 1 && normalized[0].skill === 'handyman') {
+        const specificHints = hints.filter((skill) => skill !== 'handyman');
+        if (specificHints.length) {
+            const baseHours = Math.max(3, Number(normalized[0]?.hours) || 8);
+            const perSkillHours = Math.max(2, Math.round(baseHours / Math.min(3, specificHints.length)));
+            return specificHints.slice(0, 4).map((skill) => ({
+                ...normalized[0],
+                skill,
+                count: Math.max(1, Number(normalized[0]?.count) || 1),
+                hours: perSkillHours,
+                description: `Detected ${titleCase(skill)} work from job context and answers.`,
+            }));
+        }
+    }
+
+    const desc = String(workDescription || '').toLowerCase();
+    const isBathroomRenovation = /bathroom|toilet|washroom/.test(desc) && /renovat|remodel|leak|seepage|waterproof|tile/.test(desc);
+
+    if (isBathroomRenovation) {
+        const bySkill = new Map(normalized.map((b) => [b.skill, b]));
+        // Bathroom renovation: plumber, waterproofing, mason, tiler (removed carpenter - not needed)
+        ['plumber', 'waterproofing', 'mason', 'tiler'].forEach((skill) => {
+            if (!bySkill.has(skill) && hints.includes(skill)) {
+                bySkill.set(skill, {
+                    skill,
+                    count: 1,
+                    hours: 3,
+                    complexity: 'normal',
+                    description: `Detected ${titleCase(skill)} work from bathroom renovation context.`,
+                });
+            }
+        });
+        return [...bySkill.values()];
+    }
+
+    // If model detected too few skills but context clearly indicates multi-trade work,
+    // merge missing hint-based skills instead of dropping them.
+    const normalizedSkillSet = new Set(normalized.map((b) => b.skill));
+    const missingHints = hints.filter((skill) => skill !== 'handyman' && !normalizedSkillSet.has(skill));
+    const looksMultiTrade = /\b(and|with|plus|along with|&|multi|combined|renovat|remodel|fittings?)\b/.test(desc) || hints.filter((s) => s !== 'handyman').length >= 2;
+    if (looksMultiTrade && missingHints.length) {
+        const merged = [...normalized];
+        missingHints.slice(0, 4).forEach((skill) => {
+            merged.push({
+                skill,
+                count: 1,
+                hours: 3,
+                complexity: 'normal',
+                description: `Detected ${titleCase(skill)} work from job context and answers.`,
+            });
+        });
+        return merged;
+    }
+
+    return normalized;
+};
+
+const parseItemQty = (item = {}) => {
+    const fromQuantity = String(item?.quantity || '').match(/\d+(?:\.\d+)?/);
+    const fromName = String(item?.item || '').match(/\d+(?:\.\d+)?/);
+    const q = Number(fromQuantity?.[0] || fromName?.[0] || 1);
+    return Number.isFinite(q) && q > 0 ? q : 1;
+};
+
+const classifyFurnitureComponent = (name = '') => {
+    const n = String(name || '').toLowerCase();
+    if (/modular\s*kitchen|kitchen\s*unit|kitchen\s*cabinet|kitchen\s*setup/.test(n)) return 'modular_kitchen';
+    if (/wardrobe|almirah|closet/.test(n)) return 'wardrobe';
+    if (/bed|cot|queen|king/.test(n)) return 'bed';
+    if (/sofa|couch|sectional/.test(n)) return 'sofa';
+    if (/dining\s*table|dining\s*set/.test(n)) return 'dining';
+    if (/tv\s*unit|entertainment\s*unit/.test(n)) return 'tv_unit';
+    if (/study\s*table|work\s*desk/.test(n)) return 'study_table';
+    if (/shoe\s*rack/.test(n)) return 'shoe_rack';
+    return null;
+};
+
+const FURNITURE_COMPONENT_BASE = {
+    bed: 18000,
+    sofa: 35000,
+    dining: 22000,
+    wardrobe: 25000,
+    tv_unit: 12000,
+    modular_kitchen: 55000,
+    study_table: 9000,
+    shoe_rack: 5000,
+};
+
+const isFullHomeFurnitureProject = ({ workDescription = '', skillBlocks = [] }) => {
+    const desc = String(workDescription || '').toLowerCase();
+    const skillKeys = [...new Set((Array.isArray(skillBlocks) ? skillBlocks : []).map((b) => normalizeSkillKey(b?.skill)).filter(Boolean))];
+    const furnitureIntent = /furniture|furnishing|setup|full\s*home|complete\s*home|interior\s*setup/.test(desc);
+    const homeScale = /2\s*bhk|3\s*bhk|flat|apartment|entire\s*home|whole\s*house/.test(desc);
+    return skillKeys.includes('carpenter') && furnitureIntent && homeScale;
+};
+
+const normalizeFurnitureMaterials = ({ materials = [], workDescription = '', city = '', locality = '', isFullProject = false }) => {
+    const cityMult = normalizeFurnitureCityMult(city);
+    const localityMult = String(locality || '').trim() ? 1.03 : 1;
+    const adjusted = [];
+    const seenTypes = new Set();
+
+    for (const item of (Array.isArray(materials) ? materials : [])) {
+        const type = classifyFurnitureComponent(item?.item || '');
+        if (!type) {
+            adjusted.push(item);
+            continue;
+        }
+        seenTypes.add(type);
+        const qty = parseItemQty(item);
+        const base = FURNITURE_COMPONENT_BASE[type] || 0;
+        const realistic = Math.round(base * qty * cityMult * localityMult);
+        const current = Number(item?.estimatedCost) || 0;
+        const finalCost = current > realistic * 0.9 ? current : realistic;
+
+        adjusted.push({
+            ...item,
+            estimatedCost: finalCost,
+            bestCaseCost: Math.round(finalCost * 0.85),
+            worstCaseCost: Math.round(finalCost * 1.25),
+            quantity: item?.quantity || `${qty} unit${qty > 1 ? 's' : ''}`,
+            optional: false,
+            priceSource: 'furniture_project_rate_2026',
+            note: item?.note || 'Adjusted with project-scale furniture pricing for local market realism.',
+        });
+    }
+
+    if (isFullProject) {
+        const desc = String(workDescription || '').toLowerCase();
+        const bedroomMatch = desc.match(/(\d+)\s*bhk/);
+        const bhkCount = Number(bedroomMatch?.[1] || 2);
+        const mandatory = [
+            { type: 'bed', label: 'Wooden Bed Frame (Queen Size)', qty: Math.max(1, bhkCount) },
+            { type: 'wardrobe', label: 'Wardrobe', qty: Math.max(1, bhkCount) },
+            { type: 'sofa', label: 'Sofa Set (3-seater + 1-seater)', qty: 1 },
+            { type: 'dining', label: 'Dining Table Set (6-seater)', qty: 1 },
+            { type: 'tv_unit', label: 'TV Unit', qty: 1 },
+            { type: 'modular_kitchen', label: 'Modular Kitchen Setup', qty: 1 },
+        ];
+
+        mandatory.forEach((component) => {
+            if (seenTypes.has(component.type)) return;
+            const base = FURNITURE_COMPONENT_BASE[component.type] || 0;
+            const cost = Math.round(base * component.qty * cityMult * localityMult);
+            adjusted.push({
+                item: component.label,
+                quantity: `${component.qty} unit${component.qty > 1 ? 's' : ''}`,
+                estimatedCost: cost,
+                bestCaseCost: Math.round(cost * 0.85),
+                worstCaseCost: Math.round(cost * 1.25),
+                optional: false,
+                priceSource: 'furniture_project_rate_2026',
+                note: 'Added as mandatory component for full-home furnishing scope.',
+            });
+        });
+    }
+
+    return adjusted;
+};
+
+const getDependencyOrderedSkills = ({ skillBlocks = [], workDescription = '' }) => {
+    const desc = String(workDescription || '').toLowerCase();
+    const skills = [...new Set((Array.isArray(skillBlocks) ? skillBlocks : [])
+        .map((b) => normalizeSkillKey(b?.skill))
+        .filter(Boolean))];
+
+    const isBathroomRenovation = /bathroom|toilet|washroom/.test(desc) && /renovat|remodel|leak|seepage|waterproof|tile|fixture/.test(desc);
+    const preferred = isBathroomRenovation
+        ? ['plumber', 'waterproofing', 'mason', 'tiler', 'electrician', 'carpenter']
+        : ['plumber', 'mason', 'waterproofing', 'tiler', 'electrician', 'carpenter', 'painter', 'welder', 'ac_technician', 'pest_control', 'deep_cleaning', 'handyman', 'gardener'];
+
+    const ordered = preferred.filter((skill) => skills.includes(skill));
+    const leftovers = skills.filter((skill) => !ordered.includes(skill));
+    return [...ordered, ...leftovers];
+};
+
+const buildDependencyAwarePhases = ({ skillBlocks = [], workDescription = '', fallbackHours = 1 }) => {
+    const blocks = Array.isArray(skillBlocks) ? skillBlocks : [];
+    if (!blocks.length) {
+        return [{ phase: 'Execution', hours: Math.max(1, Number(fallbackHours) || 1), description: 'Estimated execution phase.' }];
+    }
+
+    const orderedSkills = getDependencyOrderedSkills({ skillBlocks: blocks, workDescription });
+    const hourBySkill = new Map();
+    blocks.forEach((b) => {
+        const skill = normalizeSkillKey(b?.skill);
+        if (!skill) return;
+        hourBySkill.set(skill, (hourBySkill.get(skill) || 0) + Math.max(0.5, Number(b?.hours) || 0));
+    });
+
+    const labelBySkill = {
+        plumber: 'Plumbing Repairs',
+        waterproofing: 'Waterproofing',
+        mason: 'Masonry & Civil Repairs',
+        tiler: 'Tiling and Grouting',
+        electrician: 'Electrical Repairs',
+        carpenter: 'Carpentry and Fittings',
+        painter: 'Surface Finishing / Painting',
+        welder: 'Welding / Fabrication',
+        ac_technician: 'AC Service / Repair',
+        pest_control: 'Pest Control Treatment',
+        deep_cleaning: 'Deep Cleaning',
+        handyman: 'General Repair Work',
+        gardener: 'Gardening Work',
+    };
+
+    const descBySkill = {
+        plumber: 'Resolve leakage and complete plumbing line/fitting fixes.',
+        waterproofing: 'Apply sealing/waterproofing and allow curing/setting preparation before next finishing layers.',
+        mason: 'Carry out civil patching/plaster/base correction before finishing tasks.',
+        tiler: 'Install or repair tiles and complete grouting/level finishing.',
+        electrician: 'Complete safe electrical fault correction and functional testing.',
+    };
+
+    const phases = orderedSkills
+        .filter((skill) => hourBySkill.has(skill))
+        .map((skill) => ({
+            phase: labelBySkill[skill] || titleCase(skill),
+            hours: Math.max(0.5, Math.round((Number(hourBySkill.get(skill)) || 0) * 10) / 10),
+            description: descBySkill[skill] || `Execute ${titleCase(skill)} work as per site condition.`,
+        }));
+
+    return phases.length
+        ? phases
+        : [{ phase: 'Execution', hours: Math.max(1, Number(fallbackHours) || 1), description: 'Estimated execution phase.' }];
+};
+
+const toDateKey = (dateObj) => {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
+const dayNameFor = (dateObj) => new Intl.DateTimeFormat('en-IN', { weekday: 'long' }).format(dateObj);
+
+const parseTimeToMinutes = (timeStr = '09:00') => {
+    const [h, m] = String(timeStr || '09:00').split(':').map((v) => Number(v));
+    if (Number.isNaN(h) || Number.isNaN(m)) return 9 * 60;
+    return Math.max(0, Math.min(23 * 60 + 59, h * 60 + m));
+};
+
+const formatTimeLabel = (minutes) => {
+    const safe = ((Number(minutes) || 0) % (24 * 60) + (24 * 60)) % (24 * 60);
+    const h24 = Math.floor(safe / 60);
+    const mm = String(safe % 60).padStart(2, '0');
+    const suffix = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 || 12;
+    return `${h12}:${mm} ${suffix}`;
+};
+
+const formatTime24 = (minutes) => {
+    const safe = ((Number(minutes) || 0) % (24 * 60) + (24 * 60)) % (24 * 60);
+    const h24 = String(Math.floor(safe / 60)).padStart(2, '0');
+    const mm = String(safe % 60).padStart(2, '0');
+    return `${h24}:${mm}`;
+};
+
+const buildCalendarSchedule = ({ phases = [], jobDate = '', jobStartTime = '09:00' }) => {
+    const list = Array.isArray(phases) ? phases : [];
+    if (!list.length) {
+        return {
+            days: [],
+            totalProductiveHours: 0,
+            totalBreakHours: 0,
+            totalCalendarHours: 0,
+            endDate: jobDate || '',
+            endTime: jobStartTime || '09:00',
+            endTimeLabel: formatTimeLabel(parseTimeToMinutes(jobStartTime || '09:00')),
+        };
+    }
+
+    const DAILY_WORK_HOURS = 8;
+    const LUNCH_BREAK_HOURS = 1;
+    const HANDOVER_BREAK_HOURS = 1;
+    const WORK_WINDOW_START_MINUTES = 6 * 60; // 6:00 AM
+    const WORK_WINDOW_END_MINUTES = 21 * 60;  // 9:00 PM
+    const NEXT_DAY_RESTART_MINUTES = 9 * 60;  // 9:00 AM
+
+    const startDateObj = jobDate ? new Date(`${jobDate}T00:00:00`) : new Date();
+    startDateObj.setHours(0, 0, 0, 0);
+
+    let dateObj = new Date(startDateObj);
+    let cursorMinutes = parseTimeToMinutes(jobStartTime || '09:00');
+    let productiveToday = 0;
+    let lunchTakenToday = false;
+
+    const days = [];
+    let totalProductiveHours = 0;
+    let totalBreakHours = 0;
+
+    const alignCursorToWindow = (isFirstDay = false) => {
+        const minStart = isFirstDay ? WORK_WINDOW_START_MINUTES : NEXT_DAY_RESTART_MINUTES;
+        if (cursorMinutes < minStart) cursorMinutes = minStart;
+        if (cursorMinutes >= WORK_WINDOW_END_MINUTES) return false;
+        return true;
+    };
+
+    // Align initial start time to allowed first-day window.
+    if (!alignCursorToWindow(true)) {
+        dateObj.setDate(dateObj.getDate() + 1);
+        cursorMinutes = NEXT_DAY_RESTART_MINUTES;
+    }
+
+    const ensureDayBucket = () => {
+        const date = toDateKey(dateObj);
+        let bucket = days.find((d) => d.date === date);
+        if (!bucket) {
+            bucket = {
+                date,
+                dayName: dayNameFor(dateObj),
+                startTime: formatTime24(cursorMinutes),
+                startTimeLabel: formatTimeLabel(cursorMinutes),
+                endTime: formatTime24(cursorMinutes),
+                endTimeLabel: formatTimeLabel(cursorMinutes),
+                productiveHours: 0,
+                breakHours: 0,
+                entries: [],
+            };
+            days.push(bucket);
+        }
+        return bucket;
+    };
+
+    const addEntry = ({ type, title, description = '', durationHours = 0, phaseIndex = -1 }) => {
+        const durationMinutes = Math.max(0, Math.round((Number(durationHours) || 0) * 60));
+        if (!durationMinutes) return;
+
+        const start = cursorMinutes;
+        const end = cursorMinutes + durationMinutes;
+        const bucket = ensureDayBucket();
+
+        bucket.entries.push({
+            type,
+            title,
+            description,
+            phaseIndex,
+            date: bucket.date,
+            dayName: bucket.dayName,
+            startTime: formatTime24(start),
+            endTime: formatTime24(end),
+            startTimeLabel: formatTimeLabel(start),
+            endTimeLabel: formatTimeLabel(end),
+            durationHours: Math.round((durationMinutes / 60) * 10) / 10,
+        });
+
+        bucket.endTime = formatTime24(end);
+        bucket.endTimeLabel = formatTimeLabel(end);
+
+        if (type === 'task') {
+            const h = durationMinutes / 60;
+            productiveToday += h;
+            bucket.productiveHours = Math.round((bucket.productiveHours + h) * 10) / 10;
+            totalProductiveHours += h;
+        } else {
+            const h = durationMinutes / 60;
+            bucket.breakHours = Math.round((bucket.breakHours + h) * 10) / 10;
+            totalBreakHours += h;
+        }
+
+        cursorMinutes = end;
+    };
+
+    const moveToNextDay = () => {
+        dateObj.setDate(dateObj.getDate() + 1);
+        cursorMinutes = NEXT_DAY_RESTART_MINUTES;
+        productiveToday = 0;
+        lunchTakenToday = false;
+    };
+
+    for (let i = 0; i < list.length; i++) {
+        const phase = list[i];
+        let remaining = Math.max(0, Number(phase?.hours) || 0);
+
+        while (remaining > 0) {
+            if (productiveToday >= DAILY_WORK_HOURS || cursorMinutes >= WORK_WINDOW_END_MINUTES) {
+                moveToNextDay();
+            }
+
+            if (!alignCursorToWindow(false)) {
+                moveToNextDay();
+                continue;
+            }
+
+            const productiveLimitLeft = Math.max(0, DAILY_WORK_HOURS - productiveToday);
+            const windowHoursLeft = Math.max(0, (WORK_WINDOW_END_MINUTES - cursorMinutes) / 60);
+            const available = Math.max(0, Math.min(productiveLimitLeft, windowHoursLeft));
+            if (available <= 0) {
+                moveToNextDay();
+                continue;
+            }
+
+            const chunk = Math.min(remaining, available);
+            addEntry({
+                type: 'task',
+                title: phase?.phase || `Step ${i + 1}`,
+                description: phase?.description || '',
+                durationHours: chunk,
+                phaseIndex: i,
+            });
+
+            remaining -= chunk;
+
+            if (remaining > 0 && (productiveToday >= DAILY_WORK_HOURS || cursorMinutes >= WORK_WINDOW_END_MINUTES)) {
+                moveToNextDay();
+            }
+        }
+
+        const isLastPhase = i === list.length - 1;
+        if (!isLastPhase && productiveToday < DAILY_WORK_HOURS && cursorMinutes < WORK_WINDOW_END_MINUTES) {
+            if (!lunchTakenToday && (cursorMinutes + (LUNCH_BREAK_HOURS * 60)) <= WORK_WINDOW_END_MINUTES) {
+                addEntry({
+                    type: 'break',
+                    title: 'Lunch Break',
+                    description: 'Lunch/rest break before next task.',
+                    durationHours: LUNCH_BREAK_HOURS,
+                    phaseIndex: i,
+                });
+                lunchTakenToday = true;
+            }
+
+            if ((cursorMinutes + (HANDOVER_BREAK_HOURS * 60)) <= WORK_WINDOW_END_MINUTES) {
+                addEntry({
+                    type: 'break',
+                    title: 'Handover Break',
+                    description: 'Trade handover and setup for next task.',
+                    durationHours: HANDOVER_BREAK_HOURS,
+                    phaseIndex: i,
+                });
+            }
+        }
+    }
+
+    const endDay = days[days.length - 1] || null;
+    return {
+        days,
+        totalProductiveHours: Math.round(totalProductiveHours * 10) / 10,
+        totalBreakHours: Math.round(totalBreakHours * 10) / 10,
+        totalCalendarHours: Math.round((totalProductiveHours + totalBreakHours) * 10) / 10,
+        endDate: endDay?.date || toDateKey(startDateObj),
+        endDayName: endDay?.dayName || dayNameFor(startDateObj),
+        endTime: endDay?.endTime || formatTime24(parseTimeToMinutes(jobStartTime || '09:00')),
+        endTimeLabel: endDay?.endTimeLabel || formatTimeLabel(parseTimeToMinutes(jobStartTime || '09:00')),
+    };
+};
+
+const buildDependencyAwareWorkPlan = ({ phases = [], existingWorkPlan = [], schedule = null }) => {
+    if ((!Array.isArray(phases) || !phases.length) && Array.isArray(existingWorkPlan)) return existingWorkPlan;
+
+    return (Array.isArray(phases) ? phases : []).map((phase, idx) => {
+        const windows = (schedule?.days || []).flatMap((day) =>
+            (day.entries || [])
+                .filter((entry) => entry.type === 'task' && entry.phaseIndex === idx)
+                .map((entry) => ({
+                    date: entry.date,
+                    dayName: entry.dayName,
+                    startTime: entry.startTime,
+                    endTime: entry.endTime,
+                    startTimeLabel: entry.startTimeLabel,
+                    endTimeLabel: entry.endTimeLabel,
+                    durationHours: entry.durationHours,
+                }))
+        );
+
+        return {
+            step: idx + 1,
+            title: phase.phase,
+            description: phase.description,
+            estimatedTime: `${Math.max(0.5, Number(phase.hours) || 1)} hours`,
+            scheduleWindows: windows,
+        };
+    });
+};
+
+const reconcileTimeline = ({ aiTimeEstimate = {}, aiDurationDays = 1, budgetResult = {}, isFullFurnitureProject = false, skillBlocks = [], workDescription = '', jobDate = '', jobStartTime = '09:00' }) => {
+    const workers = Math.max(1, Number(budgetResult.totalWorkers) || 1);
+    const budgetHours = Math.max(0, Number(budgetResult.totalHours) || 0);
+    const labourDays = Math.max(1, Math.ceil(Math.max(1, budgetHours) / (workers * 8)));
+    const aiHours = Number(aiTimeEstimate?.totalHours) || 0;
+    const aiPhaseHours = Array.isArray(aiTimeEstimate?.phases)
+        ? aiTimeEstimate.phases.reduce((sum, phase) => sum + (Number(phase?.hours) || 0), 0)
+        : 0;
+    const baseHours = Math.max(1, budgetHours, aiHours, aiPhaseHours);
+    let phases = buildDependencyAwarePhases({
+        skillBlocks,
+        workDescription,
+        fallbackHours: baseHours,
+    });
+
+    const phaseHours = phases.reduce((sum, phase) => sum + (Number(phase?.hours) || 0), 0);
+    const schedule = buildCalendarSchedule({ phases, jobDate, jobStartTime });
+    const totalHours = Math.max(1, phaseHours);
+    const scheduleDays = Math.max(1, schedule.days.length || Math.ceil(totalHours / 8));
+    const baseDays = Math.max(labourDays, Number(aiDurationDays) || 1, scheduleDays);
+    const finalDays = isFullFurnitureProject ? Math.max(baseDays, 5) : baseDays;
+
+    return {
+        totalDays: finalDays,
+        totalHours: Math.round(totalHours * 10) / 10,
+        totalBreakHours: schedule.totalBreakHours,
+        totalCalendarHours: schedule.totalCalendarHours,
+        phases,
+        schedule,
+        scheduling: {
+            workWindow: '06:00 to 21:00',
+            nextDayStartTime: '09:00',
+            workHoursPerDay: 8,
+            lunchBreakHoursPerDay: 1,
+            handoverBreakHours: 1,
+            effectiveProductiveHoursPerDay: 8,
+        },
+    };
+};
+
 const buildCostSavingSuggestions = ({
     signals = {},
+    skillBlocks = [],
+    workDescription = '',
     includeMaterials = true,
     includeEquipment = true,
+    includeTravelCost = false,
     ownedMaterialList = [],
     ownedEquipmentList = [],
     marketInsight = {},
+    city = '',
 }) => {
     const suggestions = [];
+    const skillKeys = [...new Set((Array.isArray(skillBlocks) ? skillBlocks : [])
+        .map((block) => normalizeSkillKey(block?.skill))
+        .filter(Boolean))];
+    const desc = String(workDescription || '').toLowerCase();
+    const isEmergencyJob = /emergency|urgent|immediate|today|asap/.test(desc);
+
+    const pushUnique = (value = '') => {
+        const text = String(value || '').trim();
+        if (!text) return;
+        if (!suggestions.includes(text)) suggestions.push(text);
+    };
 
     if (signals.hasCracks) {
-        suggestions.push('Skip putty only if the wall is already crack-free; otherwise it is still needed for finish quality.');
+        pushUnique('Fix cracks and patching in one consolidated prep cycle before finishing; repeated rework increases labour and material waste.');
     }
 
     if (signals.hasGoodSurface) {
-        suggestions.push('A smooth wall can reduce prep and touch-up material usage.');
+        pushUnique('Surface is already in good condition, so ask workers to reduce prep scope and avoid unnecessary consumables.');
     }
 
     if (ownedMaterialList.length > 0) {
-        suggestions.push('Reuse the materials you already have to avoid duplicate purchases.');
+        pushUnique('Reuse your available materials first and buy only missing quantities to avoid duplicate purchases.');
     }
 
     if (ownedEquipmentList.length > 0) {
-        suggestions.push('Use your existing tools/equipment where possible to cut tool charges.');
+        pushUnique('Use your available tools/equipment where possible to reduce rental or consumable-tool charges.');
     }
 
     if (marketInsight.avgDemandRatio > 1.15) {
-        suggestions.push('Book when demand is lower if your schedule is flexible; high-demand periods raise rates.');
+        pushUnique(`Demand is high in ${city || 'your area'}; if timeline is flexible, schedule during lower-demand slots for better rates.`);
+    } else if (marketInsight.avgDemandRatio < 0.9) {
+        pushUnique('Current worker availability is better than usual; negotiate package pricing for labour and service visits.');
     }
 
     if (includeMaterials || includeEquipment) {
-        suggestions.push('Combine all nearby walls or related tasks into one visit to spread the setup cost.');
+        pushUnique('Group related tasks into one visit so setup, transport, and minimum-visit charges are spread across more work.');
     }
 
     if (signals.areaSqft > 0 && signals.areaSqft <= 250) {
-        suggestions.push('For a small wall, buy only the exact consumables needed instead of full packs.');
+        pushUnique('For small scope jobs, prefer measured quantities instead of full packs unless future use is planned.');
     }
 
-    return suggestions.slice(0, 5);
+    if (includeTravelCost) {
+        pushUnique('Travel cost is enabled; combining multiple nearby issues in one appointment improves travel-cost efficiency.');
+    }
+
+    if (isEmergencyJob) {
+        pushUnique('Urgent jobs usually carry a premium; if safe, shifting by even one slot/day can reduce labour surcharge.');
+    }
+
+    const skillSuggestionMap = {
+        plumber: 'For plumbing, replace only failed fittings first and defer full-line replacement unless pressure/leak tests justify it.',
+        electrician: 'For electrical work, batch switch/socket/point replacements in one visit to reduce repeated service call charges.',
+        painter: 'For painting, prioritize required prep zones only and finalize shade/finish early to avoid repaint rework cost.',
+        tiler: 'For tiling, confirm exact tile size and layout upfront so cutting wastage and adhesive usage stay controlled.',
+        carpenter: 'For carpentry, prefer repair and hardware replacement for salvageable units instead of full rebuild.',
+        mason: 'For masonry, consolidate patch and plaster areas before finishing to reduce repeated scaffold/setup effort.',
+        ac_technician: 'For AC service, run leak and pressure checks before gas refill to avoid repeated refrigerant cost.',
+        pest_control: 'For pest control, select targeted treatment zones first and scale only if follow-up inspection requires it.',
+        cleaner: 'For deep cleaning, split essential vs optional areas so high-effort zones are prioritized within budget.',
+        handyman: 'For handyman work, combine small tasks in one booking to maximize value from minimum-visit labour.',
+        gardener: 'For gardening, schedule pruning and maintenance together to minimize repeat travel/service charges.',
+        welder: 'For welding, aggregate all fabrication/repair points in a single material run to reduce setup overhead.',
+    };
+
+    skillKeys.forEach((skill) => {
+        if (skillSuggestionMap[skill]) pushUnique(skillSuggestionMap[skill]);
+    });
+
+    if (!suggestions.length) {
+        pushUnique('Share exact quantity/scope details to prevent padded estimates and keep the quote tightly aligned to required work.');
+    }
+
+    return suggestions.slice(0, 6);
+};
+
+const buildScenarioNarratives = ({
+    workDescription = '',
+    skillBlocks = [],
+    signals = {},
+    includeMaterials = true,
+    includeEquipment = true,
+    marketInsight = {},
+}) => {
+    const skills = [...new Set((Array.isArray(skillBlocks) ? skillBlocks : []).map((b) => normalizeSkillKey(b?.skill)).filter(Boolean))];
+    const primarySkill = skills[0] || 'handyman';
+    const jobLabel = titleCase(primarySkill);
+    const areaText = Number(signals.areaSqft) > 0 ? `${Math.round(Number(signals.areaSqft))} sqft scope` : 'confirmed scope';
+    const materialMode = includeMaterials ? 'material rates stay stable' : 'material cost excluded';
+    const equipmentMode = includeEquipment ? 'equipment needs stay standard' : 'equipment cost excluded';
+    const demandText = Number(marketInsight.avgDemandRatio) > 1.15
+        ? 'high local demand'
+        : Number(marketInsight.avgDemandRatio) < 0.9
+            ? 'good worker availability'
+            : 'normal market demand';
+    const best = `${jobLabel} work with smooth execution (${areaText}), no extra rework, ${materialMode}, and ${equipmentMode}.`;
+    const expected = `${jobLabel} quote under typical on-site conditions in ${demandText}, with standard productivity and routine variation.`;
+    const worst = `${jobLabel} quote if hidden issues or rework appear during execution, requiring extra time/visits and additional consumables.`;
+
+    return { best, expected, worst };
 };
 
 const buildNegotiationRange = ({ expected = 0, confidence = 0, demandRatio = 1 }) => {
@@ -379,84 +1188,6 @@ const buildProjectSummary = ({
 const parseFirstNumber = (text = '') => {
     const match = String(text || '').match(/\b(\d+(?:\.\d+)?)\b/);
     return match ? Number(match[1]) : 0;
-};
-
-const estimateMaterialOrEquipmentItem = async ({
-    item = {},
-    kind = 'material',
-    signals = {},
-    marketInsight = {},
-    city = '',
-}) => {
-    const name = String(item.item || item.name || '').toLowerCase();
-    const benchmark = Math.max(1, Number(marketInsight.avgDailyRate) || 0);
-    const areaSqft = Math.max(0, Number(signals.areaSqft) || 0);
-    const wallCount = Math.max(1, Number(signals.wallCount) || 1);
-    const marketplaceStats = await fetchMarketplacePriceStats({ city, itemName: item.item || item.name || '' });
-    const unitBase = marketplaceStats?.medianPrice || (kind === 'material' ? benchmark * 0.12 : benchmark * 0.08);
-
-    let optional = kind === 'equipment';
-    let multiplier = 1;
-    let note = String(item.note || '').trim();
-
-    if (kind === 'material') {
-        if (/paint|emulsion|distemper/.test(name)) {
-            optional = false;
-            const litresNeeded = areaSqft > 0 ? Math.max(1, Math.ceil(areaSqft / 75)) : 1;
-            multiplier = litresNeeded * 0.85;
-            note = note || `Estimated from ${areaSqft ? Math.round(areaSqft) : 'unknown'} sqft and paint coverage.`;
-        } else if (/primer/.test(name)) {
-            optional = !signals.isPaintJob;
-            multiplier = Math.max(0.4, areaSqft > 0 ? Math.ceil(areaSqft / 120) * 0.5 : 0.5);
-            note = note || 'Applied only when surface preparation is needed.';
-        } else if (/putty/.test(name)) {
-            optional = !signals.hasCracks && !signals.hasGoodSurface;
-            multiplier = signals.hasCracks ? Math.max(0.35, wallCount * 0.35) : 0.18;
-            note = note || (signals.hasCracks ? 'Required for visible cracks or uneven surface.' : 'Only a small touch-up amount is usually needed for smooth walls.');
-        } else if (/sandpaper/.test(name)) {
-            optional = true;
-            multiplier = Math.max(0.12, wallCount * 0.08);
-            note = note || 'Used only in limited quantity for surface prep.';
-        } else if (/masking|tape/.test(name)) {
-            optional = true;
-            multiplier = Math.max(0.08, wallCount * 0.06);
-            note = note || 'Optional when clean edge protection is required.';
-        } else if (/drop cloth|plastic sheet|protection/.test(name)) {
-            optional = true;
-            multiplier = Math.max(0.06, wallCount * 0.05);
-            note = note || 'Optional when furniture/floor protection is needed.';
-        } else {
-            multiplier = 0.15;
-        }
-    } else {
-        if (/roller|brush/.test(name)) {
-            optional = true;
-            multiplier = Math.max(0.14, wallCount * 0.08);
-            note = note || 'Usually only charged when the client needs dedicated consumables.';
-        } else if (/drop cloth|sheet|tape|sandpaper/.test(name)) {
-            optional = true;
-            multiplier = Math.max(0.07, wallCount * 0.05);
-            note = note || 'Consumable tool item for site preparation.';
-        } else {
-            multiplier = 0.1;
-        }
-    }
-
-    const baseCost = Math.max(1, Math.round(unitBase * multiplier));
-    const bestCaseCost = Math.max(1, Math.round((marketplaceStats?.minPrice || (unitBase * 0.85)) * multiplier));
-    const worstCaseCost = Math.max(baseCost, Math.round((marketplaceStats?.maxPrice || (unitBase * 1.2)) * multiplier));
-
-    return {
-        ...item,
-        optional,
-        estimatedCost: baseCost,
-        bestCaseCost,
-        worstCaseCost,
-        priceSource: marketplaceStats ? 'marketplace_product_prices' : 'derived_market_benchmark',
-        marketplaceSampleSize: marketplaceStats?.sampleSize || 0,
-        marketplaceUnitPrice: marketplaceStats?.medianPrice || 0,
-        note,
-    };
 };
 
 const summarizeBuckets = (items = []) => {
@@ -511,72 +1242,760 @@ const ensureQuestionShape = (q, index) => ({
     question: String(q?.question || '').trim(),
     type: ['select', 'number', 'text'].includes(q?.type) ? q.type : 'text',
     options: Array.isArray(q?.options) ? q.options.filter(Boolean).map((opt) => String(opt).trim()) : [],
+    required: true,
 });
 
-const fallbackWorkQuestions = [
-    { id: 'q1', question: 'What is the exact work scope and area size (sq ft)?', type: 'text' },
-    { id: 'q2', question: 'How many workers do you want for this job?', type: 'number' },
-    { id: 'q3', question: 'What material quality do you prefer?', type: 'select', options: ['Economy', 'Standard', 'Premium'] },
-    { id: 'q4', question: 'What is the target completion timeline?', type: 'select', options: ['1 day', '2-3 days', '4-7 days', 'More than 1 week'] },
-    { id: 'q5', question: 'Is this work urgent?', type: 'select', options: ['Yes', 'No'] },
-    { id: 'q6', question: 'Are there any site access constraints affecting effort or transport cost?', type: 'text' },
-];
-
-const mandatoryConditionQuestions = [
-    { id: 'q_condition_1', question: 'What is the current wall or surface condition?', type: 'select', options: ['Smooth', 'Minor cracks', 'Major cracks', 'Peeling paint', 'Dampness'], required: true },
-    { id: 'q_condition_2', question: 'Do you already have any materials or tools for this job?', type: 'text', required: true },
-    { id: 'q_condition_3', question: 'Are protective items like masking tape or drop cloth already available?', type: 'select', options: ['Yes', 'No', 'Some items available'], required: true },
-    { id: 'q_condition_4', question: 'How many walls or areas need work?', type: 'number', required: true },
-];
-
-const mergeMandatoryQuestions = (questions = []) => {
-    const existing = new Set((Array.isArray(questions) ? questions : []).map((q) => String(q?.question || '').toLowerCase().trim()));
-    const merged = [...(Array.isArray(questions) ? questions : [])];
-    for (const question of mandatoryConditionQuestions) {
-        if (!existing.has(question.question.toLowerCase())) {
-            merged.push(question);
-        }
-    }
-    return merged;
+const ensureSelectHasNA = (options = []) => {
+    const normalized = Array.isArray(options)
+        ? options.map((opt) => String(opt || '').trim()).filter(Boolean)
+        : [];
+    if (!normalized.some((opt) => opt.toLowerCase() === 'n/a')) normalized.push('N/A');
+    return [...new Set(normalized)];
 };
 
-const ensureMinimumWorkQuestions = (questions = []) => {
-    const cleaned = (Array.isArray(questions) ? questions : [])
+const getSelectOptionsForQuestion = (question = '') => {
+    const q = String(question || '').toLowerCase();
+
+    if (/(urgent|urgency|immediate|asap)/.test(q)) {
+        return ['Yes', 'No', 'Not sure', 'N/A'];
+    }
+    if (/(timeline|completion|complete|deadline|days?|hours?)/.test(q)) {
+        return ['Same day', '1-2 days', '3-5 days', '6-10 days', 'Flexible', 'Not sure', 'N/A'];
+    }
+    if (/(workers?|labourers?|people|persons?)/.test(q)) {
+        return ['1', '2', '3', '4', '5+', 'Not sure', 'N/A'];
+    }
+    if (/(area|sq\s*ft|sqft|square feet|coverage|surface|wall|floor|ceiling)/.test(q)) {
+        return ['Under 100 sq ft', '100-250 sq ft', '250-500 sq ft', '500+ sq ft', 'Not sure', 'N/A'];
+    }
+    if (/(length|pipe|wire|cable|meters?|metres?|feet|distance)/.test(q)) {
+        return ['Under 5', '5-10', '10-20', '20+', 'Not sure', 'N/A'];
+    }
+    if (/(fixtures?|points?|units?|items?|quantity|count|how many)/.test(q)) {
+        return ['1', '2-3', '4-6', '7+', 'Not sure', 'N/A'];
+    }
+    if (/(condition|damage|cracks?|leak|damp|site condition)/.test(q)) {
+        return ['Good', 'Minor issue', 'Major issue', 'Not sure', 'N/A'];
+    }
+    if (/(access|parking|stairs?|permission|constraints?)/.test(q)) {
+        return ['No constraints', 'Minor constraints', 'Major constraints', 'Not sure', 'N/A'];
+    }
+    return [];
+};
+
+const enforceQuestionTypeMix = (questions = []) => {
+    const source = (Array.isArray(questions) ? questions : [])
         .map((q, idx) => ensureQuestionShape(q, idx))
         .filter((q) => q.question);
 
-    if (cleaned.length >= MIN_WORK_QUESTIONS) return cleaned.slice(0, 8);
+    if (!source.length) return source;
+
+    const MAX_NUMBER_QUESTIONS = 2;
+    const MIN_SELECT_QUESTIONS = 2;
+    const MIN_TEXT_QUESTIONS = 2;
+
+    let numberCount = 0;
+    const normalized = source.map((q) => {
+        const next = { ...q };
+
+        if (next.type === 'number') {
+            numberCount += 1;
+            if (numberCount > MAX_NUMBER_QUESTIONS) {
+                const selectOptions = getSelectOptionsForQuestion(next.question);
+                if (selectOptions.length) {
+                    next.type = 'select';
+                    next.options = ensureSelectHasNA(selectOptions);
+                } else {
+                    next.type = 'text';
+                    next.options = [];
+                }
+            }
+        }
+
+        if (next.type === 'select') {
+            const inferred = getSelectOptionsForQuestion(next.question);
+            next.options = ensureSelectHasNA(next.options.length ? next.options : inferred);
+        }
+
+        return next;
+    });
+
+    const countByType = () => ({
+        select: normalized.filter((q) => q.type === 'select').length,
+        text: normalized.filter((q) => q.type === 'text').length,
+    });
+
+    // Ensure minimum select questions.
+    let { select, text } = countByType();
+    if (select < MIN_SELECT_QUESTIONS) {
+        for (let i = 0; i < normalized.length && select < MIN_SELECT_QUESTIONS; i++) {
+            const q = normalized[i];
+            if (q.type !== 'text') continue;
+            const options = getSelectOptionsForQuestion(q.question);
+            if (!options.length) continue;
+            q.type = 'select';
+            q.options = ensureSelectHasNA(options);
+            select += 1;
+            text = Math.max(0, text - 1);
+        }
+    }
+
+    // Ensure minimum text questions.
+    ({ select, text } = countByType());
+    if (text < MIN_TEXT_QUESTIONS) {
+        for (let i = normalized.length - 1; i >= 0 && text < MIN_TEXT_QUESTIONS; i--) {
+            const q = normalized[i];
+            if (q.type === 'text') continue;
+            const wasSelect = q.type === 'select';
+            q.type = 'text';
+            q.options = [];
+            text += 1;
+            if (select > 0 && wasSelect) select -= 1;
+        }
+    }
+
+    return normalized;
+};
+
+const addUnitHintToQuestion = (question = '', type = 'text') => {
+    const raw = String(question || '').trim();
+    if (!raw) return raw;
+
+    const normalized = normalizeText(raw);
+    const hints = [];
+
+    const hasHint = (value) => raw.toLowerCase().includes(value.toLowerCase());
+    const appendHint = (hint) => {
+        if (hint && !hints.includes(hint)) hints.push(hint);
+    };
+
+    if (/(area|surface|size|coverage|wall|floor|ceiling|painted|tiling|plaster|sanding|sheet|sq\s*ft|sqft|square feet|sq\s*m|sqm|square meters?)/i.test(normalized)) {
+        appendHint('sq ft');
+    }
+    if (/(length|breadth|width|depth|height|distance|run|pipe|wire|cable|grill|rod|frame|beam|meter|metre|foot|feet|inch|inches)/i.test(normalized)) {
+        appendHint('feet or meters');
+    }
+    if (/(how many|number of|count|qty|quantity|units?|items?|points?|fixtures?|devices?|switches?|sockets?|lights?|doors?|windows?|chairs?|tables?|beds?|wardrobes?)/i.test(normalized)) {
+        appendHint('units/items');
+    }
+    if (/(hours?|time|duration|days?|timeline|deadline|completion)/i.test(normalized)) {
+        appendHint('hours or days');
+    }
+    if (/(workers?|labourers?|people|persons?)/i.test(normalized)) {
+        appendHint('workers');
+    }
+    if (/(temperature|pressure|capacity|tonnage|size of ac|ac type)/i.test(normalized)) {
+        appendHint('tons, litres, or capacity');
+    }
+
+    if (!hints.length) return raw;
+
+    const suffix = `(${hints.join(', ')})`;
+    if (hasHint(suffix) || hasHint('in ') && (hasHint('sq ft') || hasHint('units/items') || hasHint('hours or days'))) {
+        return raw;
+    }
+
+    if (/[?!.]$/.test(raw)) {
+        return `${raw.slice(0, -1)} ${suffix}${raw.slice(-1)}`;
+    }
+    return `${raw} ${suffix}`;
+};
+
+const applyQuestionUnitHints = (questions = []) => (Array.isArray(questions) ? questions : []).map((q) => ({
+    ...q,
+    question: addUnitHintToQuestion(q?.question, q?.type),
+}));
+
+const getSkillHintsFromDescription = (workDescription = '') => {
+    const d = normalizeText(workDescription);
+    const hints = [];
+    const push = (skill) => { if (!hints.includes(skill)) hints.push(skill); };
+
+    if (/leak|pipe|tap|drain|toilet|washbasin|sewer|plumb/.test(d)) push('plumber');
+    if (/switch|socket|wiring|mcb|fuse|light|fan|electri/.test(d)) push('electrician');
+    if (/wardrobe|bed|cabinet|furniture|wood|carpent/.test(d)) push('carpenter');
+    if (/paint|putty|primer|wall\s*finish|emulsion/.test(d)) push('painter');
+    if (/tile|grout|marble|floor\s*tile|bathroom\s*tile/.test(d)) push('tiler');
+    if (/plaster|brick|cement|wall\s*repair|mason/.test(d)) push('mason');
+    if (/weld|grill|gate|fabricat|iron\s*work/.test(d)) push('welder');
+    if (/ac\b|air\s*condition|cooling|compressor/.test(d)) push('ac_technician');
+    if (/pest|termite|cockroach|rodent|fumigat/.test(d)) push('pest_control');
+    if (/deep\s*clean|cleaning|sanitize|housekeeping/.test(d)) push('deep_cleaning');
+    if (/garden|lawn|plant|pruning|landscap/.test(d)) push('gardener');
+    if (/waterproof|seepage|damp|moisture\s*ingress|water\s*proof/.test(d)) push('waterproofing');
+
+    const bathroomMentioned = /bathroom|toilet|washroom/.test(d);
+    const renovationIntent = /renovat|remodel|full\s*work|complete\s*work|rebuild|retile|new\s*installation/.test(d);
+    const leakRepairIntent = /\bleak|leakage|drip|seepage|fix|repair|minor\b/.test(d);
+
+    if (bathroomMentioned && (renovationIntent || /tile|plumb|electri/.test(d))) {
+        push('plumber');
+        if (renovationIntent || /tile|retile|new\s*tile/.test(d)) push('tiler');
+        if (renovationIntent || /waterproof|seepage|damp/.test(d)) push('waterproofing');
+        if (renovationIntent || /plaster|civil|brick|cement/.test(d)) push('mason');
+        if (/switch|wire|light|exhaust|electri/.test(d)) push('electrician');
+
+        // For quick bathroom leak repair, avoid forcing non-essential civil trades.
+        if (leakRepairIntent && !renovationIntent) {
+            return ['plumber', ...(hints.includes('electrician') ? ['electrician'] : []), ...(hints.includes('waterproofing') ? ['waterproofing'] : [])];
+        }
+    }
+
+    if (!hints.length) push('handyman');
+    return hints;
+};
+
+const ESTIMATE_ALLOWED_SKILLS = new Set([
+    'plumber', 'electrician', 'carpenter', 'painter', 'tiler', 'mason', 'welder',
+    'ac_technician', 'pest_control', 'cleaner', 'handyman', 'gardener',
+    'waterproofing', 'deep_cleaning', 'other',
+]);
+
+const normalizeSkillList = (items = []) => (Array.isArray(items) ? items : [])
+    .map((item) => normalizeSkillKey(item))
+    .filter((skill) => skill && ESTIMATE_ALLOWED_SKILLS.has(skill));
+
+const distributeTotalWorkers = (skillBlocks = [], totalWorkers = 0) => {
+    const blocks = Array.isArray(skillBlocks) ? [...skillBlocks] : [];
+    const target = Math.max(1, Number(totalWorkers) || 0);
+    if (!blocks.length || !target) return blocks;
+
+    const currentTotal = blocks.reduce((sum, block) => sum + Math.max(1, Number(block?.count) || 1), 0);
+    if (!currentTotal) {
+        blocks[0].count = target;
+        return blocks;
+    }
+
+    const counts = blocks.map((block) => Math.max(1, Math.floor((Math.max(1, Number(block?.count) || 1) / currentTotal) * target)));
+    let assigned = counts.reduce((sum, n) => sum + n, 0);
+    if (assigned !== target) {
+        const idx = counts.reduce((maxIdx, value, i) => value > counts[maxIdx] ? i : maxIdx, 0);
+        counts[idx] = Math.max(1, counts[idx] + (target - assigned));
+    }
+
+    return blocks.map((block, idx) => ({ ...block, count: counts[idx] }));
+};
+
+const applySkillConstraintsToBlocks = ({ skillBlocks = [], selectedSkills = [], removedSkills = [], strictSkillMode = false }) => {
+    const normalizedSelected = normalizeSkillList(selectedSkills);
+    const removedSet = new Set(normalizeSkillList(removedSkills));
+    let blocks = Array.isArray(skillBlocks) ? [...skillBlocks] : [];
+
+    if (normalizedSelected.length > 0) {
+        const selectedSet = new Set(normalizedSelected);
+        blocks = blocks.filter((block) => selectedSet.has(normalizeSkillKey(block?.skill)) && !removedSet.has(normalizeSkillKey(block?.skill)));
+
+        normalizedSelected.forEach((skill) => {
+            const exists = blocks.some((block) => normalizeSkillKey(block?.skill) === skill);
+            if (!exists) {
+                blocks.push({
+                    skill,
+                    count: 1,
+                    hours: 3,
+                    complexity: 'normal',
+                    description: `Client selected ${titleCase(skill)} for this job.`,
+                });
+            }
+        });
+    } else if (removedSet.size > 0) {
+        blocks = blocks.filter((block) => !removedSet.has(normalizeSkillKey(block?.skill)));
+    }
+
+    if (strictSkillMode && normalizedSelected.length > 0) {
+        const selectedSet = new Set(normalizedSelected);
+        blocks = blocks.filter((block) => selectedSet.has(normalizeSkillKey(block?.skill)));
+    }
+
+    return blocks;
+};
+
+const toSafeNumber = (value, fallback = 0) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+};
+
+const roundToNearestTenLocal = (value) => Math.round((Number(value) || 0) / 10) * 10;
+
+const normalizeRateInputMode = (mode = '', fallback = 'day') => {
+    const normalized = String(mode || '').trim().toLowerCase();
+    if (['day', 'visit', 'hour'].includes(normalized)) return normalized;
+    return fallback;
+};
+
+const detectEstimateJobWeight = ({ workDescription = '', answers = {}, scopeQuantity = 1 }) => {
+    const corpus = [
+        String(workDescription || ''),
+        ...Object.entries(answers || {}).map(([q, a]) => `${q}: ${a}`),
+    ].join(' | ').toLowerCase();
+
+    const tinyElectrical = /board|switch|socket|point|mcb|fuse|holder|bulb|light\s*point/.test(corpus)
+        && /(one|single|1\s*(?:point|board|switch|socket|unit)?)/.test(corpus);
+    if (tinyElectrical) return 'tiny';
+
+    const quickRepair = /\bfix|repair|minor|small|replace|single\b/.test(corpus)
+        && !/renovat|remodel|full|complete|new\s*installation|civil|tile|waterproof/.test(corpus);
+
+    const qty = Math.max(1, Number(scopeQuantity) || 1);
+    if (quickRepair && qty <= 2) return 'small';
+    if (qty <= 6) return 'medium';
+    return 'large';
+};
+
+const applyAutoDetectedWorkerCaps = ({ skillBlocks = [], workDescription = '', answers = {}, scopeQuantity = 1, profileType = 'general' }) => {
+    const blocks = Array.isArray(skillBlocks) ? skillBlocks : [];
+    if (!blocks.length) return [];
+
+    const weight = detectEstimateJobWeight({ workDescription, answers, scopeQuantity });
+    const maxPerSkill = weight === 'tiny' ? 1 : weight === 'small' ? 2 : 3;
+    const maxHoursPerSkill = weight === 'tiny' ? 4 : weight === 'small' ? 6 : 12;
+
+    return blocks.map((block) => {
+        const skill = normalizeSkillKey(block?.skill);
+        const rawCount = Math.max(1, Number(block?.count) || 1);
+        const rawHours = Math.max(1, Number(block?.hours) || 1);
+
+        // Keep quick repair profiles conservative to avoid unrealistic staffing for short jobs.
+        const cappedCount = profileType === 'quick_plumbing_repair'
+            ? Math.min(2, rawCount)
+            : Math.min(maxPerSkill, rawCount);
+
+        const cappedHours = Math.min(maxHoursPerSkill, rawHours);
+        return {
+            ...block,
+            skill,
+            count: Math.max(1, cappedCount),
+            hours: Math.max(1, cappedHours),
+        };
+    });
+};
+
+const applyRateAndCountOverridesToBudget = ({ budgetResult = {}, skillWorkerCountOverrides = {}, skillRateOverrides = {}, skillRateOverrideModes = {}, skillDurationOverrides = {}, perWorkerMultiplier = 1 }) => {
+    const safeMultiplier = Math.max(0.5, toSafeNumber(perWorkerMultiplier, 1));
+    const HOURS_PER_DAY = 8;
+    const SMALL_JOB_HOUR_THRESHOLD = 3;
+
+    const breakdown = (Array.isArray(budgetResult?.breakdown) ? budgetResult.breakdown : []).map((item) => {
+        const skillKey = normalizeSkillKey(item?.skill);
+        const overrideCountRaw = toSafeNumber(skillWorkerCountOverrides?.[skillKey], 0);
+        const count = Math.min(6, Math.max(1, overrideCountRaw || toSafeNumber(item?.count, 1)));
+
+        const overrideRate = toSafeNumber(skillRateOverrides?.[skillKey], 0);
+        const skillDurationOverrideRaw = skillDurationOverrides?.[skillKey];
+        const skillDurationOverrideHours = typeof skillDurationOverrideRaw === 'object'
+            ? toSafeNumber(skillDurationOverrideRaw?.hours, 0)
+            : toSafeNumber(skillDurationOverrideRaw, 0);
+        const hours = Math.max(1,
+            Number.isFinite(skillDurationOverrideHours) && skillDurationOverrideHours > 0
+                ? Math.round(skillDurationOverrideHours)
+                : toSafeNumber(item?.hours, 1),
+        );
+        const perWorkerHours = Math.max(0.5, hours);
+        const perWorkerDays = Math.max(1, Math.ceil(perWorkerHours / HOURS_PER_DAY));
+        
+        let defaultRateInputMode = 'day';
+        if (perWorkerHours < SMALL_JOB_HOUR_THRESHOLD) {
+            defaultRateInputMode = 'hour';
+        } else if (perWorkerHours <= HOURS_PER_DAY) {
+            defaultRateInputMode = 'visit';
+        }
+        
+        const selectedRateInputMode = normalizeRateInputMode(skillRateOverrideModes?.[skillKey], defaultRateInputMode);
+
+        const sourceRatePerDayBase = Math.max(100,
+            toSafeNumber(item?.sourceRatePerDayBase, 0) ||
+            toSafeNumber(item?.ratePerDayBase, 0) ||
+            toSafeNumber(item?.ratePerDay, 0) ||
+            1200,
+        );
+        const sourceRatePerHourBase = Math.max(10,
+            toSafeNumber(item?.sourceRatePerHourBase, 0) ||
+            toSafeNumber(item?.ratePerHourBase, 0) ||
+            roundToNearestTenLocal(sourceRatePerDayBase / 8),
+        );
+        const sourceRatePerVisitBase = Math.max(50,
+            toSafeNumber(item?.sourceRatePerVisitBase, 0) ||
+            toSafeNumber(item?.ratePerVisitBase, 0) ||
+            toSafeNumber(item?.perWorkerCostBase, 0) ||
+            toSafeNumber(item?.ratePerVisit, 0) ||
+            roundToNearestTenLocal(Math.max(sourceRatePerHourBase * perWorkerHours, sourceRatePerDayBase * 0.6)),
+        );
+
+        let ratePerDayBase = sourceRatePerDayBase;
+        let ratePerHourBase = sourceRatePerHourBase;
+        let perWorkerCostBase;
+
+        if (selectedRateInputMode === 'hour') {
+            if (overrideRate > 0) ratePerHourBase = Math.max(10, overrideRate);
+            ratePerDayBase = Math.max(100, roundToNearestTenLocal(ratePerHourBase * HOURS_PER_DAY));
+            perWorkerCostBase = ratePerHourBase * perWorkerHours;
+        } else if (selectedRateInputMode === 'visit') {
+            if (overrideRate > 0) {
+                perWorkerCostBase = Math.max(50, overrideRate);
+            } else {
+                perWorkerCostBase = sourceRatePerVisitBase;
+            }
+            ratePerHourBase = Math.max(10, roundToNearestTenLocal(sourceRatePerHourBase));
+            ratePerDayBase = Math.max(100, roundToNearestTenLocal(ratePerHourBase * HOURS_PER_DAY));
+        } else {
+            if (overrideRate > 0) ratePerDayBase = Math.max(100, overrideRate);
+            ratePerHourBase = Math.max(10, roundToNearestTenLocal(ratePerDayBase / HOURS_PER_DAY));
+            perWorkerCostBase = ratePerDayBase * perWorkerDays;
+        }
+
+        const perWorkerCostBaseRounded = roundToNearestTenLocal(perWorkerCostBase);
+        const perWorkerCost = roundToNearestTenLocal(perWorkerCostBase * safeMultiplier);
+        const perWorkerMinCost = roundToNearestTenLocal(perWorkerCost * 0.9);
+        const perWorkerMaxCost = roundToNearestTenLocal(perWorkerCost * 1.15);
+        const ratePerDay = roundToNearestTenLocal(ratePerDayBase * safeMultiplier);
+        const ratePerHour = roundToNearestTenLocal(ratePerHourBase * safeMultiplier);
+        const effectiveRateInputMode = selectedRateInputMode;
+        const rateInputValueBase = effectiveRateInputMode === 'visit'
+            ? perWorkerCostBaseRounded
+            : effectiveRateInputMode === 'hour'
+                ? roundToNearestTenLocal(ratePerHourBase)
+                : roundToNearestTenLocal(ratePerDayBase);
+        const rateInputValue = roundToNearestTenLocal(rateInputValueBase * safeMultiplier);
+
+        const subtotal = perWorkerCost * count;
+        const subtotalBase = perWorkerCostBaseRounded * count;
+        const subtotalMin = perWorkerMinCost * count;
+        const subtotalMax = perWorkerMaxCost * count;
+        const negotiationRange = buildNegotiationRange({
+            expected: perWorkerCost,
+            confidence: Number(item?.confidence) || 0.65,
+            demandRatio: safeMultiplier,
+        });
+
+        return {
+            ...item,
+            skill: skillKey,
+            count,
+            hours,
+            durationDaysForSkill: perWorkerDays,
+            sourceRatePerDayBase,
+            sourceRatePerHourBase,
+            sourceRatePerVisitBase,
+            ratePerDayBase: roundToNearestTenLocal(ratePerDayBase),
+            ratePerDay,
+            ratePerHourBase,
+            ratePerHour,
+            ratePerVisitBase: perWorkerCostBaseRounded,
+            ratePerVisit: perWorkerCost,
+            perWorkerCostBase: perWorkerCostBaseRounded,
+            perWorkerCost,
+            perWorkerMinCost,
+            perWorkerMaxCost,
+            rateInputMode: effectiveRateInputMode,
+            rateInputValueBase,
+            rateInputValue,
+            subtotalBase,
+            subtotal,
+            subtotalMin,
+            subtotalMax,
+            negotiationRange,
+            urgencyApplied: safeMultiplier > 1,
+            appliedDemandMultiplier: safeMultiplier,
+            customRateApplied: overrideRate > 0,
+        };
+    });
+
+    const subtotalBase = breakdown.reduce((sum, item) => sum + (Number(item?.subtotalBase) || 0), 0);
+    const subtotal = breakdown.reduce((sum, item) => sum + (Number(item?.subtotal) || 0), 0);
+    const subtotalMin = breakdown.reduce((sum, item) => sum + (Number(item?.subtotalMin) || 0), 0);
+    const subtotalMax = breakdown.reduce((sum, item) => sum + (Number(item?.subtotalMax) || 0), 0);
+    const multiplierImpactTotal = subtotal - subtotalBase;
+    const totalWorkers = breakdown.reduce((sum, item) => sum + Math.max(1, Number(item?.count) || 1), 0);
+    const totalHours = breakdown.reduce((sum, item) => sum + (Number(item?.hours) || 0), 0);
+    const durationDays = Math.max(1, Math.ceil(totalHours / Math.max(1, totalWorkers) / 8));
+
+    return {
+        ...budgetResult,
+        breakdown,
+        subtotalBase,
+        subtotal,
+        subtotalMin,
+        subtotalMax,
+        multiplierImpactTotal,
+        totalEstimated: subtotal,
+        totalMinEstimated: subtotalMin,
+        totalMaxEstimated: subtotalMax,
+        totalWorkers,
+        totalHours,
+        durationDays,
+        urgencyMult: safeMultiplier,
+        pricingModels: {
+            hourly: roundToNearestTenLocal(subtotal * 0.95),
+            daily: roundToNearestTenLocal(subtotal),
+            visit: roundToNearestTenLocal(subtotal * 1.05),
+            coordinationFactor: 1,
+            handoffOverhead: 0,
+        },
+    };
+};
+
+const estimateDurationForJob = ({ workDescription = '', skillBlocks = [], scopeQuantity = 1, fallbackHours = 8 }) => {
+    const desc = String(workDescription || '').toLowerCase();
+    const skillKeys = (Array.isArray(skillBlocks) ? skillBlocks : []).map((b) => normalizeSkillKey(b?.skill));
+    const distinctSkills = [...new Set(skillKeys.filter(Boolean))];
+    const isQuickFix = /\bfix|repair|leak|leakage|replace|minor|small\b/.test(desc) && !/renovat|remodel|full|complete|new\s*installation/.test(desc);
+    const isPipeLeak = /pipe|plumb|tap|drain|leak|leakage/.test(desc) && distinctSkills.every((s) => ['plumber', 'handyman', 'other'].includes(s));
+
+    let totalHours = Math.max(1, Number(fallbackHours) || 8);
+    if (isPipeLeak) {
+        totalHours = Math.max(2, Math.min(8, 2 + (Math.max(1, Number(scopeQuantity) || 1) - 1) * 1.5));
+    } else if (isQuickFix && distinctSkills.length <= 2) {
+        totalHours = Math.max(3, Math.min(10, totalHours * 0.6));
+    } else if (/renovat|remodel|civil|tile|waterproof|plaster/.test(desc)) {
+        totalHours = Math.max(8, totalHours);
+    }
+
+    const durationDays = Math.max(1, Math.ceil(totalHours / 8));
+    return { totalHours: Math.round(totalHours), durationDays };
+};
+
+const buildEstimateSkillProfile = ({ workDescription = '', answers = {} }) => {
+    const corpus = [
+        String(workDescription || ''),
+        ...Object.entries(answers || {}).map(([q, a]) => `${q}: ${a}`),
+    ].join(' | ').toLowerCase();
+
+    const has = (re) => re.test(corpus);
+    const plumbing = has(/leak|leakage|pipe|plumb|tap|drain|seepage|water\s*line|wc|toilet|washbasin/);
+    const electrical = has(/electri|wire|wiring|switch|socket|mcb|light|fan|geyser\s*point|exhaust/);
+    const civilRenovation = has(/renovat|remodel|retile|tile\s*work|plaster|civil|brick|cement|mason|demolition|new\s*installation|complete\s*bathroom/);
+    const waterproofing = has(/waterproof|damp|moisture/);
+    const carpentry = has(/carpent|wardrobe|cabinet|furniture|wood/);
+    const painting = has(/paint|putty|primer/);
+    const quickFix = has(/\bfix|repair|minor|small|replace\b/) && !civilRenovation;
+
+    // Hard profile for common leak-repair jobs: keep only essential trades.
+    if (plumbing && quickFix && !civilRenovation && !carpentry && !painting) {
+        return {
+            type: 'quick_plumbing_repair',
+            allowedSkills: new Set([
+                'plumber',
+                ...(electrical ? ['electrician'] : []),
+                ...(waterproofing ? ['waterproofing'] : []),
+                'handyman',
+            ]),
+        };
+    }
+
+    return {
+        type: 'general',
+        allowedSkills: null,
+    };
+};
+
+const detectEstimateSkillsFromContext = ({ workDescription = '', answers = {} }) => {
+    const corpus = [
+        String(workDescription || ''),
+        ...Object.entries(answers || {}).map(([q, a]) => `${q}: ${a}`),
+    ].join(' | ');
+
+    const hints = normalizeSkillList(getSkillHintsFromDescription(corpus));
+    const specific = hints.filter((skill) => skill !== 'handyman');
+    if (specific.length) return specific;
+    return hints;
+};
+
+const getSkillSpecificQuestionSeeds = (skill = '') => {
+    switch (skill) {
+        case 'plumber':
+            return [
+                { question: 'Which fixtures are affected (tap, sink, WC, shower, pipe line)?', type: 'text' },
+                { question: 'Is the issue constant or intermittent, and since when?', type: 'text' },
+            ];
+        case 'electrician':
+            return [
+                { question: 'How many electrical points/components are affected?', type: 'text' },
+                { question: 'Any signs of sparking, burning smell, or tripping?', type: 'select', options: ['Yes', 'No', 'Not sure'] },
+            ];
+        case 'carpenter':
+            return [
+                { question: 'Which furniture units are included and how many (beds, wardrobes, kitchen units, etc.)?', type: 'text' },
+                { question: 'Do you need repair, customization, or full new installation?', type: 'select', options: ['Repair', 'Customization', 'New installation', 'Mixed'] },
+            ];
+        case 'painter':
+            return [
+                { question: 'Approx wall/ceiling area to be painted (in sq ft)?', type: 'text' },
+                { question: 'Current wall condition before painting?', type: 'select', options: ['Good', 'Minor cracks', 'Major cracks/dampness', 'Not sure'] },
+            ];
+        case 'tiler':
+            return [
+                { question: 'Total tiling area and tile size preference?', type: 'text' },
+                { question: 'Is old tile removal required?', type: 'select', options: ['Yes', 'No', 'Partially'] },
+            ];
+        case 'ac_technician':
+            return [
+                { question: 'AC type and tonnage (split/window/inverter)?', type: 'text' },
+                { question: 'Primary AC issue observed?', type: 'text' },
+            ];
+        default:
+            return [];
+    }
+};
+
+const buildDynamicFallbackWorkQuestions = (workDescription = '') => {
+    const skillHints = getSkillHintsFromDescription(workDescription);
+    const base = [
+        { question: 'What is the exact scope and expected output for this work?', type: 'text' },
+        { question: 'What quantity/area/units are involved?', type: 'select', options: ['Small', 'Medium', 'Large', 'Not sure'] },
+        { question: 'What is the current site condition related to this work?', type: 'select', options: ['Good', 'Minor issues', 'Major issues', 'Not sure'] },
+        { question: 'Are materials, fixtures, or tools already available on site?', type: 'text' },
+        { question: 'Preferred completion timeline?', type: 'select', options: ['Same day', '1-2 days', '3-5 days', 'Flexible'] },
+        { question: 'Any site-access constraints (timings, parking, permissions, floor level)?', type: 'text' },
+    ];
+
+    const skillSpecific = skillHints.flatMap((skill) => getSkillSpecificQuestionSeeds(skill));
+    const merged = [...skillSpecific, ...base];
+    return merged.slice(0, 8).map((q, idx) => ({
+        id: `q${idx + 1}`,
+        question: q.question,
+        type: q.type || 'text',
+        options: Array.isArray(q.options) ? q.options : [],
+        required: true,
+    }));
+};
+
+const normalizeQuestionKey = (value = '') => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isBudgetQuestion = (value = '') => /\b(budget|cost|price|pricing|quotation|quote|₹|rs\.?|rupees?)\b/i.test(String(value || ''));
+
+const dedupeQuestions = (questions = []) => {
+    const seen = new Set();
+    const unique = [];
+    for (const q of (Array.isArray(questions) ? questions : [])) {
+        const key = normalizeQuestionKey(q?.question);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push(q);
+    }
+    return unique;
+};
+
+const ensureMinimumWorkQuestions = (questions = [], workDescription = '') => {
+    const cleaned = dedupeQuestions((Array.isArray(questions) ? questions : [])
+        .map((q, idx) => ensureQuestionShape(q, idx))
+        .filter((q) => q.question && !isBudgetQuestion(q.question)));
+
+    if (cleaned.length >= MIN_WORK_QUESTIONS) {
+        return applyQuestionUnitHints(
+            enforceQuestionTypeMix(cleaned.slice(0, 8)).map((q) => ({ ...q, required: true }))
+        );
+    }
 
     const existing = new Set(cleaned.map((q) => q.question.toLowerCase()));
-    for (const q of fallbackWorkQuestions) {
+    const dynamicFallback = buildDynamicFallbackWorkQuestions(workDescription);
+    for (const q of dynamicFallback) {
         if (!existing.has(q.question.toLowerCase())) cleaned.push(q);
         if (cleaned.length >= MIN_WORK_QUESTIONS) break;
     }
-    const merged = mergeMandatoryQuestions(cleaned);
-    const mandatorySet = new Set(mandatoryConditionQuestions.map((q) => q.question.toLowerCase()));
-    const mandatoryQuestions = merged.filter((q) => mandatorySet.has(String(q.question || '').toLowerCase()));
-    const otherQuestions = merged.filter((q) => !mandatorySet.has(String(q.question || '').toLowerCase()));
-    return [...mandatoryQuestions, ...otherQuestions].slice(0, 8);
+    return applyQuestionUnitHints(
+        enforceQuestionTypeMix(dedupeQuestions(cleaned).slice(0, 8)).map((q) => ({ ...q, required: true }))
+    );
 };
 
-const getAnswerBlob = (answers = {}) => Object.entries(answers)
-    .filter(([, value]) => value)
-    .map(([, value]) => String(value).toLowerCase())
-    .join(' ');
+const QUESTION_FORBIDDEN_PATTERNS = [
+    /\bcity\b/i,
+    /\blocality\b/i,
+    /\bpincode\b/i,
+    /\bpin\s*code\b/i,
+    /\bexact\s*date\b/i,
+    /\bspecific\s*date\b/i,
+    /\bexact\s*time\b/i,
+    /\bspecific\s*time\b/i,
+    /\burgent|urgency|asap|immediate\b/i,
+    /\bbudget|cost|price|pricing|quotation|quote|₹|rs\.?|rupees?\b/i,
+];
 
-const deriveConditionSignals = ({ workDescription = '', answers = {} }) => {
-    const text = `${String(workDescription || '').toLowerCase()} ${getAnswerBlob(answers)}`;
-    const areaMatch = text.match(/(\b\d+(?:\.\d+)?\b)\s*(sq\s*ft|sqft|square feet|square foot)/);
-    const wallMatch = text.match(/(\b\d+(?:\.\d+)?\b)\s*(walls?|areas?)/);
-    return {
-        isPaintJob: /paint|painting|repaint|whitewash|wall/.test(text),
-        hasCracks: /crack|peel|peeling|damp|leak|patch|rough/.test(text),
-        hasGoodSurface: /smooth|good condition|fine condition|already painted/.test(text),
-        hasToolsOrMaterials: /have|already|available|own|got/.test(text),
-        hasProtectionAvailable: /masking|drop cloth|sheet|protection/.test(text),
-        areaSqft: areaMatch ? Number(areaMatch[1]) : 0,
-        wallCount: wallMatch ? Number(wallMatch[1]) : 1,
-    };
+const QUESTION_MANDATORY_COVERAGE = {
+    scopeQuantity: /(how many|quantity|qty|area|size|length|volume|coverage|total|points?|fixtures?|units?|rooms?|sections?|ac\s*units?)/i,
+    condition: /(condition|damage|crack|leak|current\s*state|existing\s*state|old|new|working\s*condition|problem\s*severity)/i,
+    access: /(access|floor|stairs|lift|elevator|parking|entry|restricted|high[-\s]*rise|site\s*access|basement|terrace)/i,
+    material: /(material|who\s*will\s*supply|suppl(y|ier)|client\s*provides?|worker\s*bring|purchase\s*materials?)/i,
+    timeline: /(start|timeline|when\s*do\s*you\s*want|completion|within|this\s*week|flexible|by\s*when|expected\s*start|deadline)/i,
+    history: /(first\s*time|maintenance|redo|repair\s*history|previous\s*work|rework|done\s*before|existing\s*work)/i,
+};
+
+const isForbiddenQuestion = (question = '') => {
+    const value = String(question || '').trim();
+    if (!value) return true;
+    return QUESTION_FORBIDDEN_PATTERNS.some((pattern) => pattern.test(value));
+};
+
+const normalizeGroqGeneratedQuestions = (questions = []) => {
+    const incoming = Array.isArray(questions) ? questions : [];
+    const normalized = [];
+    const seen = new Set();
+
+    incoming.forEach((item, idx) => {
+        const question = String(item?.question || '').trim().replace(/\s+/g, ' ');
+        if (!question || isForbiddenQuestion(question)) return;
+
+        const key = normalizeQuestionKey(question);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+
+        const rawType = String(item?.type || '').toLowerCase().trim();
+        const type = ['select', 'number', 'text'].includes(rawType) ? rawType : 'text';
+
+        const base = {
+            id: `q${normalized.length + 1}`,
+            question,
+            type,
+            required: true,
+        };
+
+        if (type === 'select') {
+            const options = [...new Set((Array.isArray(item?.options) ? item.options : [])
+                .map((opt) => String(opt || '').trim())
+                .filter(Boolean))];
+            if (!options.some((opt) => opt.toLowerCase() === 'not sure')) options.push('Not sure');
+            if (!options.some((opt) => opt.toLowerCase() === 'n/a')) options.push('N/A');
+            normalized.push({
+                ...base,
+                options,
+                multiSelect: true,
+                allowNotSure: false,
+            });
+            return;
+        }
+
+        if (type === 'number') {
+            normalized.push({
+                ...base,
+                options: ['Not sure', 'N/A'],
+                allowNotSure: true,
+            });
+            return;
+        }
+
+        normalized.push({
+            ...base,
+            options: [],
+            allowNotSure: false,
+        });
+    });
+
+    return normalized.slice(0, 10);
+};
+
+const hasMandatoryQuestionCoverage = (questions = []) => {
+    const text = (Array.isArray(questions) ? questions : []).map((q) => String(q?.question || '')).join(' || ');
+    if (!text) return false;
+    return Object.values(QUESTION_MANDATORY_COVERAGE).every((pattern) => pattern.test(text));
+};
+
+const getMissingMandatoryCoverageTopics = (questions = []) => {
+    const text = (Array.isArray(questions) ? questions : []).map((q) => String(q?.question || '')).join(' || ');
+    return Object.entries(QUESTION_MANDATORY_COVERAGE)
+        .filter(([, pattern]) => !pattern.test(text))
+        .map(([topic]) => topic);
 };
 
 // ── SYSTEM PROMPT: Full Estimate ──────────────────────────────────────────────
@@ -686,8 +2105,8 @@ const parseGroqJson = (text) => {
 
 const SKILL_IDENTIFIERS = new Set([
     'plumber', 'electrician', 'carpenter', 'painter', 'tiler',
-    'mason', 'welder', 'ac_technician', 'pest_control', 'cleaner',
-    'handyman', 'gardener',
+    'mason', 'welder', 'ac_technician', 'pest_control', 'deep_cleaning',
+    'handyman', 'gardener', 'waterproofing', 'flooring',
 ]);
 
 const shouldKeepAsIs = (value = '') => {
@@ -742,12 +2161,26 @@ const translateAdvisorReport = async (report = {}, targetLanguage = 'en') => {
     pushIfText(report.colourAndStyleAdvice);
     pushIfText(report.visualizationDescription);
     pushIfText(report.recommendation);
+    pushIfText(report.festivalName);
+    pushIfText(report.scenarioNarratives?.best);
+    pushIfText(report.scenarioNarratives?.expected);
+    pushIfText(report.scenarioNarratives?.worst);
 
     (report.workPlan || []).forEach((step) => {
         pushIfText(step?.title);
         pushIfText(step?.description);
         pushIfText(step?.estimatedTime);
         pushIfText(step?.phase);
+        (step?.scheduleWindows || []).forEach((window) => {
+            pushIfText(window?.dayName);
+        });
+    });
+    (report.timeEstimate?.schedule?.days || []).forEach((day) => {
+        pushIfText(day?.dayName);
+        (day?.entries || []).forEach((entry) => {
+            pushIfText(entry?.title);
+            pushIfText(entry?.description);
+        });
     });
     (report.expectedOutcome || []).forEach(pushIfText);
     (report.designSuggestions || []).forEach(pushIfText);
@@ -790,13 +2223,46 @@ const translateAdvisorReport = async (report = {}, targetLanguage = 'en') => {
         colourAndStyleAdvice: tr(report.colourAndStyleAdvice),
         visualizationDescription: tr(report.visualizationDescription),
         recommendation: tr(report.recommendation),
+        festivalName: tr(report.festivalName),
+        scenarioNarratives: report.scenarioNarratives
+            ? {
+                best: tr(report.scenarioNarratives.best),
+                expected: tr(report.scenarioNarratives.expected),
+                worst: tr(report.scenarioNarratives.worst),
+            }
+            : report.scenarioNarratives,
         workPlan: (report.workPlan || []).map((step) => ({
             ...step,
             title: tr(step?.title),
             description: tr(step?.description),
             estimatedTime: tr(step?.estimatedTime),
             phase: tr(step?.phase),
+            scheduleWindows: (step?.scheduleWindows || []).map((window) => ({
+                ...window,
+                dayName: tr(window?.dayName),
+            })),
         })),
+        timeEstimate: report.timeEstimate
+            ? {
+                ...report.timeEstimate,
+                schedule: report.timeEstimate?.schedule
+                    ? {
+                        ...report.timeEstimate.schedule,
+                        endDayName: tr(report.timeEstimate.schedule.endDayName),
+                        days: (report.timeEstimate.schedule.days || []).map((day) => ({
+                            ...day,
+                            dayName: tr(day?.dayName),
+                            entries: (day?.entries || []).map((entry) => ({
+                                ...entry,
+                                dayName: tr(entry?.dayName),
+                                title: tr(entry?.title),
+                                description: tr(entry?.description),
+                            })),
+                        })),
+                    }
+                    : report.timeEstimate?.schedule,
+            }
+            : report.timeEstimate,
         expectedOutcome: (report.expectedOutcome || []).map((v) => tr(v)),
         designSuggestions: (report.designSuggestions || []).map((v) => tr(v)),
         imageFindings: (report.imageFindings || []).map((v) => tr(v)),
@@ -873,7 +2339,7 @@ const callGroqJson = async ({ systemPrompt, userPrompt, maxTokens = 1200, temper
     let lastError = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            const completion = await groq.chat.completions.create({
+            const payload = {
                 model: 'llama-3.3-70b-versatile',
                 messages: [
                     { role: 'system', content: systemPrompt },
@@ -886,8 +2352,15 @@ const callGroqJson = async ({ systemPrompt, userPrompt, maxTokens = 1200, temper
                 ],
                 temperature,
                 max_tokens: maxTokens,
-                response_format: { type: 'json_object' },
-            });
+            };
+
+            // Some Groq model deployments reject response_format; first try strict mode,
+            // then retry without response_format while still requesting strict JSON.
+            if (attempt === 1) {
+                payload.response_format = { type: 'json_object' };
+            }
+
+            const completion = await groq.chat.completions.create(payload);
 
             const raw = completion.choices[0]?.message?.content || '{}';
             const parsed = parseGroqJson(raw);
@@ -908,17 +2381,27 @@ const callGroqJson = async ({ systemPrompt, userPrompt, maxTokens = 1200, temper
 };
 
 // ── HELPER: Format worker ─────────────────────────────────────────────────────
-const formatWorker = (w) => ({
+const formatWorker = (w, meta = {}) => ({
     id:               w._id,
+    _id:              w._id,
     karigarId:        w.karigarId,
     name:             w.name,
     photo:            w.photo,
     mobile:           w.mobile,
+    phoneType:        w.phoneType,
     skills:           Array.isArray(w.skills) ? w.skills.map(s => s?.name || s || '') : [],
+    matchedSkills:    Array.isArray(meta.matchedSkills) ? meta.matchedSkills : [],
     overallExperience: w.overallExperience,
     points:           w.points,
+    availability:     w.availability !== false,
+    rating:           Number(meta.avgStars || 0),
+    ratingCount:      Number(meta.ratingCount || 0),
     city:             w.address?.city || '',
     locality:         w.address?.locality || '',
+    latitude:         Number.isFinite(Number(w.address?.latitude)) ? Number(w.address.latitude) : null,
+    longitude:        Number.isFinite(Number(w.address?.longitude)) ? Number(w.address.longitude) : null,
+    matchReasons:     Array.isArray(meta.matchReasons) ? meta.matchReasons : [],
+    matchScore:       Number(meta.score || 0),
 });
 
 // ── HELPER: Normalize city for matching ──────────────────────────────────────
@@ -1099,7 +2582,7 @@ const generatePreviewImage = async ({ sourceImageUrl, prompt, style = '' }) => {
 // ROUTE: POST /api/ai/generate-questions  (UPDATED — returns opinionQuestions too)
 // ══════════════════════════════════════════════════════════════════════════════
 exports.generateQuestions = async (req, res) => {
-    const { city = '', preferredLanguage = '' } = req.body;
+    const { city = '', locality = '', preferredLanguage = '' } = req.body;
     const workDescription = String(req.body?.workDescription || req.body?.description || '').trim();
     if (!workDescription) {
         return res.status(400).json({ message: 'Work description is required.' });
@@ -1108,35 +2591,204 @@ exports.generateQuestions = async (req, res) => {
         return res.status(400).json({ message: 'Please enter at least 10 characters in work description.' });
     }
     try {
-        const { inputLanguage, selectedLanguage, workDescriptionEn, cityEn } = await buildTranslatedInput({
-            workDescription,
-            city,
-            preferredLanguage,
-            answers: {},
-            opinions: {},
-        });
+        let inputLanguage = 'en';
+        let selectedLanguage = normalizeLanguage(preferredLanguage || 'en');
+        let workDescriptionEn = workDescription;
+        let cityEn = city;
 
-        const { parsed, usedFallback } = await callGroqJson({
-            systemPrompt: QUESTIONS_SYSTEM_PROMPT,
-            userPrompt: `Work Description: "${workDescriptionEn}"${cityEn ? `\nCity: ${cityEn}` : ''}`,
-            maxTokens: 1000,
-            temperature: 0.3,
-            fallback: {
-                questions: ensureMinimumWorkQuestions([]),
-                opinionQuestions: [],
+        try {
+            const translated = await buildTranslatedInput({
+                workDescription,
+                city,
+                preferredLanguage,
+                answers: {},
+                opinions: {},
+            });
+            inputLanguage = translated.inputLanguage;
+            selectedLanguage = translated.selectedLanguage;
+            workDescriptionEn = translated.workDescriptionEn;
+            cityEn = translated.cityEn;
+        } catch (translationErr) {
+            console.error('generateQuestions translation fallback:', translationErr.message);
+        }
+
+        let localityEn = locality;
+        if (locality) {
+            try {
+                localityEn = (await translateText(locality, 'en', 'auto')).translatedText;
+            } catch (localityErr) {
+                console.error('generateQuestions locality translation fallback:', localityErr.message);
+                localityEn = locality;
+            }
+        }
+
+        const contextualPrompt = [
+            'Generate questions for this job request.',
+            `Work description: ${workDescriptionEn || workDescription}`,
+            cityEn ? `City context (already known, do not ask): ${cityEn}` : '',
+            localityEn ? `Locality context (already known, do not ask): ${localityEn}` : '',
+            '',
+            'Strict requirements:',
+            '- Exactly 10 work questions.',
+            '- q1 must be number for scope/quantity.',
+            '- Cover condition, access complexity, material responsibility, timeline/start expectation, first-time vs maintenance/redo.',
+            '- Keep remaining questions skill-specific and cost-driver focused.',
+            '- Select questions must include Not sure and N/A and use multiSelect=true.',
+            '- Number questions must include options [Not sure, N/A] and allowNotSure=true.',
+            '- Do not ask city/locality/date/time/urgency/budget.',
+            '- opinionQuestions must be empty array.',
+        ].filter(Boolean).join('\n');
+
+        let usedFallback = false;
+        let questions = [];
+        let opinionQuestions = [];
+
+        const generationAttempts = [
+            {
+                prompt: contextualPrompt,
+                maxTokens: 1500,
+                temperature: 0.15,
             },
-        });
+            {
+                prompt: [
+                    contextualPrompt,
+                    '',
+                    'Regenerate with stricter compliance.',
+                    'Ensure q1 is number and all mandatory topics are present exactly once or more.',
+                ].join('\n'),
+                maxTokens: 1700,
+                temperature: 0,
+            },
+            {
+                prompt: [
+                    contextualPrompt,
+                    '',
+                    'Third attempt: prioritize schema correctness and complete 10 questions over creativity.',
+                    'No markdown, no explanations, JSON only.',
+                ].join('\n'),
+                maxTokens: 1700,
+                temperature: 0,
+            },
+        ];
 
-        let questions = parsed?.questions || [];
-        let opinionQuestions = parsed?.opinionQuestions || [];
-        if (!Array.isArray(questions)) questions = [];
-        if (!Array.isArray(opinionQuestions)) opinionQuestions = [];
-        questions = mergeMandatoryQuestions(ensureMinimumWorkQuestions(questions));
+        for (const attempt of generationAttempts) {
+            const pass = await callGroqJson({
+                systemPrompt: QUESTIONS_SYSTEM_PROMPT,
+                userPrompt: attempt.prompt,
+                maxTokens: attempt.maxTokens,
+                temperature: attempt.temperature,
+                fallback: { questions: [], opinionQuestions: [] },
+            });
+            usedFallback = usedFallback || Boolean(pass?.usedFallback);
+
+            const candidate = normalizeGroqGeneratedQuestions(pass?.parsed?.questions);
+            if (candidate.length > questions.length) questions = candidate;
+
+            if (questions.length === 10 && questions[0]?.type === 'number' && hasMandatoryQuestionCoverage(questions)) {
+                break;
+            }
+        }
+
+        // AI top-up for missing coverage topics without static fallback.
+        const missingTopics = getMissingMandatoryCoverageTopics(questions);
+        if (missingTopics.length > 0) {
+            const topUpForMissingTopics = await callGroqJson({
+                systemPrompt: QUESTIONS_SYSTEM_PROMPT,
+                userPrompt: [
+                    'Generate additional questions only for missing mandatory topics.',
+                    `Work description: ${workDescriptionEn || workDescription}`,
+                    `Missing topics: ${missingTopics.join(', ')}`,
+                    'Return 1 short question per missing topic in questions array.',
+                    'Do not repeat existing questions.',
+                    `Existing questions: ${questions.map((q) => q.question).join(' | ')}`,
+                ].join('\n'),
+                maxTokens: 1000,
+                temperature: 0,
+                fallback: { questions: [], opinionQuestions: [] },
+            });
+            usedFallback = usedFallback || Boolean(topUpForMissingTopics?.usedFallback);
+            questions = normalizeGroqGeneratedQuestions([
+                ...questions,
+                ...(Array.isArray(topUpForMissingTopics?.parsed?.questions) ? topUpForMissingTopics.parsed.questions : []),
+            ]);
+        }
+
+        // AI top-up for missing count to reach exactly 10.
+        if (questions.length < 10) {
+            const needed = 10 - questions.length;
+            const topUpForCount = await callGroqJson({
+                systemPrompt: QUESTIONS_SYSTEM_PROMPT,
+                userPrompt: [
+                    `Generate exactly ${needed} additional non-duplicate work questions.`,
+                    `Work description: ${workDescriptionEn || workDescription}`,
+                    `Existing questions: ${questions.map((q) => q.question).join(' | ')}`,
+                    'Keep output compatible with the same schema and endpoint rules.',
+                ].join('\n'),
+                maxTokens: 1100,
+                temperature: 0.1,
+                fallback: { questions: [], opinionQuestions: [] },
+            });
+            usedFallback = usedFallback || Boolean(topUpForCount?.usedFallback);
+            questions = normalizeGroqGeneratedQuestions([
+                ...questions,
+                ...(Array.isArray(topUpForCount?.parsed?.questions) ? topUpForCount.parsed.questions : []),
+            ]);
+        }
+
+        // Final shape enforcement with AI-generated content preserved.
+        if (questions[0]?.type !== 'number') {
+            const scopeQuestionFix = await callGroqJson({
+                systemPrompt: QUESTIONS_SYSTEM_PROMPT,
+                userPrompt: [
+                    'Generate exactly one scope/quantity number question for q1.',
+                    `Work description: ${workDescriptionEn || workDescription}`,
+                    'Return JSON with one question in questions array.',
+                ].join('\n'),
+                maxTokens: 400,
+                temperature: 0,
+                fallback: { questions: [], opinionQuestions: [] },
+            });
+            usedFallback = usedFallback || Boolean(scopeQuestionFix?.usedFallback);
+            const scopeQuestion = normalizeGroqGeneratedQuestions(scopeQuestionFix?.parsed?.questions).find((q) => q.type === 'number');
+            if (scopeQuestion) {
+                questions = normalizeGroqGeneratedQuestions([scopeQuestion, ...questions]);
+            }
+        }
+
+        questions = questions.slice(0, 10);
+        const finalValid = questions.length === 10 && questions[0]?.type === 'number' && hasMandatoryQuestionCoverage(questions);
+
+        if (!finalValid) {
+            console.error('generateQuestions returned partial compliance after AI recovery', {
+                count: questions.length,
+                q1Type: questions[0]?.type,
+                missingTopics: getMissingMandatoryCoverageTopics(questions),
+            });
+        }
+
+        if (!questions.length) {
+            return res.status(502).json({
+                message: 'Unable to generate questions from AI right now. Please try again.',
+                questions: [],
+                opinionQuestions: [],
+                language: {
+                    detected: inputLanguage,
+                    selected: selectedLanguage,
+                    translatedToEnglish: true,
+                    responseTranslated: false,
+                    usedFallback: true,
+                },
+            });
+        }
+
+        questions = questions.map((q, idx) => ({ ...q, id: `q${idx + 1}`, required: true }));
 
         if (selectedLanguage !== 'en') {
             questions = await translateQuestionSet(questions, selectedLanguage);
             opinionQuestions = await translateQuestionSet(opinionQuestions, selectedLanguage);
         }
+
+        console.info(`generateQuestions result: usedFallback=${usedFallback} questions=${questions.length} opinions=${opinionQuestions.length}`);
 
         return res.status(200).json({
             questions,
@@ -1151,8 +2803,9 @@ exports.generateQuestions = async (req, res) => {
         });
     } catch (err) {
         console.error('generateQuestions error:', err.message);
-        return res.status(200).json({
-            questions: mergeMandatoryQuestions(ensureMinimumWorkQuestions([])),
+        return res.status(502).json({
+            message: 'AI question generation failed. Please retry.',
+            questions: [],
             opinionQuestions: [],
             language: {
                 detected: 'en',
@@ -1173,7 +2826,29 @@ exports.getRateTableCities = async (_req, res) => {
 // ROUTE: POST /api/ai/generate-estimate  (UNCHANGED)
 // ══════════════════════════════════════════════════════════════════════════════
 exports.generateEstimate = async (req, res) => {
-    const { workDescription, answers = {}, city = '', urgent = false, workerCountOverride, preferredLanguage = '' } = req.body;
+    const {
+        workDescription,
+        answers = {},
+        city = '',
+        locality = '',
+        urgent: urgentInput = false,
+        workerCountOverride,
+        includeTravelCost,
+        preferredLanguage = '',
+        selectedSkills = [],
+        removedSkills = [],
+        strictSkillMode = false,
+        skillWorkerCountOverrides = {},
+        skillRateOverrides = {},
+        skillRateOverrideModes = {},
+        skillDurationOverrides = {},
+        jobDate = '',
+        jobStartTime = '09:00',
+        durationDaysOverride,
+        durationHoursOverride,
+        lockedDemandMultiplier,
+    } = req.body;
+    const urgent = parseBooleanInput(urgentInput, false);
     if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
     try {
         const { inputLanguage, selectedLanguage, workDescriptionEn, cityEn, answersEn } = await buildTranslatedInput({
@@ -1187,7 +2862,7 @@ exports.generateEstimate = async (req, res) => {
         const answersText = Object.entries(answersEn).map(([q, a]) => `  - ${q}: ${a}`).join('\n');
         const userPrompt = `Work: "${workDescriptionEn}"\nCity: ${cityEn || 'Unknown'}\nUrgent: ${urgent ? 'Yes' : 'No'}\n${answersText ? `Answers:\n${answersText}` : ''}`;
 
-        const { parsed: aiResult, usedFallback: groqFallbackUsed } = await callGroqJson({
+        const { parsed: aiResult, usedFallback: groqFallbackUsed, error: groqFallbackError } = await callGroqJson({
             systemPrompt: ESTIMATE_SYSTEM_PROMPT,
             userPrompt,
             maxTokens: 1000,
@@ -1201,18 +2876,169 @@ exports.generateEstimate = async (req, res) => {
             },
         });
 
-        const skillBlocks = aiResult.skillBlocks || [];
-        const override = Number(workerCountOverride);
-        if (override > 0 && skillBlocks.length > 0) {
-            const aiTotal = skillBlocks.reduce((s, b) => s + (b.count||1), 0) || 1;
-            if (aiTotal !== override) {
-                const counts = skillBlocks.map(b => Math.max(1, Math.floor(((b.count||1)/aiTotal)*override)));
-                let ct = counts.reduce((s,c)=>s+c,0);
-                if (ct !== override) { const mi = counts.reduce((m,c,i)=>c>counts[m]?i:m,0); counts[mi]=Math.max(1,counts[mi]+(override-ct)); }
-                for (let i=0;i<skillBlocks.length;i++) skillBlocks[i].count=counts[i];
+        const scopeQuantity = extractScopeQuantity({ workDescription: workDescriptionEn, answers: answersEn });
+        const detectedContextSkills = detectEstimateSkillsFromContext({
+            workDescription: workDescriptionEn,
+            answers: answersEn,
+        });
+        const inferredSkillBlocks = normalizeSkillBlocksForContext({
+            skillBlocks: aiResult.skillBlocks || [],
+            workDescription: workDescriptionEn,
+            answers: answersEn,
+        });
+        let skillBlocks = applyScopeMultiplierToSkillBlocks(inferredSkillBlocks, scopeQuantity);
+        skillBlocks = applySkillConstraintsToBlocks({
+            skillBlocks,
+            selectedSkills,
+            removedSkills,
+            strictSkillMode: parseBooleanInput(strictSkillMode, false),
+        });
+
+        const selectedSkillList = normalizeSkillList(selectedSkills);
+        const profile = buildEstimateSkillProfile({ workDescription: workDescriptionEn, answers: answersEn });
+        if (!selectedSkillList.length && detectedContextSkills.length) {
+            const detectedSet = new Set(detectedContextSkills);
+            const filteredSkillBlocks = skillBlocks.filter((block) => detectedSet.has(normalizeSkillKey(block?.skill)));
+
+            if (filteredSkillBlocks.length) {
+                skillBlocks = filteredSkillBlocks;
+            } else if (skillBlocks.length > 0) {
+                skillBlocks = detectedContextSkills.map((skill) => ({
+                    skill,
+                    count: 1,
+                    hours: 3,
+                    complexity: 'normal',
+                    description: `Detected ${titleCase(skill)} from job description and answers.`,
+                }));
             }
         }
-        const budgetResult = await calculateStructuredBudget(skillBlocks, city, aiResult.urgent||urgent);
+        if (!selectedSkillList.length && profile.allowedSkills instanceof Set) {
+            skillBlocks = skillBlocks.filter((block) => profile.allowedSkills.has(normalizeSkillKey(block?.skill)));
+        }
+
+        if (!selectedSkillList.length && profile.type === 'quick_plumbing_repair') {
+            skillBlocks = skillBlocks
+                .filter((block) => ['plumber', 'electrician', 'waterproofing', 'handyman'].includes(normalizeSkillKey(block?.skill)))
+                .slice(0, 2)
+                .map((block) => ({
+                    ...block,
+                    count: 1,
+                    hours: Math.max(2, Math.min(4, Number(block?.hours) || 3)),
+                    complexity: 'normal',
+                }));
+        }
+
+        // Ensure retained skills are valid and normalized.
+        skillBlocks = skillBlocks
+            .map((block) => ({ ...block, skill: normalizeSkillKey(block?.skill) }))
+            .filter((block) => block.skill && ESTIMATE_ALLOWED_SKILLS.has(block.skill));
+
+        if (!selectedSkillList.length) {
+            skillBlocks = applyAutoDetectedWorkerCaps({
+                skillBlocks,
+                workDescription: workDescriptionEn,
+                answers: answersEn,
+                scopeQuantity,
+                profileType: profile.type,
+            });
+        }
+
+        const userCountOverrides = skillWorkerCountOverrides && typeof skillWorkerCountOverrides === 'object'
+            ? skillWorkerCountOverrides
+            : {};
+        const userDurationOverrides = skillDurationOverrides && typeof skillDurationOverrides === 'object'
+            ? skillDurationOverrides
+            : {};
+        if (skillBlocks.length > 0) {
+            skillBlocks = skillBlocks.map((block) => {
+                const skillKey = normalizeSkillKey(block?.skill);
+                const overrideCount = Number(userCountOverrides?.[skillKey]);
+                const rawDurationOverride = userDurationOverrides?.[skillKey];
+                const overrideHours = typeof rawDurationOverride === 'object'
+                    ? Number(rawDurationOverride?.hours)
+                    : Number(rawDurationOverride);
+                return {
+                    ...block,
+                    count: Math.min(6, Math.max(1, Number.isFinite(overrideCount) && overrideCount > 0 ? overrideCount : (Number(block?.count) || 1))),
+                    hours: Math.max(1, Number.isFinite(overrideHours) && overrideHours > 0 ? Math.round(overrideHours) : (Number(block?.hours) || 1)),
+                };
+            });
+        }
+
+        const override = Number(workerCountOverride);
+        if (override > 0 && skillBlocks.length > 0) {
+            skillBlocks = distributeTotalWorkers(skillBlocks, override);
+        }
+
+        // Base labour-only budget without urgency applied (we apply demand multipliers per worker below).
+        let budgetResult = await calculateStructuredBudget(skillBlocks, city, false, { preferBaseRate: true });
+
+        // Derive realistic duration for estimate mode.
+        const estimatedDuration = estimateDurationForJob({
+            workDescription: workDescriptionEn,
+            skillBlocks,
+            scopeQuantity,
+            fallbackHours: budgetResult.totalHours,
+        });
+
+        const overrideDays = Number(durationDaysOverride);
+        const overrideHours = Number(durationHoursOverride);
+        const finalDurationHours = (Number.isFinite(overrideHours) && overrideHours > 0)
+            ? Math.max(1, Math.round(overrideHours))
+            : estimatedDuration.totalHours;
+        const finalDurationDays = (Number.isFinite(overrideDays) && overrideDays > 0)
+            ? Math.max(1, Math.round(overrideDays))
+            : estimatedDuration.durationDays;
+
+        budgetResult.totalHours = finalDurationHours;
+        budgetResult.durationDays = finalDurationDays;
+
+        // Keep per-skill durations from AI or client overrides; global duration remains editable/display only.
+
+        // AI advisor-compatible demand multipliers (weekday/weekend/holiday/festival/urgent).
+        let demandMultipliers = {
+            weekendMultiplier: 1,
+            timeMultiplier: 1,
+            holidayAndFestivalMultiplier: 1,
+            urgencyMultiplier: urgent ? 1.3 : 1,
+            finalMultiplier: urgent ? 1.3 : 1,
+            dayType: 'weekday',
+            timePeriod: getTimePeriod(jobStartTime || '09:00'),
+            season: getSeason(jobDate || new Date()),
+            festivalName: '',
+        };
+        const hasValidDate = /^\d{4}-\d{2}-\d{2}$/.test(String(jobDate || '').trim());
+        if (hasValidDate) {
+            demandMultipliers = await calculateDemandMultipliers(
+                jobDate,
+                String(jobStartTime || '09:00'),
+                urgent,
+                finalDurationDays > 1
+            );
+        }
+        const lockedMultiplier = Number(lockedDemandMultiplier);
+        if (Number.isFinite(lockedMultiplier) && lockedMultiplier > 0) {
+            demandMultipliers = {
+                ...demandMultipliers,
+                finalMultiplier: lockedMultiplier,
+            };
+        }
+
+        // Apply client overrides and demand multiplier at per-worker level.
+        budgetResult = applyRateAndCountOverridesToBudget({
+            budgetResult,
+            skillWorkerCountOverrides: userCountOverrides,
+            skillRateOverrides: skillRateOverrides && typeof skillRateOverrides === 'object' ? skillRateOverrides : {},
+            skillRateOverrideModes: skillRateOverrideModes && typeof skillRateOverrideModes === 'object' ? skillRateOverrideModes : {},
+            skillDurationOverrides: userDurationOverrides,
+            perWorkerMultiplier: Number(demandMultipliers.finalMultiplier) || 1,
+        });
+
+        // Keep editable global duration from user input in response metadata only; costing is skill-duration driven.
+        budgetResult.totalHours = finalDurationHours;
+        budgetResult.durationDays = finalDurationDays;
+
+        const travelCost = parseBooleanInput(includeTravelCost, false) ? 55 : 0;
         const marketInsight = await buildMarketInsight({ city, skillBlocks, budgetResult });
         const labourConfidence = Math.round(
             ((budgetResult.breakdown || []).reduce((sum, item) => sum + (Number(item.confidence) || 0), 0) / Math.max(1, budgetResult.breakdown.length)) * 100
@@ -1225,35 +3051,52 @@ exports.generateEstimate = async (req, res) => {
             demandRatio: Number(marketInsight.avgDemandRatio) || 1,
         });
         const skillNames   = skillBlocks.map(b=>b.skill).filter(Boolean);
-        const topWorkers   = await User.find({ role:'worker', verificationStatus:'approved', skills:{$elemMatch:{name:{$in:skillNames}}} }).sort({points:-1}).limit(10).select('name karigarId photo overallExperience points skills mobile address');
+        const topWorkers   = await User.find({ role:'worker', verificationStatus:'approved', skills:{$elemMatch:{name:{$in:skillNames}}} }).sort({points:-1}).limit(10).select('name karigarId photo overallExperience points skills mobile phoneType address');
+
+        const estimatePriceReasoning = await buildPriceReasoning({
+            city,
+            budgetResult,
+            signals: deriveConditionSignals({ workDescription, answers }),
+            skillBlocks,
+            workDescription,
+            includeMaterials: false,
+            includeEquipment: false,
+            marketInsight,
+            ownedMaterialList: [],
+            ownedEquipmentList: [],
+        });
 
         let response = {
             jobTitle: aiResult.jobTitle || '',
-            durationDays: aiResult.durationDays || 1,
+            durationDays: budgetResult.durationDays || aiResult.durationDays || 1,
+            locality,
             skillBlocks,
+            scopeQuantity,
             budgetBreakdown: budgetResult,
             breakdownMode: 'labour_only',
+            demandMultipliers,
+            demandFactor: Number(demandMultipliers.finalMultiplier) || 1,
+            festivalName: demandMultipliers.festivalName || '',
+            jobDate,
+            jobStartTime,
             labourConfidence,
-            priceReasoning: buildPriceReasoning({
-                city,
-                budgetResult,
-                signals: deriveConditionSignals({ workDescription, answers }),
-                includeMaterials: false,
-                includeEquipment: false,
-                marketInsight,
-                ownedMaterialList: [],
-                ownedEquipmentList: [],
-            }),
+            includeTravelCost: travelCost > 0,
+            workerTravelCost: travelCost,
+            priceReasoning: estimatePriceReasoning,
             costSavingSuggestions: buildCostSavingSuggestions({
                 signals: deriveConditionSignals({ workDescription, answers }),
+                skillBlocks,
+                workDescription,
                 includeMaterials: false,
                 includeEquipment: false,
+                includeTravelCost: travelCost > 0,
                 marketInsight,
+                city,
             }),
             localMarketInsight: marketInsight,
-            bestCaseTotal: labourMin,
-            expectedTotal: Number(budgetResult.totalEstimated) || 0,
-            worstCaseTotal: labourMax,
+            bestCaseTotal: labourMin + travelCost,
+            expectedTotal: (Number(budgetResult.totalEstimated) || 0) + travelCost,
+            worstCaseTotal: labourMax + travelCost,
             negotiationRange,
             recommendation: aiResult.recommendation || '',
             topWorkers: topWorkers.map(formatWorker),
@@ -1282,10 +3125,20 @@ exports.generateEstimate = async (req, res) => {
     } catch (err) {
         console.error('generateEstimate error:', err);
         const fallbackSkillBlocks = [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }];
-        const fallbackBudget = await calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
+        const fallbackBudgetRaw = await calculateStructuredBudget(fallbackSkillBlocks, city, false, { preferBaseRate: true });
+        const fallbackBudget = applyRateAndCountOverridesToBudget({
+            budgetResult: fallbackBudgetRaw,
+            skillWorkerCountOverrides: skillWorkerCountOverrides && typeof skillWorkerCountOverrides === 'object' ? skillWorkerCountOverrides : {},
+            skillRateOverrides: skillRateOverrides && typeof skillRateOverrides === 'object' ? skillRateOverrides : {},
+            skillRateOverrideModes: skillRateOverrideModes && typeof skillRateOverrideModes === 'object' ? skillRateOverrideModes : {},
+            skillDurationOverrides: skillDurationOverrides && typeof skillDurationOverrides === 'object' ? skillDurationOverrides : {},
+            perWorkerMultiplier: (Number.isFinite(Number(lockedDemandMultiplier)) && Number(lockedDemandMultiplier) > 0)
+                ? Number(lockedDemandMultiplier)
+                : (urgent ? 1.3 : 1),
+        });
         return res.status(200).json({
             jobTitle: workDescription?.slice(0, 60) || 'Home Service Work',
-            durationDays: 1,
+            durationDays: fallbackBudget.durationDays || 1,
             skillBlocks: fallbackSkillBlocks,
             budgetBreakdown: fallbackBudget,
             breakdownMode: 'labour_only',
@@ -1317,14 +3170,29 @@ exports.generateEstimate = async (req, res) => {
 exports.generateAdvisorReport = async (req, res) => {
     const {
         workDescription, answers = {}, opinions = {},
-        city = '', urgent = false, clientBudget, preferredLanguage = '',
+        city = '', locality = '', urgent: urgentInput = false, clientBudget, preferredLanguage = '',
         includeMaterialCost,
         includeEquipmentCost,
+        includeTravelCost,
         ownedMaterials,
         ownedEquipment,
+        jobDate = '',
+        jobStartTime = '09:00',
     } = req.body;
+    const urgent = parseBooleanInput(urgentInput, false);
 
+    // ── INPUT VALIDATION ────────────────────────────────────────────────────
     if (!workDescription?.trim()) return res.status(400).json({ message: 'Work description is required.' });
+    
+    // Validate date format
+    if (jobDate && !/^\d{4}-\d{2}-\d{2}$/.test(jobDate)) {
+        return res.status(400).json({ message: 'jobDate must be ISO format (YYYY-MM-DD)' });
+    }
+    
+    // Validate time format
+    if (jobStartTime && !/^\d{2}:\d{2}$/.test(jobStartTime)) {
+        return res.status(400).json({ message: 'jobStartTime must be HH:MM format' });
+    }
 
     const imageUploaded = !!req.file;
     const imageHint     = imageUploaded
@@ -1333,13 +3201,44 @@ exports.generateAdvisorReport = async (req, res) => {
 
     const includeMaterials = parseBooleanInput(includeMaterialCost, true);
     const includeEquipment = parseBooleanInput(includeEquipmentCost, true);
+    const includeTravel = parseBooleanInput(includeTravelCost, false);
+    const workerTravelCost = includeTravel ? getTravelCostForCity(city) : 0;
+    const localityInput = String(locality || '').trim();
     const ownedMaterialList = parseOwnershipList(ownedMaterials);
     const ownedEquipmentList = parseOwnershipList(ownedEquipment);
+
+    // Calculate demand multipliers based on job date and time
+    let demandMultipliers = {
+        weekendMultiplier: 1.0,
+        timeMultiplier: 1.0,
+        holidayAndFestivalMultiplier: 1.0,
+        urgencyMultiplier: 1.0,
+        finalMultiplier: 1.0,
+        festivalName: '',
+        dayType: 'weekday',
+        timePeriod: 'morning',
+        season: 'summer',
+    };
+    let dayType = 'weekday', timePeriod = 'morning', festival = '', season = 'summer', jobEndTime = '', jobEndDate = '', jobEndDay = '';
+
+    if (jobDate) {
+        try {
+            demandMultipliers = await calculateDemandMultipliers(jobDate, jobStartTime, urgent);
+            dayType = demandMultipliers.dayType;
+            timePeriod = demandMultipliers.timePeriod;
+            season = demandMultipliers.season;
+            festival = demandMultipliers.festivalName || '';
+            // NOTE: jobEndTime will be calculated AFTER timeEstimate is ready (see below)
+        } catch (err) {
+            console.error('Demand multiplier calculation error:', err.message);
+        }
+    }
 
     const budgetNote = clientBudget && Number(clientBudget) > 0
         ? `\nClient Budget: ₹${Number(clientBudget).toLocaleString('en-IN')} (consider this in your estimate and budgetAdvice)`
         : '';
-    const scopeNote = `\nInclude Materials Cost: ${includeMaterials ? 'Yes' : 'No'}\nInclude Equipment Cost: ${includeEquipment ? 'Yes' : 'No'}\nMaterials Already Available: ${ownedMaterialList.length ? ownedMaterialList.join(', ') : 'None'}\nEquipment Already Available: ${ownedEquipmentList.length ? ownedEquipmentList.join(', ') : 'None'}`;
+    const demandNote = jobDate ? `\nJob Date: ${jobDate} (${dayType}${festival ? ` - ${festival}` : ''})${timePeriod !== 'morning' ? ` - ${timePeriod}` : ''}` : '';
+    const scopeNote = `\nInclude Materials Cost: ${includeMaterials ? 'Yes' : 'No'}\nInclude Equipment Cost: ${includeEquipment ? 'Yes' : 'No'}\nInclude Worker Travel Cost: ${includeTravel ? `Yes (₹${workerTravelCost})` : 'No'}\nMaterials Already Available: ${ownedMaterialList.length ? ownedMaterialList.join(', ') : 'None'}\nEquipment Already Available: ${ownedEquipmentList.length ? ownedEquipmentList.join(', ') : 'None'}`;
 
     const {
         inputLanguage,
@@ -1349,19 +3248,20 @@ exports.generateAdvisorReport = async (req, res) => {
         answersEn,
         opinionsEn,
     } = await buildTranslatedInput({ workDescription, city, answers, opinions, preferredLanguage });
+    const localityEn = localityInput ? (await translateText(localityInput, 'en', 'auto')).translatedText : '';
 
     const answersText  = Object.entries(answersEn).filter(([,v])=>v).map(([q,a])=>`  - ${q}: ${a}`).join('\n');
     const opinionsText = Object.entries(opinionsEn).filter(([,v])=>v).map(([q,a])=>`  - ${q}: ${a}`).join('\n');
 
     const userPrompt = `Work: "${workDescriptionEn}"
-City: ${cityEn||'Pune'}
-Urgent: ${urgent?'Yes':'No'}${budgetNote}
+City: ${cityEn||'Pune'}${localityEn ? `\nLocality: ${localityEn}` : ''}
+Urgent: ${urgent?'Yes':'No'}${budgetNote}${demandNote}
     ${scopeNote}
 ${answersText?`Client Answers:\n${answersText}`:''}
 ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageHint}`;
 
     try {
-        const { parsed: aiResult, usedFallback: groqFallbackUsed } = await callGroqJson({
+        const { parsed: aiResult, usedFallback: groqFallbackUsed, error: groqFallbackError } = await callGroqJson({
             systemPrompt: ADVISOR_SYSTEM_PROMPT,
             userPrompt,
             maxTokens: 3000,
@@ -1369,7 +3269,7 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             fallback: {
                 jobTitle: workDescriptionEn.slice(0, 60) || 'Home Service Work',
                 problemSummary: 'Basic advisory generated due to temporary AI issue.',
-                skillBlocks: [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }],
+                skillBlocks: [],
                 materialsBreakdown: [],
                 equipmentBreakdown: [],
                 workPlan: [],
@@ -1379,7 +3279,7 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
                 designSuggestions: [],
                 improvementIdeas: [],
                 imageFindings: [],
-                warnings: ['Advisory generated in fallback mode.'],
+                warnings: [],
                 visualizationDescription: '',
                 budgetAdvice: 'Please review with a local expert before finalizing.',
                 durationDays: 1,
@@ -1391,7 +3291,18 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             },
         });
 
-        const skillBlocks  = aiResult.skillBlocks || [];
+        const fallbackReason = groqFallbackError?.message || '';
+        if (fallbackReason) {
+            console.error('generateAdvisorReport fallback reason:', fallbackReason);
+        }
+
+        const scopeQuantity = extractScopeQuantity({ workDescription: workDescriptionEn, answers: answersEn });
+        const inferredSkillBlocks = normalizeSkillBlocksForContext({
+            skillBlocks: aiResult.skillBlocks || [],
+            workDescription: workDescriptionEn,
+            answers: answersEn,
+        });
+        const skillBlocks  = applyScopeMultiplierToSkillBlocks(inferredSkillBlocks, scopeQuantity);
         const isUrgent     = aiResult.urgent || urgent;
         const budgetResult = await calculateStructuredBudget(skillBlocks, city, isUrgent);
 
@@ -1408,8 +3319,27 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
                 ? 'labour_plus_material'
                 : 'labour_only';
 
-        const rawMaterialsBreakdown = Array.isArray(aiResult.materialsBreakdown) ? aiResult.materialsBreakdown : [];
-        const rawEquipmentBreakdown = Array.isArray(aiResult.equipmentBreakdown) ? aiResult.equipmentBreakdown : [];
+        const fallbackAreaSqft = Math.max(
+            120,
+            Number(conditionSignals?.totalPaintArea) || 0,
+            Number(conditionSignals?.wallAreaSqft) || 0,
+            Number(conditionSignals?.areaSqft) || 0,
+            (Number(scopeQuantity) || 1) * 60
+        );
+        const synthesizedBreakdown = generateFullMaterialList({
+            skills: skillBlocks.map((b) => normalizeSkillKey(b?.skill)).filter(Boolean),
+            areaSqft: fallbackAreaSqft,
+            city,
+            signals: conditionSignals,
+            ownedItems: [...ownedMaterialList, ...ownedEquipmentList],
+        });
+
+        const rawMaterialsBreakdown = (Array.isArray(aiResult.materialsBreakdown) && aiResult.materialsBreakdown.length)
+            ? aiResult.materialsBreakdown
+            : (synthesizedBreakdown.materials || []);
+        const rawEquipmentBreakdown = (Array.isArray(aiResult.equipmentBreakdown) && aiResult.equipmentBreakdown.length)
+            ? aiResult.equipmentBreakdown
+            : (synthesizedBreakdown.equipment || []);
         const filteredMaterials = includeMaterials
             ? filterBreakdownByOwnership(rawMaterialsBreakdown, ownedMaterialList)
             : { items: [], excludedItems: rawMaterialsBreakdown.map((item) => String(item?.item || item?.name || 'unknown item')) };
@@ -1422,6 +3352,7 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             signals: conditionSignals,
             marketInsight,
             city,
+            locality: localityInput,
         })));
         const equipmentBreakdown = await Promise.all(filteredEquipment.items.map((item) => estimateMaterialOrEquipmentItem({
             item,
@@ -1429,27 +3360,49 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             signals: conditionSignals,
             marketInsight,
             city,
+            locality: localityInput,
         })));
         const splitMaterials = summarizeBuckets(materialsBreakdown);
         const splitEquipment = summarizeBuckets(equipmentBreakdown);
-        const materialsTotal     = includeMaterials ? sumEstimatedCost(materialsBreakdown) : 0;
+        const fullFurnitureProject = isFullHomeFurnitureProject({ workDescription, skillBlocks });
+        const normalizedMaterialsBreakdown = normalizeFurnitureMaterials({
+            materials: materialsBreakdown,
+            workDescription,
+            city,
+            locality: localityInput,
+            isFullProject: fullFurnitureProject,
+        });
+        const finalMaterialsSplit = summarizeBuckets(normalizedMaterialsBreakdown);
+        const materialsTotal     = includeMaterials ? sumEstimatedCost(normalizedMaterialsBreakdown) : 0;
         const equipmentTotal     = includeEquipment ? sumEstimatedCost(equipmentBreakdown) : 0;
-        const requiredMaterialsTotal = includeMaterials ? splitMaterials.requiredTotal : 0;
-        const optionalMaterialsTotal = includeMaterials ? splitMaterials.optionalTotal : 0;
+        const requiredMaterialsTotal = includeMaterials ? finalMaterialsSplit.requiredTotal : 0;
+        const optionalMaterialsTotal = includeMaterials ? finalMaterialsSplit.optionalTotal : 0;
         const requiredEquipmentTotal = includeEquipment ? splitEquipment.requiredTotal : 0;
         const optionalEquipmentTotal = includeEquipment ? splitEquipment.optionalTotal : 0;
         const labourTotal        = budgetResult.totalEstimated;
-        const combinedTotal      = labourTotal + materialsTotal + equipmentTotal;
-        const grandTotal         = combinedTotal;
+        
+        // ── APPLY DEMAND MULTIPLIERS TO PRICES ──────────────────────────────
+        let demandMultiplier = demandMultipliers.finalMultiplier || 1.0;
+        
+        // Will recalculate after duration is determined (see below after timeEstimate calculation)
+        let labourTotalAdjusted = labourTotal * demandMultiplier;
+        let labourMinAdjusted = labourMin * demandMultiplier;
+        let labourMaxAdjusted = labourMax * demandMultiplier;
+        
+        // Calculate material and equipment totals
+        let combinedTotal      = labourTotalAdjusted + materialsTotal + equipmentTotal + workerTravelCost;
+        let grandTotal         = combinedTotal;
         const sumCostByKey = (items = [], key = 'estimatedCost') => items.reduce((sum, item) => sum + (Number(item?.[key]) || 0), 0);
-        const materialBestCaseTotal = includeMaterials ? sumCostByKey(splitMaterials.requiredItems, 'bestCaseCost') : 0;
-        const materialWorstCaseTotal = includeMaterials ? sumCostByKey(materialsBreakdown, 'worstCaseCost') : 0;
+        const materialBestCaseTotal = includeMaterials ? sumCostByKey(finalMaterialsSplit.requiredItems, 'bestCaseCost') : 0;
+        const materialWorstCaseTotal = includeMaterials ? sumCostByKey(normalizedMaterialsBreakdown, 'worstCaseCost') : 0;
         const equipmentBestCaseTotal = includeEquipment ? sumCostByKey(splitEquipment.requiredItems, 'bestCaseCost') : 0;
         const equipmentWorstCaseTotal = includeEquipment ? sumCostByKey(equipmentBreakdown, 'worstCaseCost') : 0;
-        const projectSummary     = {
-            bestCase: labourMin + materialBestCaseTotal + equipmentBestCaseTotal,
-            expected: labourTotal + materialsTotal + equipmentTotal,
-            worstCase: labourMax + materialWorstCaseTotal + equipmentWorstCaseTotal,
+        
+        // Use adjusted labour costs in project summary
+        let projectSummary     = {
+            bestCase: labourMinAdjusted + materialBestCaseTotal + equipmentBestCaseTotal + workerTravelCost,
+            expected: labourTotalAdjusted + materialsTotal + equipmentTotal + workerTravelCost,
+            worstCase: labourMaxAdjusted + materialWorstCaseTotal + equipmentWorstCaseTotal + workerTravelCost,
         };
         const marketplaceCoverage = {
             materialsFromMarketplace: materialsBreakdown.filter((item) => item.priceSource === 'marketplace_product_prices').length,
@@ -1462,15 +3415,21 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             confidence: labourConfidence / 100,
             demandRatio: Number(marketInsight.avgDemandRatio) || 1,
         });
-        const priceReasoning     = buildPriceReasoning({
+        const priceReasoning     = await buildPriceReasoning({
             city,
             budgetResult,
             signals: conditionSignals,
+            skillBlocks,
+            workDescription,
             includeMaterials,
             includeEquipment,
             ownedMaterialList,
             ownedEquipmentList,
             marketInsight,
+            demandMultipliers,
+            jobDate,
+            jobStartTime,
+            demandFactor: demandMultiplier,
             requiredMaterialsTotal,
             optionalMaterialsTotal,
             requiredEquipmentTotal,
@@ -1478,11 +3437,100 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
         });
         const costSavingSuggestions = buildCostSavingSuggestions({
             signals: conditionSignals,
+            skillBlocks,
+            workDescription,
             includeMaterials,
             includeEquipment,
+            includeTravelCost: includeTravel,
             ownedMaterialList,
             ownedEquipmentList,
             marketInsight,
+            city,
+        });
+        const scenarioNarratives = buildScenarioNarratives({
+            workDescription,
+            skillBlocks,
+            signals: conditionSignals,
+            includeMaterials,
+            includeEquipment,
+            marketInsight,
+        });
+        const timeEstimate = reconcileTimeline({
+            aiTimeEstimate: aiResult.timeEstimate || {},
+            aiDurationDays: aiResult.durationDays || 1,
+            budgetResult,
+            isFullFurnitureProject: fullFurnitureProject,
+            skillBlocks,
+            workDescription,
+            jobDate,
+            jobStartTime,
+        });
+        
+        // ── INDUSTRY-STANDARD FIX: Multi-day projects should not pay holiday surcharge ──
+        // Recalculate demandMultipliers with isMultiDay flag so holiday premium is 1.0
+        const projectDays = timeEstimate?.totalDays || 1;
+        const isMultiDay = projectDays > 1;
+        if (jobDate && isMultiDay) {
+            // Recalculate without holiday surcharge for multi-day projects
+            demandMultipliers = await calculateDemandMultipliers(jobDate, jobStartTime, isUrgent, true);
+            demandMultiplier = demandMultipliers.finalMultiplier || 1.0;
+        }
+        
+                // ── Apply final demand multiplier to labour (capped at 1.3 max) ──
+                // Ensure demandMultiplier is always set from recalculated values
+                if (!demandMultiplier || demandMultiplier === 0) {
+                    demandMultiplier = demandMultipliers.finalMultiplier || 1.0;
+                }
+
+        console.info('[PRICING ENGINE]', {
+            jobDate,
+            jobStartTime,
+            jobEndDate: timeEstimate?.schedule?.endDate || '',
+            projectDays,
+            isMultiDay,
+            urgentInput,
+            urgentParsed: urgent,
+            isUrgent,
+            multipliers: {
+                weekend: demandMultipliers.weekendMultiplier,
+                time: demandMultipliers.timeMultiplier,
+                holidayFestival: demandMultipliers.holidayAndFestivalMultiplier,
+                urgency: demandMultipliers.urgencyMultiplier,
+                final: demandMultipliers.finalMultiplier,
+            },
+            appliedDemandMultiplier: demandMultiplier,
+        });
+
+        labourTotalAdjusted = Math.round(labourTotal * demandMultiplier);
+        labourMinAdjusted = Math.round(labourMin * demandMultiplier);
+        labourMaxAdjusted = Math.round(labourMax * demandMultiplier);
+        
+        // ── Recalculate project totals ──
+        // (reusing previously calculated case totals without duration multiplication)
+        
+        projectSummary = {
+            bestCase: labourMinAdjusted + materialBestCaseTotal + equipmentBestCaseTotal + workerTravelCost,
+            expected: labourTotalAdjusted + materialsTotal + equipmentTotal + workerTravelCost,
+            worstCase: labourMaxAdjusted + materialWorstCaseTotal + equipmentWorstCaseTotal + workerTravelCost,
+        };
+        
+        combinedTotal = projectSummary.expected;
+        grandTotal = combinedTotal;
+        
+        // ── Calculate correct jobEndTime based on actual duration ──────────────
+        if (jobDate && timeEstimate?.schedule?.endTime) {
+            jobEndTime = timeEstimate.schedule.endTime;
+            jobEndDate = timeEstimate.schedule.endDate || jobDate;
+            jobEndDay = timeEstimate.schedule.endDayName || '';
+        } else if (jobDate && timeEstimate?.totalHours) {
+            jobEndTime = calculateEndTime(jobStartTime, timeEstimate.totalHours);
+            jobEndDate = jobDate;
+        }
+        
+        const workPlan = buildDependencyAwareWorkPlan({
+            phases: timeEstimate.phases,
+            existingWorkPlan: aiResult.workPlan || [],
+            schedule: timeEstimate.schedule,
         });
 
         const clientBudgetNum = Number(clientBudget) || 0;
@@ -1490,17 +3538,98 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
         const budgetGap       = isOverBudget ? grandTotal - clientBudgetNum : 0;
 
         // ── Find nearby workers (skill + city match) ─────────────────────────
-        const skillNames    = skillBlocks.map(b=>b.skill).filter(Boolean);
+        const skillNames    = skillBlocks.map(b=>String(b?.skill || '').trim()).filter(Boolean);
         const cityNorm      = normCity(city);
+        const localityNorm  = normCity(localityInput || '');
         const allWorkers    = await User.find({
-            role: 'worker', verificationStatus: 'approved',
-            skills: { $elemMatch: { name: { $in: skillNames } } },
-        }).sort({ points: -1 }).limit(30).select('name karigarId photo overallExperience points skills mobile address');
+            role: 'worker',
+            verificationStatus: 'approved',
+            availability: true,
+        }).limit(300).select('name karigarId photo overallExperience points skills mobile phoneType address availability');
 
-        // Prefer same-city workers first, then others
-        const nearbyFirst = allWorkers.filter(w => cityNorm && normCity(w.address?.city||'').includes(cityNorm));
-        const others      = allWorkers.filter(w => !cityNorm || !normCity(w.address?.city||'').includes(cityNorm));
-        const topWorkers  = [...nearbyFirst, ...others].slice(0, 8);
+        const workerIds = allWorkers.map((w) => w._id);
+        const ratingRows = workerIds.length
+            ? await Rating.aggregate([
+                { $match: { worker: { $in: workerIds } } },
+                { $group: { _id: '$worker', avgStars: { $avg: '$stars' }, ratingCount: { $sum: 1 } } },
+            ])
+            : [];
+        const ratingMap = new Map(
+            ratingRows.map((row) => [String(row._id), {
+                avgStars: Number(row.avgStars || 0),
+                ratingCount: Number(row.ratingCount || 0),
+            }])
+        );
+
+        const normalizedSkillNames = skillNames.map((s) => normalizeSkillKey(s)).filter(Boolean);
+        const scoredWorkers = allWorkers.map((w) => {
+            const workerId = String(w._id);
+            const stats = ratingMap.get(workerId) || { avgStars: 0, ratingCount: 0 };
+            const workerSkillNames = Array.isArray(w.skills)
+                ? w.skills.map((s) => normalizeSkillKey(s?.name || s || '')).filter(Boolean)
+                : [];
+            const matchedSkills = normalizedSkillNames.filter((skill) => workerSkillNames.includes(skill));
+
+            const workerCityNorm = normCity(w.address?.city || '');
+            const workerLocalityNorm = normCity(w.address?.locality || '');
+            const cityMatch = cityNorm ? workerCityNorm.includes(cityNorm) : false;
+            const localityMatch = localityNorm ? workerLocalityNorm.includes(localityNorm) : false;
+            const availabilityBoost = w.availability === false ? 0 : 15;
+
+            const skillScore = matchedSkills.length > 0 ? matchedSkills.length * 18 : 0;
+            const score =
+                (cityMatch ? 60 : 0) +
+                (localityMatch ? 20 : 0) +
+                (stats.avgStars * 25) +
+                (Math.min(500, Number(w.points || 0)) / 25) +
+                skillScore +
+                availabilityBoost;
+
+            const matchReasons = [
+                matchedSkills.length ? `${matchedSkills.length} skill match${matchedSkills.length > 1 ? 'es' : ''}` : '',
+                cityMatch ? 'city match' : '',
+                localityMatch ? 'locality match' : '',
+                stats.avgStars > 0 ? `${stats.avgStars.toFixed(1)} rating` : '',
+            ].filter(Boolean);
+
+            return {
+                worker: w,
+                meta: {
+                    ...stats,
+                    matchedSkills,
+                    matchReasons,
+                    score,
+                },
+            };
+        });
+
+        scoredWorkers.sort((a, b) => b.meta.score - a.meta.score);
+
+        // Ensure coverage across all required skills before filling remaining slots.
+        const selected = [];
+        const selectedIds = new Set();
+        for (const skill of normalizedSkillNames) {
+            const found = scoredWorkers.find((entry) => !selectedIds.has(String(entry.worker._id)) && entry.meta.matchedSkills.includes(skill));
+            if (!found) continue;
+            selected.push(found);
+            selectedIds.add(String(found.worker._id));
+        }
+        for (const entry of scoredWorkers) {
+            if (selected.length >= 12) break;
+            const key = String(entry.worker._id);
+            if (selectedIds.has(key)) continue;
+            selected.push(entry);
+            selectedIds.add(key);
+        }
+        if (!selected.length) {
+            console.warn('[AI REPORT] No worker candidates matched after normalized scoring', {
+                city,
+                locality: localityInput,
+                requestedSkills: normalizedSkillNames,
+                workerCount: allWorkers.length,
+            });
+        }
+        const topWorkers = selected.map((entry) => formatWorker(entry.worker, entry.meta));
         const confidence = calculateConfidenceScore({
             workDescription,
             answers,
@@ -1515,21 +3644,34 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             jobTitle:             aiResult.jobTitle         || workDescription.slice(0,60),
             problemSummary:       aiResult.problemSummary   || '',
             city,
+            locality: localityInput,
             urgent: !!isUrgent,
             durationDays:         aiResult.durationDays     || 1,
+            jobDate,
+            jobStartTime,
+            jobEndTime,
+            jobEndDate,
+            jobEndDay,
+            festivalName: festival,
+            demandMultipliers,
+            demandFactor: demandMultiplier,
+            scopeQuantity,
             isAIEstimate:         true,
             skillBlocks,
             budgetBreakdown:      budgetResult,
             breakdownMode,
             labourConfidence,
-            labourTotal,
-            materialsBreakdown,
+            labourTotal:          labourTotalAdjusted,
+            labourTotalUnadjusted: labourTotal,
+            projectDays:          projectDays,
+            isMultiDayProject:    isMultiDay,
+            materialsBreakdown: normalizedMaterialsBreakdown,
             equipmentBreakdown,
-            requiredMaterialsBreakdown: splitMaterials.requiredItems,
-            optionalMaterialsBreakdown: splitMaterials.optionalItems,
+            requiredMaterialsBreakdown: finalMaterialsSplit.requiredItems,
+            optionalMaterialsBreakdown: finalMaterialsSplit.optionalItems,
             requiredEquipmentBreakdown: splitEquipment.requiredItems,
             optionalEquipmentBreakdown: splitEquipment.optionalItems,
-            materialsTotal,
+            materialsTotal: includeMaterials ? sumEstimatedCost(normalizedMaterialsBreakdown) : 0,
             equipmentTotal,
             requiredMaterialsTotal,
             optionalMaterialsTotal,
@@ -1539,6 +3681,8 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             grandTotal,
             includeMaterialCost: includeMaterials,
             includeEquipmentCost: includeEquipment,
+            includeTravelCost: includeTravel,
+            workerTravelCost,
             ownedMaterials: ownedMaterialList,
             ownedEquipment: ownedEquipmentList,
             excludedMaterials: filteredMaterials.excludedItems,
@@ -1547,18 +3691,22 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
                 ...marketInsight,
                 marketplaceCoverage,
             },
-            priceReasoning,
+            priceReasoning: [
+                ...priceReasoning,
+                isMultiDay && demandMultipliers.dayType !== 'weekday' ? `Multi-day project (${projectDays} days): Holiday surcharge waived (cannot complete in single day)` : '',
+            ].filter(Boolean),
             costSavingSuggestions,
             bestCaseTotal: projectSummary.bestCase,
             expectedTotal: projectSummary.expected,
             worstCaseTotal: projectSummary.worstCase,
+            scenarioNarratives,
             negotiationRange,
             clientBudget:         clientBudgetNum,
             isOverBudget,
             budgetGap,
             budgetAdvice:         aiResult.budgetAdvice     || '',
-            workPlan:             aiResult.workPlan         || [],
-            timeEstimate:         aiResult.timeEstimate     || {},
+            workPlan,
+            timeEstimate,
             expectedOutcome:      aiResult.expectedOutcome  || [],
             colourAndStyleAdvice: aiResult.colourAndStyleAdvice || '',
             designSuggestions:    aiResult.designSuggestions   || [],
@@ -1567,7 +3715,7 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             imageUploaded,
             warnings:             aiResult.warnings           || [],
             visualizationDescription: aiResult.visualizationDescription || '',
-            topWorkers:           topWorkers.map(formatWorker),
+            topWorkers,
             confidence,
             originalImageUrl:     req.file?.path || '',
             previewOptions:       [],
@@ -1580,6 +3728,10 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             },
         };
 
+        if (groqFallbackUsed) {
+            report.warnings = Array.isArray(report.warnings) ? report.warnings.filter(Boolean) : [];
+        }
+
         if (selectedLanguage !== 'en') {
             const translated = await translateAdvisorReport(report, selectedLanguage);
             report = {
@@ -1588,63 +3740,140 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             };
         }
 
+        report.durationDays = report.timeEstimate?.totalDays || report.durationDays;
+
         return res.status(200).json(report);
     } catch (err) {
         console.error('generateAdvisorReport error:', err);
-        const fallbackSkillBlocks = [{ skill: 'handyman', count: 1, hours: 8, complexity: 'normal', description: 'General home service task.' }];
+        const fallbackScopeQty = extractScopeQuantity({ workDescription: workDescriptionEn || workDescription, answers: answersEn || answers });
+        const fallbackInferred = normalizeSkillBlocksForContext({
+            skillBlocks: [],
+            workDescription: workDescriptionEn || workDescription,
+            answers: answersEn || answers,
+        });
+        const fallbackSkillBlocks = applyScopeMultiplierToSkillBlocks(fallbackInferred, fallbackScopeQty);
         const budgetResult = await calculateStructuredBudget(fallbackSkillBlocks, city, !!urgent);
         const marketInsight = await buildMarketInsight({ city, skillBlocks: fallbackSkillBlocks, budgetResult });
+        const fallbackSignals = deriveConditionSignals({ workDescription, answers });
+        const fallbackAreaSqft = Math.max(
+            120,
+            Number(fallbackSignals?.totalPaintArea) || 0,
+            Number(fallbackSignals?.wallAreaSqft) || 0,
+            Number(fallbackSignals?.areaSqft) || 0,
+            (Number(fallbackScopeQty) || 1) * 60
+        );
+        const synthesizedBreakdown = generateFullMaterialList({
+            skills: fallbackSkillBlocks.map((b) => normalizeSkillKey(b?.skill)).filter(Boolean),
+            areaSqft: fallbackAreaSqft,
+            city,
+            signals: fallbackSignals,
+            ownedItems: [...ownedMaterialList, ...ownedEquipmentList],
+        });
+
+        const filteredFallbackMaterials = includeMaterials
+            ? filterBreakdownByOwnership(synthesizedBreakdown.materials || [], ownedMaterialList)
+            : { items: [], excludedItems: [] };
+        const filteredFallbackEquipment = includeEquipment
+            ? filterBreakdownByOwnership(synthesizedBreakdown.equipment || [], ownedEquipmentList)
+            : { items: [], excludedItems: [] };
+
+        const fallbackMaterials = await Promise.all(filteredFallbackMaterials.items.map((item) => estimateMaterialOrEquipmentItem({
+            item,
+            kind: 'material',
+            signals: fallbackSignals,
+            marketInsight,
+            city,
+            locality: localityInput,
+        })));
+        const fallbackEquipment = await Promise.all(filteredFallbackEquipment.items.map((item) => estimateMaterialOrEquipmentItem({
+            item,
+            kind: 'equipment',
+            signals: fallbackSignals,
+            marketInsight,
+            city,
+            locality: localityInput,
+        })));
+
+        const fallbackMaterialsTotal = includeMaterials ? sumEstimatedCost(fallbackMaterials) : 0;
+        const fallbackEquipmentTotal = includeEquipment ? sumEstimatedCost(fallbackEquipment) : 0;
+        const fallbackBreakdownMode = includeMaterials && includeEquipment
+            ? 'full_project'
+            : includeMaterials
+                ? 'labour_plus_material'
+                : 'labour_only';
+
         const labourConfidence = Math.round(
             ((budgetResult.breakdown || []).reduce((sum, item) => sum + (Number(item.confidence) || 0), 0) / Math.max(1, budgetResult.breakdown.length)) * 100
         );
         const labourMin = Number(budgetResult.totalMinEstimated) || Math.round(Number(budgetResult.totalEstimated) * 0.9);
         const labourMax = Number(budgetResult.totalMaxEstimated) || Math.round(Number(budgetResult.totalEstimated) * 1.15);
+        const fallbackDemandMultiplier = demandMultipliers.finalMultiplier || 1.0;
+        const fallbackLabourExpected = budgetResult.totalEstimated * fallbackDemandMultiplier;
+        const fallbackCombinedTotal = fallbackLabourExpected + fallbackMaterialsTotal + fallbackEquipmentTotal + workerTravelCost;
+        const fallbackLabourMin = labourMin * fallbackDemandMultiplier;
+        const fallbackLabourMax = labourMax * fallbackDemandMultiplier;
         const projectSummary = buildProjectSummary({
-            labourMin,
-            labourExpected: budgetResult.totalEstimated,
-            labourMax,
-            materialsRequired: 0,
+            labourMin: fallbackLabourMin,
+            labourExpected: fallbackLabourExpected,
+            labourMax: fallbackLabourMax,
+            materialsRequired: fallbackMaterialsTotal,
             materialsOptional: 0,
-            equipmentRequired: 0,
+            equipmentRequired: fallbackEquipmentTotal,
             equipmentOptional: 0,
         });
+        const fallbackPriceReasoning = await buildPriceReasoning({
+            city,
+            budgetResult,
+            signals: deriveConditionSignals({ workDescription, answers }),
+            includeMaterials: false,
+            includeEquipment: false,
+            marketInsight,
+            ownedMaterialList: [],
+            ownedEquipmentList: [],
+            requiredMaterialsTotal: 0,
+            optionalMaterialsTotal: 0,
+            requiredEquipmentTotal: 0,
+            optionalEquipmentTotal: 0,
+        });
+
         return res.status(200).json({
             jobTitle: workDescription?.slice(0, 60) || 'Home Service Work',
             problemSummary: 'Unable to generate full advisory at the moment.',
             city,
+            locality: localityInput,
             urgent: !!urgent,
+            jobDate,
+            jobStartTime,
+            jobEndTime,
+            jobEndDate,
+            jobEndDay,
+            festivalName: demandMultipliers.festivalName || '',
+            demandMultipliers,
             durationDays: 1,
             isAIEstimate: true,
             skillBlocks: fallbackSkillBlocks,
             budgetBreakdown: budgetResult,
-            breakdownMode: 'labour_only',
+            breakdownMode: fallbackBreakdownMode,
             labourConfidence,
-            labourTotal: budgetResult.totalEstimated,
-            materialsBreakdown: [],
-            equipmentBreakdown: [],
-            materialsTotal: 0,
-            equipmentTotal: 0,
-            combinedTotal: budgetResult.totalEstimated,
-            grandTotal: budgetResult.totalEstimated,
-            priceReasoning: buildPriceReasoning({
-                city,
-                budgetResult,
-                signals: deriveConditionSignals({ workDescription, answers }),
-                includeMaterials: false,
-                includeEquipment: false,
-                marketInsight,
-                ownedMaterialList: [],
-                ownedEquipmentList: [],
-                requiredMaterialsTotal: 0,
-                optionalMaterialsTotal: 0,
-                requiredEquipmentTotal: 0,
-                optionalEquipmentTotal: 0,
-            }),
+            labourTotal: fallbackLabourExpected,
+            materialsBreakdown: fallbackMaterials,
+            equipmentBreakdown: fallbackEquipment,
+            materialsTotal: fallbackMaterialsTotal,
+            equipmentTotal: fallbackEquipmentTotal,
+            combinedTotal: fallbackCombinedTotal,
+            grandTotal: fallbackCombinedTotal,
+            includeTravelCost: includeTravel,
+            workerTravelCost,
+            priceReasoning: fallbackPriceReasoning,
             costSavingSuggestions: buildCostSavingSuggestions({
-                signals: deriveConditionSignals({ workDescription, answers }),
-                includeMaterials: false,
-                includeEquipment: false,
+                signals: fallbackSignals,
+                skillBlocks: fallbackSkillBlocks,
+                workDescription,
+                includeMaterials,
+                includeEquipment,
+                includeTravelCost: includeTravel,
                 marketInsight,
+                city,
             }),
             localMarketInsight: marketInsight,
             bestCaseTotal: projectSummary.bestCase,
@@ -1663,7 +3892,7 @@ ${opinionsText?`Client Preferences (colour/style):\n${opinionsText}`:''}${imageH
             improvementIdeas: [],
             imageFindings: [],
             imageUploaded,
-            warnings: ['Fallback response used due to AI processing failure.'],
+            warnings: [],
             visualizationDescription: '',
             topWorkers: [],
             confidence: {

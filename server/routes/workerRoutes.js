@@ -25,11 +25,14 @@ const {
     getJobDetails,
     applyForJob,
     applyForSubTask,
+    cancelPendingJobApplication,
     cancelAcceptedJob,
     getWorkerBookings,
     getWorkerAnalytics,
     getWorkerProfile,
     updateWorkerProfile,
+    getWorkerDailyProfile,
+    updateWorkerDailyProfile,
     toggleAvailability,
     deleteAccount,
     getPublicWorkerProfile,
@@ -48,6 +51,11 @@ const {
     changePasswordWithOtp,
     deleteAccountPermanently,
 } = require('../controllers/workerController');
+const {
+    getWorkerDirectHireTickets,
+    acceptDirectHireTicket,
+    rejectDirectHireTicket,
+} = require('../controllers/directHireController');
 
 // ── Notification controller — original export names ───────────────────────────
 const {
@@ -85,6 +93,7 @@ router.delete('/account/delete-permanent', protect, worker, deleteAccountPermane
 router.get('/jobs',                    protect, worker, getAvailableJobs);
 router.get('/jobs/:jobId/details',     protect, worker, getJobDetails);
 router.post('/jobs/:jobId/apply',      protect, worker, applyForJob);
+router.patch('/jobs/:jobId/application/cancel', protect, worker, cancelPendingJobApplication);
 router.patch('/jobs/:jobId/cancel',    protect, worker, cancelAcceptedJob);
 
 // ── Sub-task apply ────────────────────────────────────────────────────────────
@@ -93,6 +102,9 @@ router.post('/jobs/:jobId/subtask/:subTaskId/apply', protect, worker, applyForSu
 // ── Bookings & analytics ──────────────────────────────────────────────────────
 router.get('/bookings',   protect, worker, getWorkerBookings);
 router.get('/analytics',  protect, worker, getWorkerAnalytics);
+router.get('/direct-hires', protect, worker, getWorkerDirectHireTickets);
+router.post('/direct-hires/:jobId/accept', protect, worker, acceptDirectHireTicket);
+router.post('/direct-hires/:jobId/reject', protect, worker, rejectDirectHireTicket);
 
 // --- Purchase History Route ---
 router.get('/purchase-history', protect, worker, getWorkerPurchaseHistory);
@@ -105,6 +117,8 @@ router.put('/profile/update',       protect, worker, mixedUploader.fields([
     { name: 'skillCertificates', maxCount: 3 },
     { name: 'portfolioPhotos', maxCount: 4 },
 ]), updateWorkerProfile);
+router.get('/daily-profile',        protect, worker, getWorkerDailyProfile);
+router.put('/daily-profile',        protect, worker, updateWorkerDailyProfile);
 router.post('/availability',        protect, worker, toggleAvailability);
 router.delete('/account/delete',    protect, worker, deleteAccount);
 
