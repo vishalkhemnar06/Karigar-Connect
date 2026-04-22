@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Shield, Key, Phone, Trash2, AlertTriangle, X, Eye, EyeOff, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { Shield, Key, Phone, Trash2, AlertTriangle, X, Eye, EyeOff, Clock, CheckCircle2, Loader2, BookOpen } from 'lucide-react';
 import * as api from '../../api';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
+import { useClientOnboarding } from '../../context/ClientOnboardingContext';
 
 function ChangePasswordCard() {
     const [step, setStep] = useState('idle');
@@ -189,6 +190,7 @@ function ChangePasswordCard() {
 
 const Settings = () => {
     const navigate = useNavigate();
+    const { restartGuideFromSettings } = useClientOnboarding();
     const [showConfirm, setShowConfirm] = useState(false);
     const [confirmText, setConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
@@ -215,11 +217,21 @@ const Settings = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 p-6">
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 p-6" data-guide-id="client-page-settings">
             <div className="max-w-lg mx-auto space-y-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
-                    <p className="text-gray-500 text-sm mt-1">Manage your account preferences</p>
+                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
+                        <p className="text-gray-500 text-sm mt-1">Manage your account preferences</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={restartGuideFromSettings}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 transition-colors"
+                    >
+                        <BookOpen size={16} />
+                        User Guide
+                    </button>
                 </div>
 
                 {/* Info cards */}

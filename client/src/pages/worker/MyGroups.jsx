@@ -639,6 +639,7 @@ export default function MyGroups() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        data-guide-id="worker-page-my-groups"
         className="mb-6 sm:mb-8"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

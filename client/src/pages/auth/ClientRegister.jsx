@@ -3,7 +3,7 @@
 // After liveness passes, the live photo is included in FormData.
 // All other form fields are UNCHANGED.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
@@ -24,6 +24,8 @@ import {
     X,
 } from 'lucide-react';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
+
+const DRAFT_KEY = 'client_register_draft_v1';
 
 const ClientRegister = () => {
     const [formData, setFormData] = useState({
@@ -79,6 +81,60 @@ const ClientRegister = () => {
 
     const navigate = useNavigate();
     const strength = getPasswordStrength(formData.password);
+
+    // ── Load draft from sessionStorage on mount ─────────────────────────────────
+    useEffect(() => {
+        try {
+            const raw = sessionStorage.getItem(DRAFT_KEY);
+            if (!raw) return;
+            const draft = JSON.parse(raw);
+
+            if (draft.formData) setFormData((prev) => ({ ...prev, ...draft.formData }));
+            if (draft.files) setFiles((prev) => ({ ...prev, ...draft.files }));
+            if (typeof draft.mobileOtpSent === 'boolean') setMobileOtpSent(draft.mobileOtpSent);
+            if (typeof draft.emailOtpSent === 'boolean') setEmailOtpSent(draft.emailOtpSent);
+            if (typeof draft.mobileVerified === 'boolean') setMobileVerified(draft.mobileVerified);
+            if (typeof draft.emailVerified === 'boolean') setEmailVerified(draft.emailVerified);
+            if (typeof draft.activeSection === 'number') setActiveSection(draft.activeSection);
+            if (draft.livePhotoData) setLivePhotoData(draft.livePhotoData);
+            if (typeof draft.similarity === 'number') setSimilarity(draft.similarity);
+            if (typeof draft.similarityThreshold === 'number') setSimilarityThreshold(draft.similarityThreshold);
+            if (typeof draft.faceMatchPassed === 'boolean') setFaceMatchPassed(draft.faceMatchPassed);
+            if (draft.faceMessage) setFaceMessage(draft.faceMessage);
+        } catch {
+            sessionStorage.removeItem(DRAFT_KEY);
+        }
+    }, []);
+
+    // ── Save draft to sessionStorage on state changes ───────────────────────────
+    useEffect(() => {
+        const draft = {
+            formData,
+            mobileOtpSent,
+            emailOtpSent,
+            mobileVerified,
+            emailVerified,
+            activeSection,
+            livePhotoData,
+            similarity,
+            similarityThreshold,
+            faceMatchPassed,
+            faceMessage,
+        };
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }, [
+        formData,
+        mobileOtpSent,
+        emailOtpSent,
+        mobileVerified,
+        emailVerified,
+        activeSection,
+        livePhotoData,
+        similarity,
+        similarityThreshold,
+        faceMatchPassed,
+        faceMessage,
+    ]);
 
     const handleChange     = e => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleFileChange = e => {
@@ -324,6 +380,7 @@ const ClientRegister = () => {
         try {
             await api.registerClient(data);
             toast.success('Account created successfully! 🎉', { id });
+            sessionStorage.removeItem(DRAFT_KEY); // Clear draft after successful registration
             navigate('/login');
         } catch (err) {
             const msg = err.response?.data?.message || 'Registration failed';

@@ -13,8 +13,9 @@ import {
     Award, Briefcase, BookOpen, Shield, Download, Camera,
     Star, CheckCircle, Clock, Award as AwardIcon, Plus, Trash2,
     ChevronRight, ChevronDown, Globe, Heart, Users, TrendingUp,
-    Upload, FileText, Link, ExternalLink, Smartphone, Home
+    Upload, FileText, Link, ExternalLink, Smartphone, Home, Eye
 } from 'lucide-react';
+import WorkerProfessionalPortfolio from '../../components/WorkerProfessionalPortfolio';
 
 const travelMethods = [
     { value: 'cycle', label: 'Cycle' },
@@ -48,6 +49,7 @@ const ViewProfile = () => {
     const [viewerError, setViewerError] = useState('');
     const [deletingSkillCertUrl, setDeletingSkillCertUrl] = useState('');
     const [deletingPortfolioUrl, setDeletingPortfolioUrl] = useState('');
+    const [showPortfolioModal, setShowPortfolioModal] = useState(false);
     const [generatingPdf, setGeneratingPdf] = useState(false);
 
     const getAgeFromDob = (dob) => {
@@ -854,6 +856,7 @@ const ViewProfile = () => {
                 <motion.div 
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    data-guide-id="worker-page-profile"
                     className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6 mb-4 sm:mb-6"
                 >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -898,14 +901,23 @@ const ViewProfile = () => {
                         </button>
 
                         {!isEditing && (
-                            <button
-                                onClick={downloadPortfolioPdf}
-                                disabled={generatingPdf}
-                                className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold transition-all active:scale-95 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl disabled:opacity-60"
-                            >
-                                <Download size={16} />
-                                <span className="text-sm">{generatingPdf ? 'Generating PDF...' : 'Download Portfolio PDF'}</span>
-                            </button>
+                            <div className="flex gap-3 flex-wrap">
+                                <button
+                                    onClick={() => setShowPortfolioModal(true)}
+                                    className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold transition-all active:scale-95 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl"
+                                >
+                                    <Eye size={16} />
+                                    <span className="text-sm">View Portfolio</span>
+                                </button>
+                                <button
+                                    onClick={downloadPortfolioPdf}
+                                    disabled={generatingPdf}
+                                    className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold transition-all active:scale-95 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl disabled:opacity-60"
+                                >
+                                    <Download size={16} />
+                                    <span className="text-sm">{generatingPdf ? 'Generating...' : 'Download Portfolio'}</span>
+                                </button>
+                            </div>
                         )}
                     </div>
                 </motion.div>
@@ -1774,6 +1786,16 @@ const ViewProfile = () => {
                         )}
                     </div>
                 )}
+
+                {/* Portfolio Modal */}
+                <AnimatePresence>
+                    {showPortfolioModal && profile && (
+                        <WorkerProfessionalPortfolio 
+                            profile={profile}
+                            onClose={() => setShowPortfolioModal(false)}
+                        />
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

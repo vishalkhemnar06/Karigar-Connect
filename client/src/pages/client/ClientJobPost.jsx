@@ -2032,7 +2032,7 @@ export default function ClientJobPost() {
     return (
         <div className="max-w-5xl mx-auto px-4 py-6 pb-28">
             <div className="mb-6 bg-gradient-to-r from-orange-500 to-amber-500 rounded-3xl px-6 py-6 shadow-lg">
-                <h1 className="text-3xl sm:text-4xl font-black text-white">Post Job</h1>
+                <h1 className="text-3xl sm:text-4xl font-black text-white" data-guide-id="client-page-job-post">Post Job</h1>
                 <p className="text-sm text-orange-100 mt-1">Create and publish a professional job listing</p>
                 <p className="text-sm text-orange-50 mt-2">Step {step + 1} of {STEPS.length}: {STEPS[step].label}</p>
             </div>

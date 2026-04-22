@@ -325,6 +325,9 @@ const Login = () => {
 
     const handleRoleChange = useCallback(key => setRole(key), []);
     const handleSuccess = useCallback(userRole => {
+        if (userRole === 'worker') {
+            sessionStorage.setItem('kc_worker_login_fresh', '1');
+        }
         const paths = { admin: '/admin/dashboard', worker: '/worker/dashboard', shop: '/shop/dashboard' };
         navigate(paths[userRole] || '/client/dashboard');
     }, [navigate]);

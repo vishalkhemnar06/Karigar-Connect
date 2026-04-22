@@ -1932,16 +1932,16 @@ export default function ClientJobManage() {
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
-        <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50/60">
+            <div className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 lg:px-8 xl:px-10 py-8">
 
                 {/* ── HEADER ── */}
-                <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-5 sm:p-6 mb-6 text-white shadow-lg">
+                <div className="bg-gradient-to-r from-orange-500 via-orange-500 to-amber-500 rounded-3xl p-5 sm:p-6 lg:p-7 mb-6 text-white shadow-xl shadow-orange-200/60">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div>
                             <div className="flex items-center gap-2.5 mb-1.5">
                                 <Briefcase size={22}/>
-                                <h1 className="text-xl sm:text-2xl font-black">Manage Jobs</h1>
+                                <h1 className="text-xl sm:text-2xl font-black" data-guide-id="client-page-job-manage">Manage Jobs</h1>
                             </div>
                             <p className="text-orange-100 text-sm">Track and manage all your posted jobs</p>
                         </div>
@@ -1959,31 +1959,33 @@ export default function ClientJobManage() {
                 </div>
 
                 {/* ── TABS ── */}
-                <div className="flex gap-2 overflow-x-auto pb-2 mb-5 scrollbar-hide">
-                    {TABS.map(tab => {
-                        const count   = tabCount(tab.key);
-                        const isActive = activeTab === tab.key;
-                        return (
-                            <button key={tab.key} onClick={()=>setActiveTab(tab.key)}
-                                className={`px-4 py-2 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2 ${
-                                    isActive
-                                        ? 'bg-orange-500 text-white shadow-md'
-                                        : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-orange-300'
-                                }`}>
-                                {tab.label}
-                                {count > 0 && (
-                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${isActive?'bg-white/20 text-white':'bg-orange-100 text-orange-600'}`}>
-                                        {count}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
+                <div className="mb-6 rounded-2xl border border-gray-200 bg-white/90 p-2 shadow-sm backdrop-blur-sm overflow-x-auto scrollbar-hide">
+                    <div className="flex gap-2 min-w-max pb-0">
+                        {TABS.map(tab => {
+                            const count   = tabCount(tab.key);
+                            const isActive = activeTab === tab.key;
+                            return (
+                                <button key={tab.key} onClick={()=>setActiveTab(tab.key)}
+                                    className={`px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2 ${
+                                        isActive
+                                            ? 'bg-orange-500 text-white shadow-md'
+                                            : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-orange-300'
+                                    }`}>
+                                    {tab.label}
+                                    {count > 0 && (
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${isActive?'bg-white/20 text-white':'bg-orange-100 text-orange-600'}`}>
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 {/* ── JOB LIST ── */}
                 {filtered.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-12 text-center">
                         <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Briefcase size={28} className="text-orange-300"/>
                         </div>
@@ -1993,7 +1995,7 @@ export default function ClientJobManage() {
                         </p>
                     </div>
                 ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         {filtered.map(job => (
                             <JobCard
                                 key={job._id}
@@ -2004,7 +2006,7 @@ export default function ClientJobManage() {
                     </div>
                 )}
 
-            </div>{/* ← closes max-w-4xl */}
+            </div>{/* ← closes max-w-screen-2xl */}
 
             {/* ── MODALS ── */}
             <AnimatePresence>

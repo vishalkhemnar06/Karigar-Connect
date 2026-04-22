@@ -59,7 +59,7 @@ export default function ClientFavorites() {
     return (
         <div className="max-w-6xl mx-auto px-4 py-6 pb-24 space-y-4">
             <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-3xl p-6 text-white">
-                <h1 className="text-3xl font-black">Favorite Workers</h1>
+                <h1 className="text-3xl font-black" data-guide-id="client-page-favorites">Favorite Workers</h1>
                 <p className="text-sm text-orange-100 mt-1">Starred workers, full details, call and location access</p>
             </div>
 

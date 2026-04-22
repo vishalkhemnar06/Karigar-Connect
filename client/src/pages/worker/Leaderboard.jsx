@@ -348,6 +348,7 @@ const Leaderboard = () => {
                 <motion.div 
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    data-guide-id="worker-page-leaderboard"
                     className="relative mb-6 md:mb-8"
                 >
                     <div className="absolute top-0 right-0 w-32 h-32 md:w-64 md:h-64 bg-gradient-to-r from-orange-200 to-red-200 rounded-full blur-3xl opacity-30" />

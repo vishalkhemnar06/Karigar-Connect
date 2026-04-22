@@ -58,6 +58,23 @@ const Sidebar = () => {
         { to: '/worker/settings', icon: <Cog size={20} />, text: t('worker_sidebar.settings', 'Settings') },
     ];
 
+    const guideIdByRoute = {
+        '/worker/dashboard': 'worker-nav-dashboard',
+        '/worker/job-requests': 'worker-nav-job-requests',
+        '/worker/job-bookings': 'worker-nav-job-bookings',
+        '/worker/direct-invites': 'worker-nav-direct-invites',
+        '/worker/shops': 'worker-nav-shops',
+        '/worker/community': 'worker-nav-community',
+        '/worker/create-group': 'worker-nav-create-group',
+        '/worker/my-groups': 'worker-nav-my-groups',
+        '/worker/leaderboard': 'worker-nav-leaderboard',
+        '/worker/feedback': 'worker-nav-feedback',
+        '/worker/history': 'worker-nav-history',
+        '/worker/profile': 'worker-nav-profile',
+        '/worker/complaints': 'worker-nav-complaints',
+        '/worker/settings': 'worker-nav-settings',
+    };
+
     const isActiveLink = (to) => location.pathname === to;
 
     return (
@@ -87,11 +104,13 @@ const Sidebar = () => {
                     <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
                         {navLinks.map((link) => {
                             const isActive = isActiveLink(link.to);
+                            const guideId = guideIdByRoute[link.to];
                             return (
                                 <NavLink
                                     key={link.to}
                                     to={link.to}
                                     onClick={() => setMobileMenuOpen(false)}
+                                    data-guide-id={guideId}
                                     className={`flex items-center justify-between px-3 py-3 rounded-xl transition-all group text-base font-medium tracking-wide ${
                                         isActive 
                                             ? 'bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow-md' 
@@ -131,10 +150,12 @@ const Sidebar = () => {
                 <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-2">
                     {navLinks.map((link) => {
                         const isActive = isActiveLink(link.to);
+                        const guideId = guideIdByRoute[link.to];
                         return (
                             <NavLink
                                 key={link.to}
                                 to={link.to}
+                                data-guide-id={guideId}
                                 className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all group text-base font-semibold tracking-wide ${
                                     isActive 
                                         ? 'bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow-md' 

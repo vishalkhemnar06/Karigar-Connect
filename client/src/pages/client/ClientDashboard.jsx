@@ -736,7 +736,7 @@ const ClientDashboard = () => {
       <ToastList toasts={toast.toasts} />
 
       {/* Greeting */}
-      <header className="flex items-center justify-between mb-4 sm:mb-6">
+      <header className="flex items-center justify-between mb-4 sm:mb-6" data-guide-id="client-page-dashboard">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-gray-900">
             {greeting}

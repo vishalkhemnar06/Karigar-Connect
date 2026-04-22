@@ -27,6 +27,7 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 
 // General Pages
 import Home from './pages/Home';
+import FAQ from './pages/FAQ';
 import Notification from './pages/Notification';
 import PublicProfile from './pages/PublicProfile';
 
@@ -152,6 +153,7 @@ function App() {
                 {/* ── Header layout routes ── */}
                 <Route element={<MainLayout />}>
                     <Route path="/home"             element={<Home />} />
+                    <Route path="/faq"             element={<FAQ />} />
                     <Route path="/login"            element={<Login />} />
                     <Route path="/check-status"     element={<CheckStatus />} />
                     <Route path="/register"         element={<Register />} />

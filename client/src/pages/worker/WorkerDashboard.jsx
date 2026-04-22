@@ -1135,7 +1135,7 @@ const WorkerDashboard = () => {
       <ToastList toasts={toast.toasts} />
       
       {/* ── COMPACT STICKY HEADER ── */}
-      <div className="flex items-center justify-between py-3 sticky top-0 bg-orange-50/90 backdrop-blur-md z-40 border-b border-orange-100" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
+      <div data-guide-id="worker-page-dashboard" className="flex items-center justify-between py-3 sticky top-0 bg-orange-50/90 backdrop-blur-md z-40 border-b border-orange-100" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-white font-black shadow-lg shadow-orange-200">
             {profile?.photo 

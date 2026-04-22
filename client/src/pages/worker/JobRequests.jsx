@@ -1434,6 +1434,7 @@ export default function JobRequests() {
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    data-guide-id="worker-page-job-requests"
                     className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white shadow-xl"
                 >
                     <div className="flex items-center gap-2 sm:gap-3 mb-2">

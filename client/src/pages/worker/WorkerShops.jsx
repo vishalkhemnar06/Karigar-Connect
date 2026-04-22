@@ -1236,7 +1236,7 @@ const WorkerShops = () => {
 
                 <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-28">
                     {/* Header */}
-                    <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+                    <motion.div data-guide-id="worker-page-shops" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg">
                                 <Store size={24} className="text-white" />

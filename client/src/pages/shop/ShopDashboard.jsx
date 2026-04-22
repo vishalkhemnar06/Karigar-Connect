@@ -18,6 +18,10 @@ import ShopHeader from '../../components/ShopHeader';
 import ShopSidebar from '../../components/ShopSidebar';
 import ShopSettings from './ShopSettings';
 import ShopProfileUnified from './ShopProfileUnified';
+import { ShopOnboardingProvider } from '../../context/ShopOnboardingContext';
+import ShopOnboardingModal from '../../components/ShopOnboardingModal';
+
+const SHOP_ONBOARDING_PAGE_EVENT = 'kc:shop-onboarding-page-change';
 import {
     Store, Tag, Package, History, BarChart3, Settings,
     LogOut, Menu, X, QrCode, CheckCircle, Plus, Edit2,
@@ -254,32 +258,30 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05, duration: 0.4, ease: "easeOut" }}
-            whileHover={{ y: -6, transition: { duration: 0.2 } }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
             className="group cursor-pointer relative"
         >
             {/* Decorative background blur element */}
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 to-amber-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/15 to-amber-500/15 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             
             {/* Main Card - Rounded with organic curves */}
-            <div className="relative bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100/80">
+            <div className="relative bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-200/80">
                 
                 {/* Image Section with Curved Bottom Edge */}
                 <button
                     type="button"
                     onClick={() => onView(product)}
-                    className="relative h-36 w-full bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden text-left"
+                    className="relative h-40 w-full bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden text-left"
                     aria-label={`Open preview for ${product.name}`}
                 >
                     {getImageUrl(product.image, null) ? (
                         <>
-                            <div className="w-full h-full flex items-center justify-center p-2">
-                                <img
-                                    src={getImageUrl(product.image)}
-                                    onError={imgError()}
-                                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
-                                    alt={product.name}
-                                />
-                            </div>
+                            <img
+                                src={getImageUrl(product.image)}
+                                onError={imgError()}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                alt={product.name}
+                            />
                             {/* Overlay gradient for better text readability */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
                             <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/55 text-white text-[10px] font-semibold backdrop-blur-sm">
@@ -345,7 +347,7 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
                     </div>
                     
                     {/* Description */}
-                    <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-2 min-h-[2rem] mb-2.5">
+                    <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 min-h-[2.2rem] mb-3">
                         {product.description || 'No description available'}
                     </p>
                     
@@ -381,11 +383,11 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
                             whileHover={{ scale: 1.03, y: -1 }}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => onView(product)}
-                            className={`flex-1 flex items-center justify-center gap-2 bg-gradient-to-r ${getViewButtonGradient()} text-white py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all duration-300 group/btn relative overflow-hidden`}
+                            className={`flex-1 flex items-center justify-center gap-2 bg-gradient-to-r ${getViewButtonGradient()} text-white py-2.5 rounded-lg text-xs font-semibold shadow-sm hover:shadow-md transition-all duration-300 group/btn relative overflow-hidden`}
                         >
                             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
                             <Eye size={14} className="group-hover/btn:scale-110 transition-transform duration-300" />
-                            <span>Quick View</span>
+                            <span>View</span>
                         </motion.button>
                         
                         {/* Edit Button - Premium Blue Gradient */}
@@ -393,11 +395,11 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
                             whileHover={{ scale: 1.03, y: -1 }}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => onEdit(product)}
-                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-blue-500/25 transition-all duration-300 group/btn relative overflow-hidden"
+                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white py-2.5 rounded-lg text-xs font-semibold shadow-sm hover:shadow-blue-500/25 transition-all duration-300 group/btn relative overflow-hidden"
                         >
                             <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
                             <Edit2 size={14} className="group-hover/btn:rotate-12 transition-transform duration-300" />
-                            <span>Edit Item</span>
+                            <span>Edit</span>
                         </motion.button>
                         
                         {/* Delete Button - Vibrant Rose Gradient */}
@@ -405,7 +407,7 @@ const VibrantProductCard = memo(({ product, onView, onEdit, onDelete, index, col
                             whileHover={{ scale: 1.03, y: -1 }}
                             whileTap={{ scale: 0.97 }}
                             onClick={() => onDelete(product._id)}
-                            className="flex items-center justify-center gap-2 bg-gradient-to-r from-rose-500 via-red-500 to-pink-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md hover:shadow-rose-500/25 transition-all duration-300 group/btn relative overflow-hidden"
+                            className="flex items-center justify-center gap-2 bg-gradient-to-r from-rose-500 via-red-500 to-pink-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold shadow-sm hover:shadow-rose-500/25 transition-all duration-300 group/btn relative overflow-hidden"
                         >
                             <div className="absolute inset-0 bg-gradient-to-r from-rose-400 to-pink-400 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
                             <Trash2 size={14} className="group-hover/btn:scale-110 transition-transform duration-300" />
@@ -464,7 +466,7 @@ const VibrantTransactionItem = memo(({ transaction, onClick, index }) => (
 VibrantTransactionItem.displayName = 'VibrantTransactionItem';
 
 // ── PAGE: ANALYTICS WITH REAL-TIME SIMULATION ─────────────────────────────────
-const AnalyticsPage = memo(({ transactions: globalTxns }) => {
+const AnalyticsPage = memo(() => {
     const [data, setData] = useState(null);
     const [txns, setTxns] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -513,7 +515,7 @@ const AnalyticsPage = memo(({ transactions: globalTxns }) => {
         return Object.entries(map).slice(-daysToShow).map(([label, value]) => ({ label, value }));
     }, [txns, timeRange]);
 
-    const discountChart = useMemo(() => {
+    const _discountChart = useMemo(() => {
         if (!txns.length) return [];
         const map = {};
         const daysToShow = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 90;
@@ -524,7 +526,7 @@ const AnalyticsPage = memo(({ transactions: globalTxns }) => {
         return Object.entries(map).slice(-daysToShow).map(([label, value]) => ({ label, value }));
     }, [txns, timeRange]);
 
-    const donutData = data ? [
+    const _donutData = data ? [
         { value: data.totalSales, color: '#f97316', label: 'Revenue' },
         { value: data.totalDiscounts, color: '#fb923c', label: 'Discounts' },
     ] : [];
@@ -539,7 +541,7 @@ const AnalyticsPage = memo(({ transactions: globalTxns }) => {
     );
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-5" data-guide-id="shop-page-analytics">
             {/* Header with live indicator */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -817,7 +819,7 @@ const CouponPage = memo(() => {
 
     return (
         <div className="space-y-5">
-            <div>
+            <div data-guide-id="shop-page-coupon">
                 <h2 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
                     Coupon Verification
                 </h2>
@@ -1132,7 +1134,7 @@ const ProductsPage = memo(() => {
     const colorSchemes = ['orange', 'blue', 'green', 'purple'];
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-5" data-guide-id="shop-page-products">
             {/* Product Detail Modal */}
             {selected && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -1294,7 +1296,7 @@ const ProductsPage = memo(() => {
                     <p className="font-medium">No products found</p>
                 </div>
             ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredProducts.map((p, idx) => (
                         <VibrantProductCard 
                             key={p._id} 
@@ -1388,7 +1390,7 @@ const TransactionsPage = memo(() => {
     const totalDiscount = txns.reduce((s, t) => s + t.discountAmount, 0);
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-5" data-guide-id="shop-page-history">
             {/* Transaction Detail Modal */}
             {selected && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -1551,6 +1553,19 @@ const ShopDashboard = () => {
         loadTransactions();
     }, [loadShop, loadTransactions]);
 
+    useEffect(() => {
+        const allowedPages = new Set(['analytics', 'coupon', 'products', 'history', 'profile', 'settings']);
+        const onGuideNavigate = (event) => {
+            const nextPage = event?.detail?.page;
+            if (allowedPages.has(nextPage)) {
+                setPage(nextPage);
+            }
+        };
+
+        window.addEventListener(SHOP_ONBOARDING_PAGE_EVENT, onGuideNavigate);
+        return () => window.removeEventListener(SHOP_ONBOARDING_PAGE_EVENT, onGuideNavigate);
+    }, []);
+
     const logout = useCallback(() => {
         ['shopToken', 'shop', 'shopRole'].forEach(k => localStorage.removeItem(k));
         toast.success('Logged out.');
@@ -1560,30 +1575,33 @@ const ShopDashboard = () => {
     const setPageCb = useCallback(p => { setPage(p); }, []);
 
     return (
-        <>
-            <ShopHeader />
-            <div className="lg:flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
-                <ShopSidebar page={page} onPageChange={setPageCb} onLogout={logout} />
-                <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 overflow-auto">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={page}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                        >
-                            {page === 'analytics' && <AnalyticsPage transactions={transactions} />}
-                            {page === 'coupon' && <CouponPage />}
-                            {page === 'products' && <ProductsPage />}
-                            {page === 'history' && <TransactionsPage />}
-                            {page === 'profile' && <ShopProfileUnified shop={shop} onUpdate={loadShop} isDashboard={true} />}
-                            {page === 'settings' && <ShopSettings />}
-                        </motion.div>
-                    </AnimatePresence>
-                </main>
-            </div>
-        </>
+        <ShopOnboardingProvider>
+            <>
+                <ShopHeader />
+                <div className="lg:flex min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+                    <ShopSidebar page={page} onPageChange={setPageCb} onLogout={logout} />
+                    <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 overflow-auto">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={page}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {page === 'analytics' && <AnalyticsPage transactions={transactions} />}
+                                {page === 'coupon' && <CouponPage />}
+                                {page === 'products' && <ProductsPage />}
+                                {page === 'history' && <TransactionsPage />}
+                                {page === 'profile' && <ShopProfileUnified shop={shop} onUpdate={loadShop} isDashboard={true} />}
+                                {page === 'settings' && <ShopSettings />}
+                            </motion.div>
+                        </AnimatePresence>
+                    </main>
+                </div>
+                <ShopOnboardingModal />
+            </>
+        </ShopOnboardingProvider>
     );
 };
 

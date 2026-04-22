@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, LogOut } from 'lucide-react';
+import { AlertTriangle, LogOut, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../../api';
+import { useShopOnboarding } from '../../context/ShopOnboardingContext';
 
 const ShopSettings = () => {
     const navigate = useNavigate();
+    const { restartGuideFromSettings } = useShopOnboarding();
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
@@ -42,16 +44,26 @@ const ShopSettings = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 sm:p-6 md:p-8">
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 sm:p-6 md:p-8" data-guide-id="shop-sidebar-settings">
             <div className="max-w-4xl mx-auto">
                 {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-                        Account Settings
-                    </h1>
-                    <p className="text-gray-600">
-                        Manage your shop account and settings
-                    </p>
+                <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+                            Account Settings
+                        </h1>
+                        <p className="text-gray-600">
+                            Manage your shop account and settings
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={restartGuideFromSettings}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 transition-colors"
+                    >
+                        <BookOpen size={16} />
+                        User Guide
+                    </button>
                 </div>
 
                 {/* Settings Cards */}

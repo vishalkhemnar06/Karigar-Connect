@@ -519,6 +519,7 @@ export default function History() {
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    data-guide-id="worker-page-history"
                     className="flex items-start justify-between mb-4"
                 >
                     <div>

@@ -817,12 +817,6 @@ const WorkerRegister = () => {
                                                 <p className="text-sm text-orange-700 font-medium">Checking similarity with ID proof...</p>
                                             ) : (
                                                 <>
-                                                    <p className="text-sm text-gray-700">
-                                                        Similarity Score: <span className="font-bold">{typeof similarity === 'number' ? similarity.toFixed(3) : 'N/A'}</span>
-                                                    </p>
-                                                    <p className="text-sm text-gray-700">
-                                                        Threshold: <span className="font-bold">{similarityThreshold.toFixed(2)}</span>
-                                                    </p>
                                                     <p className={`text-sm mt-1 font-semibold ${faceMatchPassed ? 'text-green-700' : 'text-red-700'}`}>
                                                         {faceMessage || (faceMatchPassed ? 'Face match passed.' : 'Face match failed. Please retry.')}
                                                     </p>

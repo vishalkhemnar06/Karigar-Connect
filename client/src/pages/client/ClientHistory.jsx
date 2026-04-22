@@ -697,8 +697,8 @@ export default function ClientHistory() {
     return (
         <div className="max-w-6xl mx-auto px-4 py-6 pb-24 space-y-4">
             <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-3xl p-6 text-white">
-                <h1 className="text-3xl font-black">Job History</h1>
-                <p className="text-sm text-orange-100 mt-1">Completed, cancelled and deleted jobs</p>
+                <h1 className="text-3xl font-black" data-guide-id="client-page-history">Job History</h1>
+                <p className="text-sm text-orange-100 mt-1">Completed, cancelled and deleted jobs with assigned worker details</p>
             </div>
 
             {historyJobs.length > 0 ? (

@@ -407,7 +407,7 @@ export default function ClientComplaints() {
                             <AlertTriangle size={18} className="md:size-6 text-white" />
                         </div>
                         <div>
-                            <h1 className="text-xl md:text-3xl font-black">File a Complaint</h1>
+                            <h1 className="text-xl md:text-3xl font-black" data-guide-id="client-page-complaints">File a Complaint</h1>
                             <p className="text-white/90 text-[10px] md:text-sm mt-0.5">Report issues with workers you have hired</p>
                         </div>
                     </div>

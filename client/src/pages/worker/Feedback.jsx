@@ -373,6 +373,30 @@ function FeedbackCard({ item, index }) {
                             </div>
                         )}
 
+                        {/* Completion photos uploaded by client (if any) */}
+                        {(Array.isArray(item.workPhotos) && item.workPhotos.length > 0) && (
+                            <div className="mt-3 md:mt-4">
+                                <p className="text-[10px] md:text-sm text-gray-500 mb-2 font-semibold">Photos from client</p>
+                                <div className="flex gap-2 overflow-x-auto pb-1">
+                                    {item.workPhotos.map((p, i) => (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => window.open(api.getImageUrl(p), '_blank')}
+                                            className="flex-shrink-0 w-20 h-20 md:w-24 md:h-24 rounded-lg overflow-hidden border border-gray-100 bg-gray-50 hover:shadow-md transition-all"
+                                        >
+                                            <img
+                                                src={api.getImageUrl(p)}
+                                                alt={`completion-${i}`}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => { e.target.onerror = null; e.target.src = '/admin.png'; }}
+                                            />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Feedback footer */}
                         <div className="flex items-center gap-2 md:gap-3 mt-2 pt-1.5 md:pt-2 border-t border-gray-100">
                             <div className="flex items-center gap-0.5 md:gap-1 text-[8px] md:text-[10px] text-gray-400">
@@ -493,6 +517,7 @@ const Feedback = () => {
             <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
+                data-guide-id="worker-page-feedback"
                 className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl md:rounded-3xl p-4 md:p-6 mb-4 md:mb-6 text-white shadow-2xl relative overflow-hidden"
             >
                 <div className="absolute top-0 right-0 w-32 h-32 md:w-40 md:h-40 bg-white/10 rounded-full blur-2xl" />

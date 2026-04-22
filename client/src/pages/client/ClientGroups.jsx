@@ -441,7 +441,7 @@ export default function ClientGroups() {
                             <Users size={16} className="text-white" />
                         </div>
                         <div>
-                            <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                            <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent" data-guide-id="client-page-groups">
                                 Browse Worker Groups
                             </h1>
                             <p className="text-[11px] sm:text-sm text-gray-500">Find skilled teams for your projects</p>

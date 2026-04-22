@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import WorkerProfilePreviewModal from './WorkerProfilePreviewModal';
 import { WORKER_PROFILE_PREVIEW_EVENT } from '../utils/workerProfilePreview';
+import { ClientOnboardingProvider } from '../context/ClientOnboardingContext';
+import ClientOnboardingModal from './ClientOnboardingModal';
 
 const navItems = [
 
@@ -119,6 +121,7 @@ export default function ClientLayout() {
     );
 
     return (
+        <ClientOnboardingProvider>
         <div className="flex min-h-screen bg-gradient-to-br from-orange-50/50 via-white to-orange-50/30">
             {/* Desktop Sidebar */}
             <aside className="hidden md:flex flex-col w-72 bg-gradient-to-b from-orange-50 via-white to-white border-r border-orange-100 shadow-sm fixed top-20 left-0 h-[calc(100vh-5rem)] z-30">
@@ -222,6 +225,8 @@ export default function ClientLayout() {
                 </div>
             </div>
 
+            <ClientOnboardingModal />
+
             {/* Hide scrollbar styles */}
             <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
@@ -233,5 +238,7 @@ export default function ClientLayout() {
                 }
             `}</style>
         </div>
+        </ClientOnboardingProvider>
     );
 }
+

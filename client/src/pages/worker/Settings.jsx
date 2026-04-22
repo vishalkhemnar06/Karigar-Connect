@@ -6,9 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Lock, Smartphone, Eye, EyeOff, ShieldAlert,
     ChevronRight, LogOut, Loader2, CheckCircle2,
-    AlertTriangle, User, Key, Trash2
+    AlertTriangle, User, Key, Trash2, BookOpen
 } from 'lucide-react';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
+import { useWorkerOnboarding } from '../../context/WorkerOnboardingContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. CHANGE PASSWORD SECTION (ENHANCED)
@@ -423,6 +424,7 @@ const Settings = () => {
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
+    const { restartGuideFromSettings } = useWorkerOnboarding();
 
     useEffect(() => {
         (async () => {
@@ -472,6 +474,7 @@ const Settings = () => {
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    data-guide-id="worker-page-settings"
                     className="mb-8"
                 >
                     <h1 className="text-3xl font-black bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
@@ -539,6 +542,21 @@ const Settings = () => {
                             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Security</p>
                             <ChangePasswordSection />
                         </div>
+
+                        {/* User Guide Section */}
+                        <button
+                            onClick={restartGuideFromSettings}
+                            className="w-full bg-white border border-gray-100 rounded-2xl shadow-sm px-5 py-4 flex items-center gap-3 hover:bg-orange-50 transition-all group"
+                        >
+                            <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center group-hover:bg-orange-200">
+                                <BookOpen size={16} className="text-orange-600" />
+                            </div>
+                            <div className="text-left flex-grow">
+                                <p className="font-bold text-gray-900 text-sm">User Guide</p>
+                                <p className="text-xs text-gray-400">Restart onboarding walkthrough</p>
+                            </div>
+                            <ChevronRight size={16} className="text-gray-300" />
+                        </button>
 
                         {/* Logout Button */}
                         <button

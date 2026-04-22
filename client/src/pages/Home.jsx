@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowRight, HelpCircle, MessageSquareQuote, Sparkles } from 'lucide-react';
 import logo from '../assets/logo.jpg';
+import faqData from '../constants/faqData';
+import FaqAccordion from '../components/FaqAccordion';
 
 const Home = () => {
     const [token, setToken] = useState(null);
@@ -56,6 +59,24 @@ const Home = () => {
             title: 'Fair Pricing',
             description: 'Transparent costs with no hidden charges'
         }
+    ];
+
+    const faqHighlights = [
+        {
+            icon: HelpCircle,
+            title: 'All roles covered',
+            description: 'Questions explain the experience for clients, workers, shop owners, and admins.'
+        },
+        {
+            icon: MessageSquareQuote,
+            title: 'Project workflows',
+            description: 'Answers include registration, matching, pricing, support, and live tracking.'
+        },
+        {
+            icon: Sparkles,
+            title: 'Fast onboarding',
+            description: 'New users can understand the platform before they start using the dashboard.'
+        },
     ];
 
     {/* IVR Callout for Workers */}
@@ -171,6 +192,52 @@ const Home = () => {
                             </div>
                         ))}
                     </div>
+                </div>
+            </section>
+
+            {/* FAQ Section */}
+            <section id="faq" className="relative overflow-hidden px-4 py-20 sm:px-6 lg:px-8">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.18),_transparent_35%)]" />
+                <div className="relative mx-auto max-w-7xl">
+                    <div className="mb-10 grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
+                        <div>
+                            <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-700 shadow-sm">
+                                <Sparkles size={16} />
+                                Frequently Asked Questions
+                            </div>
+                            <h2 className="mt-5 text-3xl font-black text-gray-900 sm:text-4xl">
+                                Everything users ask about KarigarConnect
+                            </h2>
+                            <p className="mt-4 max-w-3xl text-lg leading-8 text-gray-600">
+                                These answers cover the full project flow so visitors can quickly understand what the platform does, how each role works, and where to get help.
+                            </p>
+                        </div>
+                        <div className="rounded-[2rem] border border-orange-100 bg-white/90 p-6 shadow-xl shadow-orange-100/50 backdrop-blur">
+                            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                                {faqHighlights.map((item) => {
+                                    const Icon = item.icon;
+                                    return (
+                                        <div key={item.title} className="rounded-2xl bg-gradient-to-br from-orange-50 to-white p-4">
+                                            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-md shadow-orange-200">
+                                                <Icon size={20} />
+                                            </div>
+                                            <h3 className="text-base font-bold text-gray-900">{item.title}</h3>
+                                            <p className="mt-1 text-sm leading-6 text-gray-600">{item.description}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <Link
+                                to="/faq"
+                                className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-orange-600 transition hover:text-orange-700"
+                            >
+                                Open the full FAQ page
+                                <ArrowRight size={16} />
+                            </Link>
+                        </div>
+                    </div>
+
+                    <FaqAccordion items={faqData} />
                 </div>
             </section>
            

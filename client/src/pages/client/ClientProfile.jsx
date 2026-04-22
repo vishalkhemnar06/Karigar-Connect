@@ -530,7 +530,7 @@ const ClientProfile = () => {
     // ── VIEW MODE ────────────────────────────────────────────────────────────
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50" data-guide-id="client-page-profile">
             <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-24">
 
                 {/* Header */}

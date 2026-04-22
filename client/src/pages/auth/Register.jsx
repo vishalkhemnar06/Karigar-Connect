@@ -69,12 +69,7 @@ const Register = () => (
                             {/* Hover overlay */}
                             <div className={`absolute inset-0 bg-gradient-to-br ${card.hoverBg} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
 
-                            {/* New badge */}
-                            {card.badge && (
-                                <div className="absolute top-4 left-4 z-20 bg-gradient-to-r from-teal-500 to-emerald-500 text-white text-xs font-black px-2.5 py-1 rounded-full shadow">
-                                    {card.badge}
-                                </div>
-                            )}
+                           
 
                             <div className="relative z-10 p-8">
                                 {/* Icon */}
