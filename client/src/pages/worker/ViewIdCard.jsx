@@ -231,7 +231,7 @@ const ViewIdCard = () => {
         
         // Handle local file path
         // Handle local file path
-const BASE_URL = import.meta.env.VITE_API_URL || "http://192.168.0.103:5000";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://192.168.0.101:5000";
 
 return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
     };

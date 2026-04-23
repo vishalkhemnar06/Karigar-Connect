@@ -789,12 +789,16 @@ exports.loginWithPassword = async (req, res) => {
 
         if (role === 'admin') {
             const submittedMobile = String(mobile || '').trim();
-            const allowedMobiles = getConfiguredAdminAccounts().map(acc => acc.mobile);
+            const configuredAccounts = getConfiguredAdminAccounts();
+            const allowedMobiles = configuredAccounts.map(acc => acc.mobile);
 
             if (!allowedMobiles.includes(submittedMobile)) {
                 await logAuditEvent({ action: 'failed_login', req, metadata: { role: 'admin', mobile: submittedMobile, reason: 'not_allowed_admin_mobile' } });
                 return res.status(401).json({ message: 'Invalid mobile number or password.' });
             }
+
+            // Get admin account from .env file (to get latest name if env was updated)
+            const adminAccountFromEnv = configuredAccounts.find(acc => acc.mobile === submittedMobile);
 
             const adminUser = await User.findOne({ role: 'admin', mobile: submittedMobile }).select('+password name userId karigarId photo mobile role');
             if (!adminUser) {
@@ -816,7 +820,7 @@ exports.loginWithPassword = async (req, res) => {
                 token,
                 user: {
                     id: adminUser._id,
-                    name: adminUser.name,
+                    name: adminAccountFromEnv?.name || adminUser.name,
                     role: 'admin',
                     photo: adminUser.photo || null,
                     userId: adminUser.userId || adminUser.karigarId,
