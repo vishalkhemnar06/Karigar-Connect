@@ -1,20 +1,20 @@
 const User = require('../models/userModel');
 
-const DEFAULT_ADMIN_ACCOUNTS = [
-    { name: 'Gagan Dhanapune', mobile: '1234', password: '1234' },
-    { name: 'Vishal Khemnar', mobile: '12345', password: '12345' },
-    { name: 'Akash Shinde', mobile: '123456', password: '123456' },
-    { name: 'Ashish Vidhate', mobile: '1234567', password: '1234567' },
-];
+const ENV_VAR_NAME = 'ADMIN_ACCOUNTS_JSON';
+let hasLoggedMissingConfig = false;
 
 const sanitizeMobile = (mobile) => String(mobile || '').replace(/\D/g, '').slice(-10);
 
 const getConfiguredAdminAccounts = () => {
     try {
-        const raw = process.env.ADMIN_ACCOUNTS_JSON;
+        const raw = process.env[ENV_VAR_NAME];
 
         if (!raw) {
-            throw new Error('ADMIN_ACCOUNTS_JSON not found in .env');
+            if (!hasLoggedMissingConfig) {
+                console.warn(`⚠️ ${ENV_VAR_NAME} not found in .env. Admin login configuration is empty.`);
+                hasLoggedMissingConfig = true;
+            }
+            return [];
         }
 
         const parsed = JSON.parse(raw);
