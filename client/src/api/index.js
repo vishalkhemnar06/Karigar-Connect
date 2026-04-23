@@ -35,6 +35,10 @@ export const resetPassword         = (t, d)   => API.put(`/api/auth/reset-passwo
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 export const getAllWorkers          = ()       => API.get('/api/admin/workers');
 export const getAllClients          = ()       => API.get('/api/admin/clients');
+export const getMarketplaceRates    = (params = {}) => API.get('/api/admin/marketplace/rates', { params });
+export const uploadBaseRatesCsv     = (fd)     => API.post('/api/admin/rates/import-base-csv', fd, mp);
+export const manuallyUpdateMarketRates = ()    => API.post('/api/admin/rates/update-market-manual');
+export const getAdminWorkerLeaderboard = (params = {}) => API.get('/api/admin/workers/leaderboard', { params });
 export const claimWorkerForReview   = (workerId) => API.post(`/api/admin/workers/${workerId}/claim`);
 export const updateWorkerStatus    = (d)      => API.put('/api/admin/workers/status',          d);
 export const deleteUser            = (id)     => API.delete(`/api/admin/user/${id}`);
@@ -154,7 +158,7 @@ export const getWorkerDirectHires           = ()              => API.get('/api/w
 export const acceptDirectInvite             = (jobId)         => API.post(`/api/worker/invites/${jobId}/accept`);
 export const rejectDirectInvite             = (jobId)         => API.post(`/api/worker/invites/${jobId}/reject`);
 export const acceptDirectHireTicket         = (jobId)         => API.post(`/api/worker/direct-hires/${jobId}/accept`);
-export const rejectDirectHireTicket         = (jobId)         => API.post(`/api/worker/direct-hires/${jobId}/reject`);
+export const rejectDirectHireTicket         = (jobId, body = {}) => API.post(`/api/worker/direct-hires/${jobId}/reject`, body);
 export const getWorkerProfile               = ()              => API.get('/api/worker/profile');
 export const getWorkerDailyProfile          = ()              => API.get('/api/worker/daily-profile');
 export const updateWorkerDailyProfile       = (body)          => API.put('/api/worker/daily-profile', body);
@@ -264,7 +268,10 @@ export const markAdminNotificationRead     = (id) => API.patch(`/api/admin/notif
 export const markAllAdminNotificationsRead = ()   => API.patch('/api/admin/notifications/mark-all-read');
 export const deleteAdminNotification       = (id) => API.delete(`/api/admin/notifications/${id}`);
 export const clearAllAdminNotifications    = ()   => API.delete('/api/admin/notifications/clear-all');
+export const getAdminDirectHirePayments    = (params = {}) => API.get('/api/admin/direct-hires/payments', { params });
 export const getAdminPendingDirectHirePayments = () => API.get('/api/admin/direct-hires/pending-payments');
+export const adminWarnDirectHireClient         = (jobId) => API.post(`/api/admin/direct-hires/${jobId}/warn-client`);
+export const adminBlockDirectHireClient        = (jobId) => API.post(`/api/admin/direct-hires/${jobId}/block-client`);
 export const adminUnblockDirectHireClient      = (jobId) => API.post(`/api/admin/direct-hires/${jobId}/unblock-client`);
 
 // ── CLIENT COMPLAINTS ─────────────────────────────────────────────────────────

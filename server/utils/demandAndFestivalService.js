@@ -9,7 +9,7 @@
  */
 
 const Groq = require('groq-sdk');
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 // Indian public holidays (fixed dates) - year-independent for simplicity
 const INDIAN_HOLIDAYS = [
@@ -33,6 +33,32 @@ const INDIAN_HOLIDAYS = [
     '12-25', // Christmas
 ];
 
+// Deterministic festival calendar to avoid false positives from LLM-only detection.
+// Dates are approximate and can be adjusted yearly as needed.
+const MAJOR_FESTIVALS = {
+    '01-14': 'Makar Sankranti',
+    '03-08': 'Maha Shivaratri',
+    '03-25': 'Holi',
+    '04-17': 'Ram Navami',
+    '04-21': 'Mahavir Jayanti',
+    '05-10': 'Akshaya Tritiya',
+    '06-17': 'Eid ul-Fitr',
+    '07-17': 'Muharram',
+    '08-26': 'Janmashtami',
+    '09-16': 'Milad-un-Nabi',
+    '10-12': 'Dussehra',
+    '10-24': 'Diwali',
+    '11-01': 'Diwali',
+    '11-15': 'Guru Nanak Jayanti',
+};
+
+const getDateKey = (date) => {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${month}-${day}`;
+};
+
 /**
  * Detect if a date is a weekend
  */
@@ -46,10 +72,7 @@ const isWeekend = (date) => {
  * Detect if a date is a known Indian holiday
  */
 const isIndianHoliday = (date) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const dateKey = `${month}-${day}`;
+    const dateKey = getDateKey(date);
     return INDIAN_HOLIDAYS.includes(dateKey);
 };
 
@@ -58,6 +81,16 @@ const isIndianHoliday = (date) => {
  * Asks Groq to identify major Indian festivals for a given date
  */
 const detectFestivalUsingGroq = async (date) => {
+    const dateKey = getDateKey(date);
+    if (MAJOR_FESTIVALS[dateKey]) {
+        return MAJOR_FESTIVALS[dateKey];
+    }
+
+    // Keep AI fallback disabled by default to prevent random false festival labels.
+    if (!groq || String(process.env.ENABLE_AI_FESTIVAL_DETECTION || '').toLowerCase() !== 'true') {
+        return '';
+    }
+
     try {
         const d = typeof date === 'string' ? new Date(date) : date;
         const dateStr = new Intl.DateTimeFormat('en-IN', {
@@ -83,9 +116,10 @@ const detectFestivalUsingGroq = async (date) => {
             temperature: 0.1,
         });
 
-        const festival = response?.choices?.[0]?.message?.content || 'none';
-        const trimmed = festival.trim().toLowerCase();
-        return trimmed === 'none' || trimmed === '' ? '' : festival.trim();
+        const festival = String(response?.choices?.[0]?.message?.content || '').trim();
+        const trimmed = festival.toLowerCase();
+        if (!festival || trimmed === 'none') return '';
+        return MAJOR_FESTIVALS[dateKey] || '';
     } catch (err) {
         console.error('detectFestivalUsingGroq error:', err.message);
         return '';

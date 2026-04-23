@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchModelMetrics, triggerFullScan } from '../../store/slices/fraudSlice';
+import { triggerFullScan } from '../../store/slices/fraudSlice';
 
 function StatCard({ label, value, sub, accent }) {
     return (
@@ -24,14 +24,10 @@ function StatCard({ label, value, sub, accent }) {
 
 export function FraudStatsBar() {
     const dispatch = useDispatch();
-    const { metrics, alerts, complaintStats, scanStatus, scanLoading } = useSelector(s => s.fraud);
-
-    useEffect(() => { dispatch(fetchModelMetrics()); }, [dispatch]);
+    const { alerts, complaintStats, scanStatus, scanLoading } = useSelector(s => s.fraud);
 
     const high   = alerts.filter(a => a.risk_level === 'HIGH').length;
     const medium = alerts.filter(a => a.risk_level === 'MEDIUM').length;
-    const wm     = metrics?.worker || {};
-    const cm     = metrics?.client || {};
     const clientPending = complaintStats?.client?.pending ?? 0;
     const workerPending = (complaintStats?.worker?.byStatus?.submitted || 0) + (complaintStats?.worker?.byStatus?.inReview || 0);
 
@@ -50,34 +46,6 @@ export function FraudStatsBar() {
                     sub={scanStatus ? `${scanStatus.flagged_count} flagged` : 'not yet run'}
                 />
             </div>
-
-            {/* Model metrics */}
-            {metrics && (
-                <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px' }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-                        Model Performance
-                    </div>
-                    <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
-                        {[{ label: 'Worker Model', m: wm }, { label: 'Client Model', m: cm }].map(({ label, m }) => (
-                            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', minWidth: 100 }}>{label}</span>
-                                {[['f1','F1'], ['precision','Precision'], ['recall','Recall'], ['auc_roc','AUC-ROC']].map(([k, lbl]) => (
-                                    <div key={k} style={{ textAlign: 'center' }}>
-                                        <div style={{
-                                            fontSize: 14, fontWeight: 700,
-                                            color: parseFloat(m[k]) >= 0.85 ? '#16a34a'
-                                                 : parseFloat(m[k]) >= 0.70 ? '#d97706' : '#dc2626',
-                                        }}>
-                                            {m[k] != null ? (m[k] * 100).toFixed(1) + '%' : '—'}
-                                        </div>
-                                        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{lbl}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             {/* Scan button */}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

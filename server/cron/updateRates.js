@@ -372,14 +372,19 @@ async function captureDemandsupplySnapshot() {
 /**
  * Main: Run all pipelines
  */
-async function runWeeklyUpdate() {
+async function runWeeklyUpdate(options = {}) {
+    const { closeConnection = require.main === module } = options;
     console.log('\n' + '═'.repeat(80));
     console.log('🔄 WEEKLY RATE UPDATE - START');
     console.log('═'.repeat(80) + '\n');
     
     try {
-        await mongoose.connect(MONGO_URI);
-        console.log('✅ Connected to MongoDB');
+        if (mongoose.connection.readyState === 0) {
+            await mongoose.connect(MONGO_URI);
+            console.log('✅ Connected to MongoDB');
+        } else {
+            console.log('✅ Reusing existing MongoDB connection');
+        }
         
         const startTime = Date.now();
         
@@ -398,13 +403,26 @@ async function runWeeklyUpdate() {
         console.log(`Duration:            ${duration}s`);
         console.log(`Timestamp:           ${new Date().toISOString()}`);
         console.log('═'.repeat(80) + '\n');
+
+        return {
+            marketRateUpdates,
+            localityFactorUpdates,
+            demandSnapshotUpdates,
+            duration,
+            timestamp: new Date().toISOString(),
+        };
         
     } catch (err) {
         console.error('\n❌ WEEKLY RATE UPDATE - FAILED');
         console.error(err);
-        process.exit(1);
+        if (closeConnection) {
+            process.exit(1);
+        }
+        throw err;
     } finally {
-        await mongoose.connection.close();
+        if (closeConnection && mongoose.connection.readyState !== 0) {
+            await mongoose.connection.close();
+        }
     }
 }
 

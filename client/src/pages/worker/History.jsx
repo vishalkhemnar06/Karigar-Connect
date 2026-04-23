@@ -122,6 +122,7 @@ function AnalyticsBar({ bookings, feedback }) {
 function JobCard({ job, index }) {
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
     const cancelledByWorker = String(job?.cancelledWorkerId || '') === String(currentUser?._id || '');
+    const isRejectedDirectHire = String(job?.directHire?.requestStatus || '').toLowerCase() === 'rejected';
     const displayStatus = job.status === 'completed'
         ? 'completed'
         : (cancelledByWorker ? 'cancelled_by_worker' : (job.status === 'cancelled_by_client' ? 'cancelled_by_client' : 'cancelled'));
@@ -133,6 +134,14 @@ function JobCard({ job, index }) {
                        .map(s => s.skill) || [];
     const jobPhoto = job?.photos?.[0] ? getImageUrl(job.photos[0]) : '';
     const cityLine = [job?.location?.locality, job?.location?.city].filter(Boolean).join(', ');
+    const slotPaid = (Array.isArray(job?.mySlots) ? job.mySlots : []).reduce((sum, slot) => sum + Math.max(0, Number(slot?.finalPaidPrice || 0)), 0);
+    const paidAmount = Math.max(
+        Number(job?.pricingMeta?.finalPaidPrice || 0),
+        Number(job?.directHire?.paymentAmount || 0),
+        Number(slotPaid || 0),
+        Number(job?.payment || 0),
+    );
+    const paymentMethod = isRejectedDirectHire ? '' : String(job?.directHire?.paymentMode || job?.paymentMethod || '').replace('_', ' ');
 
     const [expanded, setExpanded] = useState(false);
 
@@ -199,9 +208,14 @@ function JobCard({ job, index }) {
 
                 {/* Meta row */}
                 <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs sm:text-sm text-gray-500">
-                    {job.payment > 0 && (
+                    {!isRejectedDirectHire && paidAmount > 0 && (
                         <span className="flex items-center gap-1 font-bold text-green-600">
-                            <IndianRupee size={12} /> {fmt(job.payment)}
+                            <IndianRupee size={12} /> Paid {fmt(paidAmount)}
+                        </span>
+                    )}
+                    {!isRejectedDirectHire && paymentMethod && (
+                        <span className="flex items-center gap-1 text-blue-700 font-semibold capitalize">
+                            Method: {paymentMethod}
                         </span>
                     )}
                     {job.location?.city && (
@@ -269,6 +283,16 @@ function JobCard({ job, index }) {
                                 <span className="font-semibold">Location:</span>{' '}
                                 {[job?.location?.locality, job?.location?.city, job?.location?.pincode].filter(Boolean).join(', ') || 'N/A'}
                             </p>
+                            {!isRejectedDirectHire && (
+                                <>
+                                    <p className="text-xs text-gray-600">
+                                        <span className="font-semibold">Paid Amount:</span> {paidAmount > 0 ? `₹${fmt(paidAmount)}` : 'N/A'}
+                                    </p>
+                                    <p className="text-xs text-gray-600 capitalize">
+                                        <span className="font-semibold">Payment Method:</span> {paymentMethod || 'N/A'}
+                                    </p>
+                                </>
+                            )}
                             {['cancelled', 'cancelled_by_client'].includes(job.status) && job.cancellationReason && (
                                 <p className="text-xs text-red-600">
                                     <span className="font-semibold">Reason:</span> {job.cancellationReason}

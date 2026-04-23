@@ -58,6 +58,15 @@ const userSchema = new mongoose.Schema({
     experience: { type: Number },
     expectedMinPay: { type: Number, default: 0, min: 0 },
     expectedMaxPay: { type: Number, default: 0, min: 0 },
+    payoutPreference: {
+        type: String,
+        enum: ['upi', 'bank', ''],
+        default: '',
+    },
+    payoutUpiId: { type: String, trim: true, default: '', select: false },
+    payoutBankAccountNumber: { type: String, trim: true, default: '', select: false },
+    payoutBankIfsc: { type: String, trim: true, default: '', uppercase: true, select: false },
+    payoutAccountHolderName: { type: String, trim: true, default: '', select: false },
     travelMethod: {
         type: String,
         enum: ['cycle', 'bike', 'bus', 'other'],

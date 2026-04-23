@@ -12,7 +12,6 @@ import {
   fetchFraudActions,
   fetchFraudComplaintStats,
   fetchFraudQueue,
-  fetchModelMetrics,
 } from '../../store/slices/fraudSlice';
 
 import {
@@ -143,7 +142,6 @@ export default function FraudMonitor() {
       await Promise.all([
         dispatch(fetchFraudQueue()).unwrap(),
         dispatch(fetchFraudActions()).unwrap(),
-        dispatch(fetchModelMetrics()).unwrap(),
         dispatch(fetchFraudComplaintStats()).unwrap(),
       ]);
 
@@ -165,7 +163,6 @@ export default function FraudMonitor() {
     Promise.all([
       dispatch(fetchFraudQueue()).unwrap(),
       dispatch(fetchFraudActions()).unwrap(),
-      dispatch(fetchModelMetrics()).unwrap(),
       dispatch(fetchFraudComplaintStats()).unwrap(),
     ])
       .catch(() => {})

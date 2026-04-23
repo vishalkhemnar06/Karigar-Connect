@@ -19,7 +19,9 @@ export function useFraudSocket({ onAlert, onActionTaken } = {}) {
 
     useEffect(() => {
         const socket = io(`${SOCKET_URL}/fraud`, {
-            transports: ['websocket', 'polling'],
+            // Prefer polling first to avoid intermittent websocket handshake
+            // errors on Werkzeug/threading in local development.
+            transports: ['polling', 'websocket'],
             reconnectionAttempts: 5,
             reconnectionDelay: 2000,
             withCredentials: false,
@@ -40,8 +42,9 @@ export function useFraudSocket({ onAlert, onActionTaken } = {}) {
             onActionTakenRef.current?.(data);
         });
 
-        socket.on('connect_error', () => {
-            socket.disconnect();
+        socket.on('connect_error', (error) => {
+            // Keep socket alive so built-in reconnect/fallback can recover.
+            console.warn('[FraudSocket] connect_error:', error?.message || error);
         });
 
         return () => socket.disconnect();

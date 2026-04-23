@@ -1668,6 +1668,13 @@ exports.deleteJob = async (req, res) => {
         const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
         if (!job) return res.status(404).json({ message: 'Not found.' });
         if (job.status !== 'open') return res.status(403).json({ message: 'Only open jobs can be deleted.' });
+
+        const activeSubTasks = await Job.find({
+            postedBy: req.user.id,
+            parentJobId: job._id,
+            status: { $in: ['open', 'proposal', 'scheduled', 'running'] },
+        }).select('_id');
+
         job.status = 'cancelled';
         job.cancelledBy = 'client';
         job.cancellationReason = 'Deleted by client before assignment.';
@@ -1677,10 +1684,34 @@ exports.deleteJob = async (req, res) => {
         job.archivedByClient = true;
         job.archivedAt = new Date();
         await job.save();
+
+        if (activeSubTasks.length) {
+            const subTaskIds = activeSubTasks.map((st) => st._id);
+            await Job.updateMany(
+                { _id: { $in: subTaskIds } },
+                {
+                    $set: {
+                        status: 'cancelled',
+                        cancelledBy: 'client',
+                        cancellationReason: 'Auto-cancelled: parent job deleted by client.',
+                        cancelledAt: new Date(),
+                        applicationsOpen: false,
+                        visibility: false,
+                        archivedByClient: true,
+                        archivedAt: new Date(),
+                    },
+                },
+            );
+
+            await Promise.all(subTaskIds.map((subTaskId) => upsertJobById(subTaskId).catch((err) => {
+                console.error('semantic upsertJobById(deleteJob subTask archive):', err.message);
+            })));
+        }
+
         upsertJobById(job._id).catch((err) => {
             console.error('semantic upsertJobById(deleteJob archive):', err.message);
         });
-        return res.json({ message: 'Job moved to history.', job });
+        return res.json({ message: 'Job moved to history.', job, autoCancelledSubTasks: activeSubTasks.length });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 

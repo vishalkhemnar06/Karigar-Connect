@@ -2,13 +2,24 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
-import { Briefcase, Calendar, Clock, IndianRupee, MapPin, Phone, Sparkles } from 'lucide-react';
+import { Briefcase, Calendar, Clock, IndianRupee, MapPin, Phone, RefreshCw, Sparkles } from 'lucide-react';
+
+const OTP_TTL_MS = 5 * 60 * 1000;
+
+const formatCountdown = (secondsLeft) => {
+    const safe = Math.max(0, Number(secondsLeft) || 0);
+    const minutes = Math.floor(safe / 60);
+    const seconds = safe % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
 
 export default function ClientHiredWorkers() {
     const [client, setClient] = useState(null);
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [otpInputs, setOtpInputs] = useState({});
+    const [callIntentJobId, setCallIntentJobId] = useState(null);
+    const [nowMs, setNowMs] = useState(Date.now());
 
     const loadTickets = async () => {
         const refreshed = await api.getClientDirectHireTickets();
@@ -35,9 +46,16 @@ export default function ClientHiredWorkers() {
         load();
     }, []);
 
+    useEffect(() => {
+        const timer = setInterval(() => setNowMs(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
     const sendStartOtp = async (jobId) => {
         try {
-            await api.sendDirectHireStartOtp(jobId);
+            const res = await api.sendDirectHireStartOtp(jobId);
+            const expiryMs = res?.data?.otpExpiresAt ? new Date(res.data.otpExpiresAt).getTime() : (Date.now() + OTP_TTL_MS);
+            onPaymentField(jobId, 'startOtpExpiryMs', expiryMs);
             toast.success('Start OTP sent to worker.');
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Unable to send start OTP.');
@@ -49,6 +67,8 @@ export default function ClientHiredWorkers() {
         if (!otp) return toast.error('Enter start OTP.');
         try {
             await api.verifyDirectHireStartOtp(jobId, { otp });
+            onPaymentField(jobId, 'startOtpExpiryMs', 0);
+            onPaymentField(jobId, 'startOtp', '');
             toast.success('Job started.');
             await loadTickets();
         } catch (error) {
@@ -57,15 +77,10 @@ export default function ClientHiredWorkers() {
     };
 
     const sendCompletionOtp = async (jobId) => {
-        const paidAmount = Number(otpInputs[jobId]?.finalPaidAmount || 0);
-        if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-            return toast.error('Enter a valid paid amount (> 0) before sending OTP.');
-        }
         try {
-            await api.sendDirectHireCompletionOtp(jobId, {
-                finalPaidPrice: paidAmount,
-                paymentMode: otpInputs[jobId]?.paymentMode || 'cash',
-            });
+            const res = await api.sendDirectHireCompletionOtp(jobId);
+            const expiryMs = res?.data?.otpExpiresAt ? new Date(res.data.otpExpiresAt).getTime() : (Date.now() + OTP_TTL_MS);
+            onPaymentField(jobId, 'completionOtpExpiryMs', expiryMs);
             toast.success('Completion OTP sent to worker.');
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Unable to send completion OTP.');
@@ -77,6 +92,8 @@ export default function ClientHiredWorkers() {
         if (!otp) return toast.error('Enter completion OTP.');
         try {
             await api.verifyDirectHireCompletionOtp(jobId, { otp });
+            onPaymentField(jobId, 'completionOtpExpiryMs', 0);
+            onPaymentField(jobId, 'completionOtp', '');
             toast.success('Job completed and payment confirmed.');
             await loadTickets();
         } catch (error) {
@@ -84,8 +101,20 @@ export default function ClientHiredWorkers() {
         }
     };
 
+    const handleLogCallIntent = async (jobId) => {
+        try {
+            setCallIntentJobId(jobId);
+            await api.logDirectHireCallIntent(jobId);
+            toast.success('Call intent logged.');
+            await loadTickets();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Unable to log call intent.');
+        } finally {
+            setCallIntentJobId(null);
+        }
+    };
+
     const onPaymentField = (jobId, field, value) => {
-        if (field === 'finalPaidAmount' && Number(value) < 0) return;
         setOtpInputs((prev) => ({
             ...prev,
             [jobId]: {
@@ -116,15 +145,6 @@ export default function ClientHiredWorkers() {
                             View all direct hire invites with acceptance status, OTP flow, and payment details.
                         </p>
                     </div>
-                </div>
-            </div>
-
-            <div className="space-y-4">
-                <div className="bg-white rounded-3xl border border-orange-100 shadow-sm p-5 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-black text-gray-900">Direct Hire Queue</h2>
-                        <p className="text-sm text-gray-500">Accepted/rejected status with complete invite details.</p>
-                    </div>
                     <button
                         type="button"
                         onClick={async () => {
@@ -137,10 +157,19 @@ export default function ClientHiredWorkers() {
                                 setLoading(false);
                             }
                         }}
-                        className="px-4 py-2 rounded-xl border border-orange-200 text-orange-700 font-bold hover:bg-orange-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/15 px-4 py-2 text-sm font-bold text-white hover:bg-white/20"
                     >
-                        Refresh
+                        <RefreshCw size={14} /> Refresh
                     </button>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                <div className="bg-white rounded-3xl border border-orange-100 shadow-sm p-5 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-black text-gray-900">Direct Hire Queue</h2>
+                        <p className="text-sm text-gray-500">Accepted/rejected status with complete invite details.</p>
+                    </div>
                 </div>
 
                 {loading ? (
@@ -154,11 +183,38 @@ export default function ClientHiredWorkers() {
                             const dh = job?.directHire || {};
                             const status = String(job?.directHire?.requestStatus || 'requested');
                             const paymentStatus = String(job?.directHire?.paymentStatus || 'pending');
+                            const isPaid = paymentStatus === 'paid';
                             const startOtp = otpInputs[job._id]?.startOtp || '';
                             const completionOtp = otpInputs[job._id]?.completionOtp || '';
-                            const canStartOtp = status === 'accepted';
-                            const canCompletionOtp = status === 'accepted' && String(job.status || '') === 'running';
-                            const defaultPaid = Number(job?.directHire?.expectedAmount || 0);
+                            const jobStatus = String(job.status || '').toLowerCase();
+                            const isStarted = ['running', 'completed'].includes(jobStatus);
+                            const isCompleted = jobStatus === 'completed';
+                            const scheduledStartMs = (() => {
+                                const directStart = job?.directHire?.expectedStartAt;
+                                if (directStart) {
+                                    const parsed = new Date(directStart).getTime();
+                                    return Number.isFinite(parsed) ? parsed : 0;
+                                }
+                                if (job?.scheduledDate) {
+                                    const base = new Date(job.scheduledDate);
+                                    const [hh, mm] = String(job?.scheduledTime || '09:00').split(':').map(Number);
+                                    base.setHours(Number.isFinite(hh) ? hh : 9, Number.isFinite(mm) ? mm : 0, 0, 0);
+                                    const parsed = base.getTime();
+                                    return Number.isFinite(parsed) ? parsed : 0;
+                                }
+                                return 0;
+                            })();
+                            const hasReachedStartTime = scheduledStartMs > 0 ? nowMs >= scheduledStartMs : false;
+                            const showPaymentState = isPaid || isStarted || hasReachedStartTime;
+                            const showPayReminder = status === 'accepted' && paymentStatus !== 'paid' && (isStarted || hasReachedStartTime);
+                            const canStartOtp = status === 'accepted' && !isStarted;
+                            const canCompletionOtp = status === 'accepted' && jobStatus === 'running' && isPaid;
+                            const startExpiryMs = Number(otpInputs[job._id]?.startOtpExpiryMs || 0);
+                            const completionExpiryMs = Number(otpInputs[job._id]?.completionOtpExpiryMs || 0);
+                            const startSecondsLeft = startExpiryMs > nowMs ? Math.floor((startExpiryMs - nowMs) / 1000) : 0;
+                            const completionSecondsLeft = completionExpiryMs > nowMs ? Math.floor((completionExpiryMs - nowMs) / 1000) : 0;
+                            const canResendStart = startSecondsLeft <= 0;
+                            const canResendCompletion = completionSecondsLeft <= 0;
                             const durationValue = Math.max(1, Number(dh.durationValue || 1));
                             const durationUnit = String(dh.durationUnit || '/day');
                             const demandMultiplier = Number(dh.appliedDemandMultiplier || 1);
@@ -199,7 +255,28 @@ export default function ClientHiredWorkers() {
                                                 <div className="flex items-center gap-2"><IndianRupee size={14} className="text-orange-500" /> Detected: ₹{detectedUnitCost.toLocaleString('en-IN')}{durationUnit}</div>
                                                 <div className="flex items-center gap-2"><IndianRupee size={14} className="text-orange-500" /> Total est.: ₹{totalEstimatedCost.toLocaleString('en-IN')}</div>
                                                 <div className="flex items-center gap-2"><MapPin size={14} className="text-orange-500" /> {job?.location?.fullAddress || job?.location?.city || 'Location not set'}</div>
+                                                {showPaymentState && (
+                                                    <div className="flex items-center gap-2">
+                                                        <IndianRupee size={14} className="text-orange-500" />
+                                                        Payment: {paymentStatus}
+                                                        {isPaid && (
+                                                            <span className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-100">
+                                                                Payment Done
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
+                                            {showPayReminder && (
+                                                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                                    Client, please pay worker from Job Manage section.
+                                                </div>
+                                            )}
+                                            {isCompleted && (
+                                                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                                                    Job completed successfully.
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -209,49 +286,63 @@ export default function ClientHiredWorkers() {
                                         </a>
                                         <button
                                             type="button"
-                                            onClick={() => api.logDirectHireCallIntent(job._id).catch(() => {})}
-                                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 text-gray-700 font-bold py-2"
+                                            onClick={() => handleLogCallIntent(job._id)}
+                                            disabled={callIntentJobId === job._id}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 text-gray-700 font-bold py-2 disabled:opacity-60 cursor-pointer"
                                         >
-                                            <Briefcase size={14} /> Log Call Intent
+                                            <Briefcase size={14} /> {callIntentJobId === job._id ? 'Logging...' : 'Log Call Intent'}
                                         </button>
                                     </div>
 
                                     {canStartOtp && (
                                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3">
                                             <p className="text-sm font-black text-gray-800">Start Job OTP</p>
+                                            <p className="text-xs text-gray-600">You can start the job anytime with OTP. Payment can be completed later from Job Manage.</p>
                                             <div className="flex flex-col sm:flex-row gap-2">
-                                                <button type="button" onClick={() => sendStartOtp(job._id)} className="px-4 py-2 rounded-xl bg-orange-600 text-white font-bold">Send OTP</button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => sendStartOtp(job._id)}
+                                                    disabled={!canResendStart}
+                                                    className="px-4 py-2 rounded-xl bg-orange-600 text-white font-bold disabled:opacity-60"
+                                                >
+                                                    {startExpiryMs > 0
+                                                        ? (canResendStart ? 'Send Again' : `Send Again ${formatCountdown(startSecondsLeft)}`)
+                                                        : 'Send OTP'}
+                                                </button>
                                                 <input className="flex-1 rounded-xl border border-gray-200 px-3 py-2" placeholder="Enter start OTP" value={startOtp} onChange={(e) => onPaymentField(job._id, 'startOtp', e.target.value)} />
-                                                <button type="button" onClick={() => verifyStartOtp(job._id)} className="px-4 py-2 rounded-xl bg-gray-900 text-white font-bold">Verify</button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => verifyStartOtp(job._id)}
+                                                    className="px-4 py-2 rounded-xl bg-gray-900 text-white font-bold disabled:opacity-60"
+                                                >
+                                                    Verify
+                                                </button>
                                             </div>
                                         </div>
                                     )}
 
+                                    {status === 'accepted' && jobStatus === 'running' && !isPaid ? (
+                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+                                            <p className="text-sm font-black text-amber-800">Payment required for completion</p>
+                                            <p className="text-xs text-amber-700">Complete payment first. Completion OTP will appear after payment is marked paid.</p>
+                                        </div>
+                                    ) : null}
+
                                     {canCompletionOtp && (
                                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3">
-                                            <p className="text-sm font-black text-gray-800">Pay Worker + Complete OTP</p>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    className="rounded-xl border border-gray-200 px-3 py-2"
-                                                    placeholder="Final paid amount"
-                                                    value={otpInputs[job._id]?.finalPaidAmount ?? defaultPaid}
-                                                    onChange={(e) => onPaymentField(job._id, 'finalPaidAmount', e.target.value)}
-                                                />
-                                                <select
-                                                    className="rounded-xl border border-gray-200 px-3 py-2"
-                                                    value={otpInputs[job._id]?.paymentMode || job?.directHire?.paymentMode || 'cash'}
-                                                    onChange={(e) => onPaymentField(job._id, 'paymentMode', e.target.value)}
-                                                >
-                                                    <option value="cash">Cash</option>
-                                                    <option value="upi">UPI</option>
-                                                    <option value="bank_transfer">Bank Transfer</option>
-                                                    <option value="online">Online</option>
-                                                </select>
-                                            </div>
+                                            <p className="text-sm font-black text-gray-800">Complete Job OTP</p>
+                                            <p className="text-xs text-gray-600">Payment is done. Generate OTP and verify it to mark this job completed.</p>
                                             <div className="flex flex-col sm:flex-row gap-2">
-                                                <button type="button" onClick={() => sendCompletionOtp(job._id)} className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold">Send OTP</button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => sendCompletionOtp(job._id)}
+                                                    disabled={!canResendCompletion}
+                                                    className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-60"
+                                                >
+                                                    {completionExpiryMs > 0
+                                                        ? (canResendCompletion ? 'Send Again' : `Send Again ${formatCountdown(completionSecondsLeft)}`)
+                                                        : 'Send OTP'}
+                                                </button>
                                                 <input className="flex-1 rounded-xl border border-gray-200 px-3 py-2" placeholder="Enter completion OTP" value={completionOtp} onChange={(e) => onPaymentField(job._id, 'completionOtp', e.target.value)} />
                                                 <button type="button" onClick={() => verifyCompletionOtp(job._id)} className="px-4 py-2 rounded-xl bg-gray-900 text-white font-bold">Verify</button>
                                             </div>

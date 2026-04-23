@@ -39,13 +39,12 @@ const getPricingReasonMessage = (pricingMeta) => {
     if (!pricingMeta) return '';
     const multipliers = pricingMeta.multipliers || {};
     const dayType = multipliers.dayType || 'weekday';
-    console.log('getPricingReasonMessage called with:', { dayType, multipliers });
     
     let reasons = [];
     
-    // Check festival first
-    if (multipliers.festivalName && multipliers.festivalName.toLowerCase() !== 'none') {
-        reasons.push(`${multipliers.festivalName}`);
+    const festivalName = String(multipliers.festivalName || '').trim();
+    if (festivalName && festivalName.toLowerCase() !== 'none') {
+        reasons.push(festivalName);
     }
     
     // Check holiday
@@ -65,7 +64,6 @@ const getPricingReasonMessage = (pricingMeta) => {
     }
     
     const reasonText = reasons.join(', ');
-    console.log('Determined reasons:', reasonText);
     
     if (!reasonText) return '';
     return `Due to ${reasonText}, cost is higher. You can select another date to reduce cost.`;
@@ -96,9 +94,12 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
     const skillOptions = workerSkills.length ? workerSkills : fallbackWorkerSkills;
     const fetchedAmountNum = Number(form.fetchedAmount || 0);
     const expectedAmountNum = Number(form.expectedAmount || 0);
-    const minAllowed = fetchedAmountNum > 0 ? Math.max(1, Math.round(fetchedAmountNum * 0.8)) : 0;
+    const durationValueNum = Math.max(1, Number(form.durationValue) || 1);
+    const minAllowed = fetchedAmountNum > 0 ? Math.max(1, Math.round(fetchedAmountNum * 0.7)) : 0;
     const maxAllowed = fetchedAmountNum > 0 ? Math.max(minAllowed, Math.round(fetchedAmountNum * 1.3)) : 0;
     const isExpectedOutOfRange = fetchedAmountNum > 0 && expectedAmountNum > 0 && (expectedAmountNum < minAllowed || expectedAmountNum > maxAllowed);
+    const displayUnitRate = Number(pricingMeta?.unitRate || 0);
+    const displayTotalEstimate = displayUnitRate > 0 ? Math.round(displayUnitRate * durationValueNum) : 0;
 
     useEffect(() => {
         if (isOpen && worker && client) {
@@ -141,17 +142,31 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
 
     const updateField = (key, value) => {
         if ((key === 'durationValue' || key === 'expectedAmount') && Number(value) < 0) return;
-        setForm((prev) => ({ ...prev, [key]: value }));
+        const pricingSensitiveKeys = new Set(['skill', 'scheduledDate', 'scheduledTime', 'durationValue', 'durationUnit']);
+        setForm((prev) => {
+            const next = { ...prev, [key]: value };
+            if (pricingSensitiveKeys.has(key) && prev.fetchedAmount) {
+                next.fetchedAmount = '';
+                next.expectedAmount = '';
+            }
+            return next;
+        });
+        if (pricingSensitiveKeys.has(key)) {
+            setPricingMeta(null);
+        }
     };
 
     const updateLocationField = (key, value) => {
         setForm((prev) => ({
             ...prev,
+            fetchedAmount: '',
+            expectedAmount: '',
             location: {
                 ...prev.location,
                 [key]: value,
             },
         }));
+        setPricingMeta(null);
     };
 
     const fetchSuggestedAmount = async () => {
@@ -178,16 +193,17 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
                 toast.error('Could not fetch suggested amount.');
                 return;
             }
-            console.log('Pricing data received:', pricing);
+            const durationNum = Math.max(1, Number(form.durationValue) || 1);
+            const suggestedAmount = Number(pricing.suggestedAmount || 0);
             setPricingMeta({
                 ...pricing,
-                unitRate: pricing.baseAmount,
-                totalEstimate: pricing.suggestedAmount,
+                unitRate: durationNum > 0 ? (suggestedAmount / durationNum) : suggestedAmount,
+                totalEstimate: suggestedAmount,
             });
             setForm((prev) => ({
                 ...prev,
-                fetchedAmount: String(pricing.suggestedAmount),
-                expectedAmount: String(pricing.suggestedAmount),
+                fetchedAmount: String(suggestedAmount),
+                expectedAmount: String(suggestedAmount),
             }));
             toast.success('Suggested amount fetched. You can edit within selected limit.');
         } catch (error) {
@@ -330,13 +346,13 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
                             <div className="rounded-xl border border-gray-200 bg-gray-100 px-3 py-2">
                                 <div className="text-xs text-gray-600">Unit Rate</div>
                                 <div className="text-sm font-semibold text-gray-800">
-                                    ₹{pricingMeta?.unitRate ? Number(pricingMeta.unitRate).toLocaleString('en-IN') : '-'}{form.durationUnit}
+                                    ₹{displayUnitRate > 0 ? displayUnitRate.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '-'}{form.durationUnit}
                                 </div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-gray-100 px-3 py-2">
                                 <div className="text-xs text-gray-600">Total Estimated</div>
                                 <div className="text-sm font-semibold text-gray-800">
-                                    ₹{pricingMeta?.totalEstimate ? Number(pricingMeta.totalEstimate).toLocaleString('en-IN') : '-'}
+                                    ₹{displayTotalEstimate > 0 ? displayTotalEstimate.toLocaleString('en-IN') : '-'}
                                 </div>
                             </div>
                         </div>
@@ -352,7 +368,7 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
                         />
                         {fetchedAmountNum > 0 && (
                             <p className="text-xs text-amber-700 font-semibold">
-                                Allowed edit range: ₹{minAllowed.toLocaleString('en-IN')} to ₹{maxAllowed.toLocaleString('en-IN')} (−20% / +30%).
+                                Allowed edit range: ₹{minAllowed.toLocaleString('en-IN')} to ₹{maxAllowed.toLocaleString('en-IN')}.
                             </p>
                         )}
                         {isExpectedOutOfRange && (

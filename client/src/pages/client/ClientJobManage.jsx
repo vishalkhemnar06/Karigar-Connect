@@ -23,6 +23,12 @@ import {
     completeSubTask, initClientLocation, recordSemanticFeedback, removeCompletionPhoto,
 } from '../../api/index';
 import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
+import {
+    initiateRazorpayPayment,
+    initiateCashOtpPayment,
+    resendCashOtpPayment,
+    verifyCashOtpPayment,
+} from '../../utils/razorpayHelper';
 import ClientLiveTracking from './ClientLiveTracking';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -124,6 +130,29 @@ const getSkillBudgetInfo = (job, skill) => {
     };
 };
 
+const getDirectHireEstimatedAmount = (job) => {
+    const directHire = job?.directHire || {};
+    const candidates = [
+        directHire.paymentAmount,
+        directHire.expectedAmount,
+        job?.totalEstimatedCost,
+        job?.pricingMeta?.totalEstimatedCost,
+        job?.pricingMeta?.suggestedAmount,
+        job?.payment,
+        directHire.fetchedAmount,
+        directHire.fetchedBaseAmount,
+    ];
+
+    for (const candidate of candidates) {
+        const amount = Number(candidate || 0);
+        if (Number.isFinite(amount) && amount > 0) {
+            return Math.round(amount);
+        }
+    }
+
+    return 0;
+};
+
 const getPaymentOptionsForSlot = (job, slot) => {
     const skillBudget = getSkillBudgetInfo(job, slot?.skill);
     const slotWorkerId = String(slot?.assignedWorker?._id || slot?.assignedWorker || '');
@@ -148,11 +177,13 @@ const getPaymentOptionsForSlot = (job, slot) => {
         ?? slot?.applicant?.quotedPrice
         ?? 0,
     );
+    const directHireEstimatedAmount = getDirectHireEstimatedAmount(job);
 
     return {
         skillCost: skillCost > 0 ? Math.round(skillCost) : 0,
         negotiableCost: negotiableCost > 0 ? Math.round(negotiableCost) : 0,
         workerQuotedPrice: workerQuotedPrice > 0 ? Math.round(workerQuotedPrice) : 0,
+        directHireEstimatedAmount,
     };
 };
 
@@ -596,14 +627,18 @@ const RatingModal = ({ job, onClose, onRated }) => {
     );
 };
 
-const PayWorkerModal = ({ payload, onClose, onPay }) => {
+const PayWorkerModal = ({ payload, onClose, onPaid }) => {
     const { job, slot, workerName, skill } = payload || {};
     const paymentOptions = getPaymentOptionsForSlot(job, slot);
-    const optionCards = [
-        { key: 'skillCost', label: 'Client Skill Cost', amount: paymentOptions.skillCost },
-        { key: 'negotiableCost', label: 'Negotiable Cost', amount: paymentOptions.negotiableCost },
-        { key: 'workerQuotedPrice', label: 'Worker Quoted Price', amount: paymentOptions.workerQuotedPrice },
-    ].filter((option) => Number(option.amount || 0) > 0);
+    const isDirectHireJob = String(job?.hireMode || '').toLowerCase() === 'direct';
+    const directHireEstimatedAmount = Number(paymentOptions.directHireEstimatedAmount || getDirectHireEstimatedAmount(job) || 0);
+    const optionCards = isDirectHireJob
+        ? [{ key: 'directHireEstimate', label: 'Direct Hire Estimated Total', amount: directHireEstimatedAmount }]
+        : [
+            { key: 'skillCost', label: 'Client Skill Cost', amount: paymentOptions.skillCost },
+            { key: 'negotiableCost', label: 'Negotiable Cost', amount: paymentOptions.negotiableCost },
+            { key: 'workerQuotedPrice', label: 'Worker Quoted Price', amount: paymentOptions.workerQuotedPrice },
+        ].filter((option) => Number(option.amount || 0) > 0);
 
     const defaultOption = optionCards[0] || { key: 'skillCost', amount: 0 };
     const [selectedSource, setSelectedSource] = useState(defaultOption.key);
@@ -612,12 +647,56 @@ const PayWorkerModal = ({ payload, onClose, onPay }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [confirmingPay, setConfirmingPay] = useState(false);
+    const [paymentMode, setPaymentMode] = useState('online');
+    const [cashSession, setCashSession] = useState(null);
+    const [otpCode, setOtpCode] = useState('');
+    const [otpDeadlineMs, setOtpDeadlineMs] = useState(0);
+    const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
+    const [resendingOtp, setResendingOtp] = useState(false);
 
     const selectedReference = Number((optionCards.find((option) => option.key === selectedSource) || defaultOption).amount || 0);
     const paidAmount = Number(amount || 0);
-    const tooLow = selectedReference > 0 && paidAmount > 0 && paidAmount < (selectedReference * 0.65);
-    const tooHigh = selectedReference > 0 && paidAmount > (selectedReference * 1.4);
+    const tooLow = selectedReference > 0 && paidAmount > 0 && paidAmount < (selectedReference * 0.7);
+    const tooHigh = selectedReference > 0 && paidAmount > (selectedReference * 1.3);
+    const isCashMode = paymentMode === 'cash';
+    const hasCashSession = Boolean(cashSession?.transactionId);
     const canPay = Number.isFinite(paidAmount) && paidAmount > 0 && acknowledged && !tooLow && !tooHigh;
+
+    useEffect(() => {
+        if (!otpDeadlineMs) {
+            setOtpSecondsLeft(0);
+            return;
+        }
+        const update = () => {
+            const next = Math.max(0, Math.floor((otpDeadlineMs - Date.now()) / 1000));
+            setOtpSecondsLeft(next);
+        };
+        update();
+        const iv = setInterval(update, 1000);
+        return () => clearInterval(iv);
+    }, [otpDeadlineMs]);
+
+    const handleResendOtp = async () => {
+        if (!cashSession?.transactionId) return;
+        setResendingOtp(true);
+        setError('');
+        try {
+            const data = await resendCashOtpPayment(cashSession.transactionId);
+            setCashSession((prev) => ({
+                ...(prev || {}),
+                transactionId: data.transactionId || prev?.transactionId,
+                maskedMobile: data.maskedMobile || prev?.maskedMobile,
+                resendCount: Number(data.resendCount || (prev?.resendCount || 0)),
+            }));
+            setOtpDeadlineMs(new Date(data.otpExpiresAt).getTime());
+            setOtpCode('');
+            toast.success('OTP sent again to worker mobile.');
+        } catch (e) {
+            setError(e?.response?.data?.message || 'Failed to resend OTP.');
+        } finally {
+            setResendingOtp(false);
+        }
+    };
 
     const handlePay = async () => {
         if (!canPay) {
@@ -625,7 +704,7 @@ const PayWorkerModal = ({ payload, onClose, onPay }) => {
             return;
         }
 
-        if (!confirmingPay) {
+        if (!isCashMode && !confirmingPay) {
             setConfirmingPay(true);
             setError('');
             return;
@@ -634,18 +713,57 @@ const PayWorkerModal = ({ payload, onClose, onPay }) => {
         setLoading(true);
         setError('');
         try {
-            await onPay({
+            const paymentPayload = {
                 jobId: job._id,
                 workerId: slot?.assignedWorker?._id || slot?.assignedWorker || '',
                 slotId: slot?._id,
                 skill: skill || slot?.skill || 'general',
                 amount: paidAmount,
                 priceSource: selectedSource,
-            });
-            toast.success('Payment done');
+                clientName: job?.clientName || 'Client',
+                clientEmail: job?.clientEmail || '',
+                clientPhone: job?.clientPhone || '',
+            };
+
+            if (isCashMode) {
+                if (!hasCashSession) {
+                    const data = await initiateCashOtpPayment(paymentPayload);
+                    setCashSession({
+                        transactionId: data.transactionId,
+                        maskedMobile: data.maskedMobile,
+                        resendCount: 0,
+                    });
+                    setOtpDeadlineMs(new Date(data.otpExpiresAt).getTime());
+                    toast.success('OTP sent to worker mobile for cash payment verification.');
+                    return;
+                }
+
+                if (!/^\d{6}$/.test(String(otpCode || '').trim())) {
+                    setError('Please enter the 6-digit OTP sent to worker.');
+                    return;
+                }
+
+                const data = await verifyCashOtpPayment({
+                    transactionId: cashSession.transactionId,
+                    otp: String(otpCode || '').trim(),
+                });
+
+                if (typeof onPaid === 'function') {
+                    await onPaid(data);
+                }
+                toast.success(`Cash payment verified: ${fmtINR(paidAmount)}`);
+                onClose();
+                return;
+            }
+
+            const result = await initiateRazorpayPayment(paymentPayload);
+            if (typeof onPaid === 'function') {
+                await onPaid(result);
+            }
+            toast.success(`Payment successful: ${fmtINR(paidAmount)}`);
             onClose();
         } catch (e) {
-            setError(e?.response?.data?.message || 'Failed to record payment.');
+            setError(e?.response?.data?.message || e?.message || 'Failed to complete payment.');
         } finally {
             setLoading(false);
         }
@@ -662,7 +780,7 @@ const PayWorkerModal = ({ payload, onClose, onPay }) => {
             <div className="p-4 space-y-3">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                     <p className="text-sm text-emerald-700 font-semibold">
-                        Select a payment source, adjust the amount if needed, then confirm payment for this worker.
+                        Select source and amount, then proceed to secure Razorpay checkout.
                     </p>
                 </div>
 
@@ -707,6 +825,34 @@ const PayWorkerModal = ({ payload, onClose, onPay }) => {
                     {tooHigh && <p className="text-xs font-semibold text-orange-600">Warning: amount is too high.</p>}
                 </div>
 
+                <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Mode</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setPaymentMode('cash');
+                                setConfirmingPay(false);
+                                setError('');
+                            }}
+                            className={`rounded-xl border-2 px-3 py-2 text-sm font-bold transition-all ${isCashMode ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+                        >
+                            Pay Cash
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setPaymentMode('online');
+                                setConfirmingPay(false);
+                                setError('');
+                            }}
+                            className={`rounded-xl border-2 px-3 py-2 text-sm font-bold transition-all ${!isCashMode ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+                        >
+                            Pay Online
+                        </button>
+                    </div>
+                </div>
+
                 <label className="flex items-start gap-2.5 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
                     <input
                         type="checkbox"
@@ -727,24 +873,63 @@ const PayWorkerModal = ({ payload, onClose, onPay }) => {
                 {confirmingPay && (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                         <p className="text-xs text-emerald-800 font-semibold">
-                            Confirm payment: {fmtINR(paidAmount)} to {workerName || 'this worker'} for {skill || 'this task'} in {job?.title || 'this job'}.
+                            Confirm payment of {fmtINR(paidAmount)} to {workerName || 'this worker'} and continue to Razorpay checkout.
                         </p>
+                    </div>
+                )}
+
+                {isCashMode && hasCashSession && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                        <p className="text-xs text-amber-800 font-semibold">
+                            OTP sent to worker mobile {cashSession?.maskedMobile || ''}. Enter OTP to confirm cash payment.
+                        </p>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={otpCode}
+                            onChange={(e) => {
+                                setOtpCode(String(e.target.value || '').replace(/\D/g, '').slice(0, 6));
+                                setError('');
+                            }}
+                            placeholder="Enter 6-digit OTP"
+                            className="w-full border-2 border-amber-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-amber-700 font-semibold">
+                                Valid for: {pad2(Math.floor(otpSecondsLeft / 60))}:{pad2(otpSecondsLeft % 60)}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={handleResendOtp}
+                                disabled={resendingOtp}
+                                className="text-[11px] font-bold text-amber-700 hover:text-amber-800 disabled:opacity-50"
+                            >
+                                {resendingOtp ? 'Sending…' : 'Send OTP Again'}
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
             <ModalFooter
                 onClose={() => {
-                    if (confirmingPay) {
+                    if (!isCashMode && confirmingPay) {
                         setConfirmingPay(false);
                         return;
                     }
                     onClose();
                 }}
-                closeLabel={confirmingPay ? 'Back' : 'Cancel'}
+                closeLabel={!isCashMode && confirmingPay ? 'Back' : 'Cancel'}
                 onAction={handlePay}
-                actionLabel={loading ? 'Paying…' : (confirmingPay ? 'Confirm & Pay' : 'Pay Now')}
+                actionLabel={
+                    loading
+                        ? (isCashMode ? 'Processing…' : 'Opening Razorpay…')
+                        : isCashMode
+                            ? (hasCashSession ? 'Verify OTP & Mark Paid' : 'Send OTP')
+                            : (confirmingPay ? 'Proceed To Razorpay' : 'Pay Now')
+                }
                 actionClass="bg-emerald-500 hover:bg-emerald-600"
-                disabled={loading || !canPay}
+                disabled={loading || !canPay || (isCashMode && hasCashSession && !/^\d{6}$/.test(String(otpCode || '').trim()))}
                 loading={loading}
             />
         </ModalShell>
@@ -1032,6 +1217,7 @@ const JobPreviewModal = ({
     onRemoveWorker, onRepostData, onClearAlert, onOpenPhoto, handlers, onTrackWorkers,
 }) => {
     const startInfo = useStartCountdown(job);
+    const isDirectHire = String(job?.hireMode || '').toLowerCase() === 'direct';
     const [selectedInviteSkill, setSelectedInviteSkill] = useState('');
     const finalPaidNum = Number(job?.pricingMeta?.finalPaidPrice || 0);
     const hasFinalPaid = finalPaidNum > 0;
@@ -1078,7 +1264,7 @@ const JobPreviewModal = ({
 
     return (
         <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-start justify-center p-3 sm:p-4 overflow-y-auto">
-            <div className="relative w-full max-w-6xl bg-white rounded-3xl shadow-2xl overflow-hidden my-4">
+            <div className={`relative w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden my-4 ${isDirectHire ? 'bg-amber-50' : 'bg-white'}`}>
                 <button
                     type="button"
                     onClick={onClose}
@@ -1089,7 +1275,7 @@ const JobPreviewModal = ({
                 </button>
 
                 <div className="max-h-[calc(100vh-2rem)] overflow-y-auto">
-                    <div className="px-5 py-5 sm:px-6 sm:py-6 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50">
+                    <div className={`px-5 py-5 sm:px-6 sm:py-6 border-b ${isDirectHire ? 'border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50' : 'border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50'}`}>
                         <div className="flex flex-col lg:flex-row gap-5">
                             {primaryImage && (
                                 <button
@@ -1156,6 +1342,14 @@ const JobPreviewModal = ({
                                     </div>
                                 </div>
 
+                                {isDirectHire && (
+                                    <div className="rounded-2xl border border-amber-200 bg-white p-3">
+                                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Direct Hire Skill Cost</p>
+                                        <p className="text-sm font-black text-gray-900 mt-1">{fmtINR(getDirectHireEstimatedAmount(job) || job?.payment || 0)}</p>
+                                        <p className="text-[11px] text-gray-500 mt-0.5">Payment from Job Manage only</p>
+                                    </div>
+                                )}
+
                                 <div className="flex flex-wrap gap-3 text-xs text-gray-600">
                                     <span className="inline-flex items-center gap-1">{fmtINR(job.payment)}</span>
                                     <span className="inline-flex items-center gap-1"><Calendar size={12} />{fmtDate(job.scheduledDate)}{job.scheduledTime ? ` · ${job.scheduledTime}` : ''}</span>
@@ -1189,7 +1383,7 @@ const JobPreviewModal = ({
                                     <div><span className="text-gray-500">Workers Required:</span> <span className="font-semibold text-gray-800">{job.workersRequired || totalSlots || '—'}</span></div>
                                     <div><span className="text-gray-500">Duration:</span> <span className="font-semibold text-gray-800">{job.duration || '—'}</span></div>
                                     <div><span className="text-gray-500">Budget:</span> <span className="font-semibold text-gray-800">{fmtINR(job.payment)}</span></div>
-                                    <div><span className="text-gray-500">Estimated Cost:</span> <span className="font-semibold text-gray-800">{fmtINR(job.totalEstimatedCost || job.payment)}</span></div>
+                                    <div><span className="text-gray-500">Estimated Cost:</span> <span className="font-semibold text-gray-800">{fmtINR(job.totalEstimatedCost || job.payment || getDirectHireEstimatedAmount(job))}</span></div>
                                     <div><span className="text-gray-500">Rate Basis:</span> <span className="font-semibold text-gray-800">{String(job?.duration || '').toLowerCase().includes('visit') ? '/visit' : (String(job?.duration || '').toLowerCase().includes('day') ? '/day' : '/hour')}</span></div>
                                     <div className="sm:col-span-2"><span className="text-gray-500">Live Location:</span> <span className="font-semibold text-gray-800">{locationLabel}</span></div>
                                     <div><span className="text-gray-500">Building / Home:</span> <span className="font-semibold text-gray-800">{job.location?.buildingName || '—'}</span></div>
@@ -1249,6 +1443,17 @@ const JobPreviewModal = ({
                                             ?? 0,
                                         );
                                         const slotAlert = alert && String(alert.slotId || '') === String(slot._id || '');
+                                        const slotPaidFromSlot = Number(slot.finalPaidPrice || 0);
+                                        const paidFromMeta = (job?.pricingMeta?.skillFinalPaid || []).find((entry) => {
+                                            const sameSlot = String(entry?.slotId || '') === String(slot?._id || '');
+                                            const sameWorker = String(entry?.workerId || '') === String(workerId || '');
+                                            const sameSkill = normalizeText(entry?.skill) === normalizeText(slot?.skill);
+                                            return sameSlot || (sameWorker && sameSkill);
+                                        });
+                                        const slotPaidAmount = slotPaidFromSlot > 0
+                                            ? slotPaidFromSlot
+                                            : Number(paidFromMeta?.amount || 0);
+                                        const isSlotPaid = slotPaidAmount > 0;
 
                                         return (
                                             <div key={slot._id || index} className="rounded-2xl border border-gray-100 bg-gray-50 p-3 sm:p-4 space-y-3">
@@ -1369,11 +1574,17 @@ const JobPreviewModal = ({
                                                     </div>
                                                 )}
 
-                                                {job.status === 'running' && slot.status === 'filled' && workerId && (
+                                                {isSlotPaid ? (
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
+                                                            Paid: {fmtINR(slotPaidAmount)}
+                                                        </span>
+                                                    </div>
+                                                ) : job.status === 'running' && ['filled', 'task_completed'].includes(slot.status) && workerId ? (
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button onClick={() => handlers.payWorker({ jobId: job._id, workerId, slotId: slot._id, skill: slot.skill, workerName: worker?.name || 'Worker', job, slot })} className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition-all">Pay</button>
                                                     </div>
-                                                )}
+                                                ) : null}
 
                                                 {['open', 'scheduled'].includes(job.status) && slot.status === 'filled' && workerId && (
                                                     <div className="flex items-center justify-end gap-2">
@@ -1389,7 +1600,7 @@ const JobPreviewModal = ({
                             )}
                         </div>
 
-                        {['open', 'scheduled'].includes(job.status) && (
+                        {!isDirectHire && ['open', 'scheduled'].includes(job.status) && (
                             <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-4 sm:p-5">
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
                                     <p className="text-sm font-black text-indigo-700 flex items-center gap-1.5"><Sparkles size={13} /> Smart Suggestions</p>
@@ -1498,7 +1709,7 @@ const JobPreviewModal = ({
                         )}
 
                         <div className="flex flex-wrap gap-2 pt-1">
-                            {job.status === 'scheduled' && (
+                            {job.status === 'scheduled' && !isDirectHire && (
                                 <button onClick={() => handlers.startJob(job._id)} disabled={!startInfo.canStart} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all active:scale-95 ${startInfo.canStart ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
                                     <Truck size={13} />{startInfo.canStart ? 'Start Job' : `Starts in ${startInfo.remaining}`}
                                 </button>
@@ -1548,8 +1759,10 @@ const JobPreviewModal = ({
     );
 };
 
-const JobCard = ({ job, onViewDetails }) => {
+const JobCard = ({ job, onViewDetails, onRefresh }) => {
     const startInfo = useStartCountdown(job);
+    const isDirectHire = String(job?.hireMode || '').toLowerCase() === 'direct';
+    const directHireCost = getDirectHireEstimatedAmount(job);
     const statusCfg = getStatusCfg(job.status);
     const StatusIcon = statusCfg.Icon;
     const primaryImage = job.photos?.[0] ? getImageUrl(job.photos[0]) : '';
@@ -1560,7 +1773,7 @@ const JobCard = ({ job, onViewDetails }) => {
     const workerCountLabel = totalSlots > 0 ? `${assignedCount}/${totalSlots}` : `${job.workersRequired || 0}`;
 
     return (
-        <div className="h-full bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-all">
+        <div className={`h-full rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all ${isDirectHire ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-gray-200'}`}>
             <div className="p-4 sm:p-5 h-full flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                     {primaryImage ? (
@@ -1579,6 +1792,11 @@ const JobCard = ({ job, onViewDetails }) => {
                                     <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${statusCfg.bg} ${statusCfg.color} ${statusCfg.border} flex items-center gap-1`}>
                                         <StatusIcon size={10} />{statusCfg.label}
                                     </span>
+                                    {isDirectHire && (
+                                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-amber-100 text-amber-700 border-amber-200">
+                                            Direct Hire
+                                        </span>
+                                    )}
                                 </div>
 
                                 <div className="flex flex-wrap gap-2 text-xs text-gray-500">
@@ -1592,6 +1810,7 @@ const JobCard = ({ job, onViewDetails }) => {
 
                         <div className="flex flex-wrap gap-3 text-xs text-gray-500">
                             <span className="flex items-center gap-1">{fmtINR(job.payment)}</span>
+                            {isDirectHire && directHireCost > 0 && <span className="flex items-center gap-1 text-amber-700 font-semibold">Skill Cost {fmtINR(directHireCost)}</span>}
                             {job.scheduledDate && <span className="flex items-center gap-1"><Calendar size={11} />{fmtDate(job.scheduledDate)}{job.scheduledTime && ` · ${job.scheduledTime}`}</span>}
                             {startInfo.hasSchedule && <span className="flex items-center gap-1"><Clock size={11} />Starts in {startInfo.remaining}</span>}
                         </div>
@@ -1611,13 +1830,15 @@ const JobCard = ({ job, onViewDetails }) => {
                         {job.status === 'completed' && Number(job?.pricingMeta?.finalPaidPrice || 0) > 0 && <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">Final Paid {fmtINR(job.pricingMeta.finalPaidPrice)}</span>}
                         {job.urgent && <span className="inline-flex items-center gap-1 text-red-600 font-semibold">⚡ Urgent</span>}
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => onViewDetails(job._id)}
-                        className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-all active:scale-95"
-                    >
-                        View Job Details
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => onViewDetails(job._id)}
+                            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-all active:scale-95"
+                        >
+                            View Job Details
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1945,7 +2166,10 @@ export default function ClientJobManage() {
                             </div>
                             <p className="text-orange-100 text-sm">Track and manage all your posted jobs</p>
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button onClick={() => fetchJobs()} className="px-4 py-2 bg-white/15 hover:bg-white/25 text-white rounded-xl text-sm font-bold transition-all active:scale-95 border border-white/20">
+                                Refresh
+                            </button>
                             <div className="bg-white/20 rounded-xl px-4 py-2 text-center">
                                 <p className="text-[10px] font-bold opacity-80 uppercase tracking-wider">Total</p>
                                 <p className="text-2xl font-black">{jobs.length}</p>
@@ -1999,6 +2223,7 @@ export default function ClientJobManage() {
                                 key={job._id}
                                 job={job}
                                 onViewDetails={setPreviewJobId}
+                                onRefresh={fetchJobs}
                             />
                         ))}
                     </div>
@@ -2037,6 +2262,7 @@ export default function ClientJobManage() {
                             removeCompletionPhoto: handleRemoveCompletionPhoto,
                             loadSuggestions:  handleLoadSuggestions,
                             inviteWorkers:    handleInviteWorkers,
+                            refreshJobs:      fetchJobs,
                             getLifecycle,
                         }}
                         onTrackWorkers={setTrackingJobId}
@@ -2075,7 +2301,9 @@ export default function ClientJobManage() {
                     <PayWorkerModal
                         payload={payWorkerPrompt}
                         onClose={() => setPayWorkerPrompt(null)}
-                        onPay={handleConfirmPayWorker}
+                        onPaid={async () => {
+                            await fetchJobs();
+                        }}
                     />
                 )}
                 {completeJob_ && (

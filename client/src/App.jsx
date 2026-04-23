@@ -148,6 +148,9 @@ function App() {
                 <Route path="/admin/workers/:workerId" element={
                     <ProtectedRoute allowedRoles={['admin']}><AdminWorkerProfile /></ProtectedRoute>
                 } />
+                <Route path="/admin/users/:workerId" element={
+                    <ProtectedRoute allowedRoles={['admin']}><AdminWorkerProfile /></ProtectedRoute>
+                } />
 
                 {/* ── Header layout routes ── */}
                 <Route element={<MainLayout />}>

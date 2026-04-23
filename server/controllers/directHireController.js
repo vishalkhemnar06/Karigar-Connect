@@ -11,7 +11,7 @@ const {
 } = require('../services/pricingEngineService');
 const { calculateDemandMultipliers } = require('../utils/demandAndFestivalService');
 
-const DIRECT_HIRE_SECTIONS = ['dashboard', 'favorites', 'ai', 'job_post', 'history', 'groups'];
+const DIRECT_HIRE_SECTIONS = ['dashboard', 'job_post', 'ai', 'direct_hired', 'history', 'settings'];
 const OTP_TTL_MS = 10 * 60 * 1000;
 const LOCK_GRACE_MINUTES = 30;
 const CLIENT_NOTICE_MINUTES = 60;
@@ -43,6 +43,7 @@ const formatClientPhone = (mobile = '') => {
 
 const WORK_START_HOUR = 6;
 const WORK_END_HOUR = 21;
+const DIRECT_HIRE_PENDING_STATUSES = ['requested', 'pending'];
 
 const asPositiveNumber = (value, fallback = 0) => {
     const num = Number(value);
@@ -219,6 +220,56 @@ const findDirectHireJob = async (jobId, clientId = null, workerId = null) => {
         .populate('postedBy', 'name mobile photo address karigarId')
         .populate('directHire.workerId', 'name mobile photo phoneType karigarId address skills points avgStars totalRatings')
         .populate('workerSlots.assignedWorker', 'name mobile photo phoneType karigarId');
+};
+
+const getDirectHireStartTime = (job) => {
+    const startAt = job?.directHire?.expectedStartAt || job?.scheduledDate || null;
+    if (!startAt) return null;
+    const parsed = new Date(startAt);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isExpiredPendingDirectHire = (job, now = Date.now()) => {
+    if (!job || String(job.hireMode || '') !== 'direct') return false;
+    if (!DIRECT_HIRE_PENDING_STATUSES.includes(String(job.directHire?.requestStatus || '').toLowerCase())) return false;
+    const startAt = getDirectHireStartTime(job);
+    return !!startAt && startAt.getTime() <= now;
+};
+
+const deleteExpiredPendingDirectHires = async () => {
+    const now = new Date();
+
+    const staleFilter = {
+        hireMode: 'direct',
+        $or: [
+            {
+                'directHire.requestStatus': { $in: DIRECT_HIRE_PENDING_STATUSES },
+                'directHire.expectedStartAt': { $lte: now },
+            },
+            {
+                'directHire.requestStatus': 'accepted',
+                status: { $in: ['open', 'scheduled', 'proposal'] },
+                'directHire.expectedEndAt': { $lte: now },
+            },
+        ],
+    };
+
+    const staleJobs = await Job.find(staleFilter).select('_id postedBy').lean();
+    if (!staleJobs.length) return { deletedCount: 0 };
+
+    const postedByIds = [...new Set(staleJobs.map((job) => String(job.postedBy || '')).filter(Boolean))];
+    const staleIds = staleJobs.map((job) => job._id);
+    const result = await Job.deleteMany({ _id: { $in: staleIds } });
+
+    await Promise.all(postedByIds.map(async (clientId) => {
+        try {
+            await clearClientLockIfPossible(clientId);
+        } catch (err) {
+            console.error('clearClientLockIfPossible(cleanup):', err.message);
+        }
+    }));
+
+    return result;
 };
 
 const touchClientLock = async (clientId, jobId, reason, sections = DIRECT_HIRE_SECTIONS) => {
@@ -398,11 +449,11 @@ exports.createDirectHireTicket = async (req, res) => {
             return res.status(400).json({ message: 'Fetched amount is stale. Please click Get Amount again.' });
         }
 
-        const minAllowed = Math.max(1, Math.round(fetchedAmountNum * 0.8));
+        const minAllowed = Math.max(1, Math.round(fetchedAmountNum * 0.7));
         const maxAllowed = Math.max(minAllowed, Math.round(fetchedAmountNum * 1.3));
         if (expectedAmountNum < minAllowed || expectedAmountNum > maxAllowed) {
             return res.status(400).json({
-                message: `Amount must stay between −20% and +30% of fetched amount (₹${minAllowed} - ₹${maxAllowed}).`,
+                message: `Amount must stay between −30% and +30% of fetched amount (₹${minAllowed} - ₹${maxAllowed}).`,
             });
         }
 
@@ -459,12 +510,11 @@ exports.createDirectHireTicket = async (req, res) => {
                 requestSentAt: new Date(),
                 requestStatus: 'requested',
                 paymentStatus: 'pending',
-                blockedSections: DIRECT_HIRE_SECTIONS,
-                clientLockAppliedAt: new Date(),
+                blockedSections: [],
+                clientLockAppliedAt: null,
             },
         });
 
-        await touchClientLock(req.user.id, job._id, `Direct hire pending payment for ${job.title}`);
         await notifyClientAndWorkerOnRequest(job, worker, client);
 
         return res.status(201).json({
@@ -479,6 +529,7 @@ exports.createDirectHireTicket = async (req, res) => {
 
 exports.getClientDirectHireTickets = async (req, res) => {
     try {
+        await deleteExpiredPendingDirectHires();
         const jobs = await Job.find({ postedBy: req.user.id, hireMode: 'direct' })
             .populate('directHire.workerId', 'name mobile photo phoneType karigarId avgStars totalRatings points')
             .populate('workerSlots.assignedWorker', 'name mobile photo karigarId')
@@ -492,6 +543,7 @@ exports.getClientDirectHireTickets = async (req, res) => {
 
 exports.getWorkerDirectHireTickets = async (req, res) => {
     try {
+        await deleteExpiredPendingDirectHires();
         const jobs = await Job.find({ 'directHire.workerId': req.user.id, hireMode: 'direct' })
             .populate('postedBy', 'name mobile photo address karigarId')
             .populate('directHire.workerId', 'name mobile photo phoneType karigarId')
@@ -512,8 +564,13 @@ exports.acceptDirectHireTicket = async (req, res) => {
         if (!workerLooksSmartphone({ phoneType: job.directHire?.workerPhoneType })) {
             return res.status(400).json({ message: 'Direct hire is allowed only for smartphone workers.' });
         }
-        if (String(job.directHire?.requestStatus || '') !== 'requested') {
+        const requestStatus = String(job.directHire?.requestStatus || '').toLowerCase();
+        if (!['requested', 'pending'].includes(requestStatus)) {
             return res.status(400).json({ message: 'This direct hire ticket is no longer pending.' });
+        }
+        if (isExpiredPendingDirectHire(job)) {
+            await Job.deleteOne({ _id: job._id });
+            return res.status(410).json({ message: 'This direct hire request expired and was removed.' });
         }
 
         const inviteStart = job.directHire?.expectedStartAt ? new Date(job.directHire.expectedStartAt) : null;
@@ -569,11 +626,24 @@ exports.rejectDirectHireTicket = async (req, res) => {
     try {
         const { jobId } = req.params;
         const { reason = '' } = req.body;
+        const trimmedReason = String(reason || '').trim();
         const job = await findDirectHireJob(jobId, null, req.user.id);
         if (!job) return res.status(404).json({ message: 'Direct hire ticket not found.' });
 
+        const requestStatus = String(job.directHire?.requestStatus || '').toLowerCase();
+        if (!['requested', 'pending'].includes(requestStatus)) {
+            return res.status(400).json({ message: 'This direct hire ticket is no longer pending.' });
+        }
+        if (!trimmedReason || trimmedReason.length < 5) {
+            return res.status(400).json({ message: 'Decline reason is required (minimum 5 characters).' });
+        }
+        if (isExpiredPendingDirectHire(job)) {
+            await Job.deleteOne({ _id: job._id });
+            return res.status(410).json({ message: 'This direct hire request expired and was removed.' });
+        }
+
         job.directHire.requestStatus = 'rejected';
-        job.directHire.requestRejectedReason = String(reason || '').trim();
+        job.directHire.requestRejectedReason = trimmedReason;
         job.directHire.requestRejectedAt = new Date();
         job.status = 'open';
         job.assignedTo = [];
@@ -587,9 +657,9 @@ exports.rejectDirectHireTicket = async (req, res) => {
             userId: job.postedBy._id || job.postedBy,
             type: 'job_rejected',
             title: 'Direct Hire Rejected',
-            message: `${job.directHire.workerId?.name || 'Worker'} rejected your direct hire for "${job.title}".${reason ? ` Reason: ${reason}.` : ''}`,
+            message: `${job.directHire.workerId?.name || 'Worker'} rejected your direct hire for "${job.title}". Reason: ${trimmedReason}.`,
             jobId: job._id,
-            data: { hireMode: 'direct', rejectedReason: reason || '' },
+            data: { hireMode: 'direct', rejectedReason: trimmedReason },
         });
 
         return res.json({ message: 'Direct hire rejected.', job });
@@ -640,7 +710,10 @@ exports.sendDirectHireStartOtp = async (req, res) => {
             jobId: job._id,
         });
 
-        return res.json({ message: 'Start OTP sent to worker phone.' });
+        return res.json({
+            message: 'Start OTP sent to worker phone.',
+            otpExpiresAt: job.directHire.startOtpExpiry,
+        });
     } catch (err) {
         console.error('sendDirectHireStartOtp:', err);
         return res.status(500).json({ message: 'Failed to send start OTP.' });
@@ -712,25 +785,21 @@ exports.sendDirectHireCompletionOtp = async (req, res) => {
         if (String(job.status || '') !== 'running') {
             return res.status(400).json({ message: 'Job must be started before sending completion OTP.' });
         }
+        if (String(job.directHire?.paymentStatus || 'pending') !== 'paid') {
+            return res.status(400).json({ message: 'Client must pay first before sending completion OTP.' });
+        }
         const worker = job.directHire.workerId;
         if (!worker?.mobile) return res.status(400).json({ message: 'Worker phone number is not available.' });
 
-        const fallbackAmount = Number(job.directHire.paymentAmount || job.directHire.expectedAmount) || 0;
-        const paidAmount = Math.round(Number(finalPaidPrice));
-        const safePaidAmount = Number.isFinite(paidAmount) && paidAmount > 0 ? paidAmount : Math.round(fallbackAmount);
-        if (!safePaidAmount || safePaidAmount <= 0) {
-            return res.status(400).json({ message: 'Final paid amount must be greater than 0.' });
-        }
-
-        const normalizedPaymentMode = ['cash', 'upi', 'bank_transfer', 'online'].includes(String(paymentMode || '').toLowerCase())
+        const normalizedPaymentMode = ['cash', 'upi', 'bank_transfer', 'online', 'razorpay'].includes(String(paymentMode || '').toLowerCase())
             ? String(paymentMode).toLowerCase()
             : (job.directHire.paymentMode || 'cash');
 
-        job.directHire.paymentAmount = safePaidAmount;
+        if (finalPaidPrice != null && Number(finalPaidPrice) > 0) {
+            job.directHire.paymentAmount = Math.round(Number(finalPaidPrice));
+        }
         job.directHire.paymentMode = normalizedPaymentMode;
         job.directHire.paymentEditReason = String(paymentEditReason || '').trim();
-        job.directHire.paymentStatus = 'pending';
-        job.directHire.workerPaymentApprovalStatus = 'pending';
         const otp = makeOtp();
         job.directHire.completionOtpHash = hashOtp(otp);
         job.directHire.completionOtpExpiry = new Date(Date.now() + OTP_TTL_MS);
@@ -742,11 +811,15 @@ exports.sendDirectHireCompletionOtp = async (req, res) => {
             userId: job.postedBy,
             type: 'job_update',
             title: 'Completion OTP Sent',
-            message: `Completion OTP sent to ${worker.name || 'worker'} for "${job.title}". Enter it after payment to finish the job.`,
+            message: `Completion OTP sent to ${worker.name || 'worker'} for "${job.title}".`,
             jobId: job._id,
         });
 
-        return res.json({ message: 'Completion OTP sent to worker phone.', paymentAmount: safePaidAmount });
+        return res.json({
+            message: 'Completion OTP sent to worker phone.',
+            paymentAmount: job.directHire.paymentAmount || 0,
+            otpExpiresAt: job.directHire.completionOtpExpiry,
+        });
     } catch (err) {
         console.error('sendDirectHireCompletionOtp:', err);
         return res.status(500).json({ message: 'Failed to send completion OTP.' });
@@ -821,36 +894,251 @@ exports.verifyDirectHireCompletionOtp = async (req, res) => {
     }
 };
 
-exports.listAdminPendingDirectHirePayments = async (req, res) => {
+const normalizeFilterText = (value = '') => String(value || '').trim().toLowerCase();
+
+const extractJobCity = (job = {}) => String(
+    job?.location?.city
+    || job?.postedBy?.address?.city
+    || ''
+).trim();
+
+const extractJobSkill = (job = {}) => {
+    const fromArray = Array.isArray(job?.skills) && job.skills.length ? String(job.skills[0] || '').trim() : '';
+    if (fromArray) return fromArray;
+    return String(job?.directHire?.serviceLabel || '').trim();
+};
+
+const toPaymentRows = (job = {}) => {
+    const rows = [];
+    const slots = Array.isArray(job?.workerSlots) ? job.workerSlots : [];
+    const assignedSlots = slots.filter((slot) => slot?.assignedWorker);
+
+    if (assignedSlots.length > 0) {
+        assignedSlots.forEach((slot, index) => {
+            const worker = slot.assignedWorker || {};
+            const fallbackWorker = index === 0 ? (job?.directHire?.workerId || {}) : {};
+            const name = String(worker?.name || fallbackWorker?.name || 'Worker').trim();
+            const mobile = String(worker?.mobile || fallbackWorker?.mobile || '').trim();
+            const amountFromSlot = Math.max(0, Number(slot?.finalPaidPrice || 0));
+            const amountFromDirect = index === 0 ? Math.max(0, Number(job?.directHire?.paymentAmount || 0)) : 0;
+            const paidAmount = amountFromSlot > 0 ? amountFromSlot : amountFromDirect;
+            const method = String(job?.directHire?.paymentMode || '').trim() || 'cash';
+            rows.push({
+                workerId: String(worker?._id || fallbackWorker?._id || ''),
+                name,
+                mobile,
+                amount: Math.round(paidAmount),
+                method,
+                paid: paidAmount > 0,
+            });
+        });
+        return rows;
+    }
+
+    const worker = job?.directHire?.workerId || {};
+    const paidAmount = Math.max(
+        0,
+        Number(job?.directHire?.paymentAmount || 0),
+        Number(job?.pricingMeta?.finalPaidPrice || 0)
+    );
+    rows.push({
+        workerId: String(worker?._id || ''),
+        name: String(worker?.name || 'Worker').trim(),
+        mobile: String(worker?.mobile || '').trim(),
+        amount: Math.round(paidAmount),
+        method: String(job?.directHire?.paymentMode || '').trim() || 'cash',
+        paid: paidAmount > 0 || String(job?.directHire?.paymentStatus || '').toLowerCase() === 'paid',
+    });
+
+    return rows;
+};
+
+const buildAdminPaymentCard = (job, nowMs) => {
+    const requestStatus = String(job?.directHire?.requestStatus || '').toLowerCase();
+    const paymentStatus = String(job?.directHire?.paymentStatus || 'pending').toLowerCase();
+    const jobStatus = String(job?.status || '').toLowerCase();
+    const expectedStartAt = job?.directHire?.expectedStartAt ? new Date(job.directHire.expectedStartAt) : null;
+    const expectedEndAt = job?.directHire?.expectedEndAt ? new Date(job.directHire.expectedEndAt) : null;
+    const hasStarted = !!expectedStartAt && !Number.isNaN(expectedStartAt.getTime()) && expectedStartAt.getTime() <= nowMs;
+    const overdueMinutes = expectedEndAt ? Math.max(0, Math.floor((nowMs - expectedEndAt.getTime()) / 60000)) : 0;
+    const isOverdue = !!expectedEndAt && overdueMinutes > 0;
+    const paymentRows = toPaymentRows(job);
+    const pendingWorkers = paymentRows.filter((row) => !row.paid).length;
+    const totalPaidAmount = paymentRows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0);
+    const city = extractJobCity(job);
+    const skill = extractJobSkill(job);
+
+    const isPending = hasStarted && (paymentStatus !== 'paid' || pendingWorkers > 0);
+    const eligiblePending = hasStarted && ['accepted', 'requested', 'pending'].includes(requestStatus) && ['running', 'scheduled', 'proposal', 'open'].includes(jobStatus);
+    const paymentRequired = hasStarted && (paymentStatus !== 'paid' || pendingWorkers > 0);
+
+    return {
+        job,
+        city,
+        skill,
+        hasStarted,
+        isOverdue,
+        overdueMinutes,
+        paymentStatus,
+        requestStatus,
+        jobStatus,
+        pendingWorkers,
+        totalPaidAmount: Math.round(totalPaidAmount),
+        paymentRows,
+        isPending,
+        paymentRequired,
+        isCompletedPayment: paymentStatus === 'paid' && pendingWorkers === 0,
+        eligiblePending,
+    };
+};
+
+const matchesSearch = (card, search) => {
+    if (!search) return true;
+    const needle = normalizeFilterText(search);
+    const clientName = normalizeFilterText(card?.job?.postedBy?.name || '');
+    const clientPhone = normalizeFilterText(card?.job?.postedBy?.mobile || '');
+    return clientName.includes(needle) || clientPhone.includes(needle);
+};
+
+exports.listAdminDirectHirePayments = async (req, res) => {
     try {
+        const tab = String(req.query.tab || 'pending').toLowerCase() === 'completed' ? 'completed' : 'pending';
+        const cityFilter = normalizeFilterText(req.query.city || 'all');
+        const skillFilter = normalizeFilterText(req.query.skill || 'all');
+        const search = String(req.query.search || '').trim();
+
         const jobs = await Job.find({
             hireMode: 'direct',
-            'directHire.paymentStatus': { $ne: 'paid' },
-            'directHire.requestStatus': { $in: ['accepted', 'requested'] },
+            'directHire.requestStatus': { $in: ['accepted', 'requested', 'pending'] },
         })
-            .populate('postedBy', 'name mobile photo address karigarId')
+            .populate('postedBy', 'name mobile photo address karigarId paymentLock')
             .populate('directHire.workerId', 'name mobile photo phoneType karigarId')
+            .populate('workerSlots.assignedWorker', 'name mobile photo phoneType karigarId')
             .sort({ updatedAt: -1 });
 
-        const now = Date.now();
-        const rows = jobs
-            .map((job) => {
-                const expectedEndAt = job.directHire?.expectedEndAt ? new Date(job.directHire.expectedEndAt) : null;
-                const overdueMinutes = expectedEndAt ? Math.floor((now - expectedEndAt.getTime()) / 60000) : null;
-                return {
-                    job,
-                    expectedEndAt,
-                    overdueMinutes,
-                    pendingAdminNotice: overdueMinutes !== null && overdueMinutes >= LOCK_GRACE_MINUTES,
-                    pendingClientNotice: overdueMinutes !== null && overdueMinutes >= CLIENT_NOTICE_MINUTES,
-                };
-            })
-            .filter((row) => row.pendingAdminNotice);
+        const nowMs = Date.now();
+        const cards = jobs.map((job) => buildAdminPaymentCard(job, nowMs));
 
-        return res.json({ jobs: rows });
+        const availableCities = [...new Set(cards.map((card) => String(card.city || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        const availableSkills = [...new Set(cards.map((card) => String(card.skill || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+        let filtered = cards.filter((card) => {
+            if (!matchesSearch(card, search)) return false;
+            if (cityFilter !== 'all' && normalizeFilterText(card.city) !== cityFilter) return false;
+            if (skillFilter !== 'all' && normalizeFilterText(card.skill) !== skillFilter) return false;
+            if (tab === 'completed') return card.isCompletedPayment;
+            return card.eligiblePending && card.isPending;
+        });
+
+        if (tab === 'pending') {
+            filtered = filtered.sort((a, b) => {
+                if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+                return Number(b.overdueMinutes || 0) - Number(a.overdueMinutes || 0);
+            });
+        }
+
+        const totalPaidAmount = filtered.reduce((sum, card) => sum + Math.max(0, Number(card.totalPaidAmount || 0)), 0);
+
+        return res.json({
+            tab,
+            jobs: filtered,
+            filters: {
+                cities: availableCities,
+                skills: availableSkills,
+                selectedCity: cityFilter,
+                selectedSkill: skillFilter,
+                search,
+            },
+            summary: {
+                totalPaidAmount: Math.round(totalPaidAmount),
+                count: filtered.length,
+            },
+        });
     } catch (err) {
-        console.error('listAdminPendingDirectHirePayments:', err);
-        return res.status(500).json({ message: 'Failed to load pending direct hire payments.' });
+        console.error('listAdminDirectHirePayments:', err);
+        return res.status(500).json({ message: 'Failed to load direct hire payments.' });
+    }
+};
+
+exports.listAdminPendingDirectHirePayments = async (req, res) => {
+    req.query = {
+        ...(req.query || {}),
+        tab: 'pending',
+    };
+    return exports.listAdminDirectHirePayments(req, res);
+};
+
+exports.sendAdminDirectHirePaymentWarning = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = await Job.findOne({ _id: jobId, hireMode: 'direct' })
+            .populate('postedBy', 'name mobile')
+            .populate('directHire.workerId', 'name mobile');
+
+        if (!job) return res.status(404).json({ message: 'Direct hire ticket not found.' });
+
+        const client = job.postedBy;
+        const workerName = job.directHire?.workerId?.name || 'worker';
+        const amountLabel = `₹${Number(job.directHire?.paymentAmount || job.directHire?.expectedAmount || 0).toLocaleString('en-IN')}`;
+        const warningText = `KarigarConnect notice: Please pay pending amount ${amountLabel} for "${job.title}" (${workerName}) and mark job as done. Otherwise your services can be blocked and legal action may be initiated.`;
+
+        if (client?.mobile) {
+            await sendCustomSms(client.mobile, warningText);
+        }
+
+        await createNotification({
+            userId: client?._id || client,
+            type: 'job_update',
+            title: 'Payment Warning Notice',
+            message: warningText,
+            jobId: job._id,
+        });
+
+        job.directHire.paymentReminder60SentAt = new Date();
+        await job.save();
+
+        return res.json({ message: 'Warning notice sent to client.', jobId: job._id });
+    } catch (err) {
+        console.error('sendAdminDirectHirePaymentWarning:', err);
+        return res.status(500).json({ message: 'Failed to send warning notice.' });
+    }
+};
+
+exports.blockClientFromDirectHire = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = await Job.findOne({ _id: jobId, hireMode: 'direct' })
+            .populate('postedBy', 'name mobile');
+
+        if (!job) return res.status(404).json({ message: 'Direct hire ticket not found.' });
+
+        const sectionsToBlock = [...DIRECT_HIRE_SECTIONS];
+        await touchClientLock(job.postedBy?._id || job.postedBy, job._id, `Direct hire payment pending for ${job.title}`, sectionsToBlock);
+
+        job.directHire.blockedSections = sectionsToBlock;
+        job.directHire.clientLockAppliedAt = new Date();
+        job.directHire.adminEscalatedAt = new Date();
+        await job.save();
+
+        await createNotification({
+            userId: job.postedBy?._id || job.postedBy,
+            type: 'job_update',
+            title: 'Services Temporarily Blocked',
+            message: `Your access is restricted due to pending direct hire payment for "${job.title}". Please pay from Job Manage to restore services.`,
+            jobId: job._id,
+        });
+
+        if (job.postedBy?.mobile) {
+            await sendCustomSms(
+                job.postedBy.mobile,
+                `KarigarConnect: Your services are temporarily blocked due to pending direct hire payment for "${job.title}". Pay from Job Manage to restore access.`
+            );
+        }
+
+        return res.json({ message: 'Client services blocked for pending payment.', jobId: job._id, sections: sectionsToBlock });
+    } catch (err) {
+        console.error('blockClientFromDirectHire:', err);
+        return res.status(500).json({ message: 'Failed to block client services.' });
     }
 };
 
@@ -884,6 +1172,7 @@ exports.unblockClientFromDirectHire = async (req, res) => {
 };
 
 exports.sweepDirectHirePayments = async () => {
+    await deleteExpiredPendingDirectHires();
     const jobs = await Job.find({
         hireMode: 'direct',
         'directHire.paymentStatus': { $ne: 'paid' },
@@ -908,7 +1197,6 @@ exports.sweepDirectHirePayments = async () => {
         const workerName = worker?.name || 'worker';
 
         if (!job.directHire.adminEscalatedAt) {
-            await touchClientLock(clientId, job._id, `Payment pending for direct hire job "${job.title}"`);
             await createNotification({
                 userId: clientId,
                 type: 'job_update',

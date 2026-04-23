@@ -401,12 +401,30 @@ exports.getAvailableJobs = async (req, res) => {
             visibility: true,
         })
             .populate('postedBy', 'name photo verificationStatus location mobile')
-            .populate('parentJobId', 'title scheduledDate scheduledTime location')
+            .populate('parentJobId', 'title scheduledDate scheduledTime location status visibility')
             .sort({ urgent: -1, createdAt: -1 });
 
         const wid = req.user.id.toString();
 
-        const formatted = await Promise.all(jobs.map(async (job) => {
+        const nowMs = Date.now();
+        const eligibleJobs = [];
+        for (const job of jobs) {
+            if (job.isSubTask && shouldAutoDeleteSubTask(job, nowMs)) {
+                await markSubTaskAutoDeleted(job);
+                continue;
+            }
+
+            if (job.isSubTask) {
+                const parent = job.parentJobId;
+                if (!parent || ['cancelled', 'cancelled_by_client'].includes(parent.status) || parent.visibility === false) {
+                    continue;
+                }
+            }
+
+            eligibleJobs.push(job);
+        }
+
+        const formatted = await Promise.all(eligibleJobs.map(async (job) => {
             const allOpenSlots = job.workerSlots.filter(s => s.status === 'open');
             const openSlotSummary = {};
             allOpenSlots.forEach(s => { openSlotSummary[s.skill] = (openSlotSummary[s.skill] || 0) + 1; });
@@ -660,10 +678,21 @@ exports.applyForSubTask = async (req, res) => {
     try {
         const { jobId, subTaskId } = req.params;
         const wid = req.user.id.toString();
-        const subTask = await Job.findById(subTaskId);
+        const subTask = await Job.findById(subTaskId).populate('parentJobId', 'status visibility');
         if (!subTask) return res.status(404).json({ message: 'Sub-task not found.' });
         if (!subTask.isSubTask) return res.status(400).json({ message: 'Not a sub-task.' });
         if (subTask.parentJobId?.toString() !== jobId) return res.status(400).json({ message: 'Sub-task mismatch.' });
+
+        const parent = subTask.parentJobId;
+        if (!parent || ['cancelled', 'cancelled_by_client'].includes(parent.status) || parent.visibility === false) {
+            return res.status(410).json({ message: 'Parent job is no longer active. Sub-task closed.' });
+        }
+
+        if (shouldAutoDeleteSubTask(subTask)) {
+            await markSubTaskAutoDeleted(subTask);
+            return res.status(410).json({ message: 'Sub-task expired and was auto-deleted due to no applications.' });
+        }
+
         if (!subTask.applicationsOpen) return res.status(403).json({ message: 'Applications closed.' });
         if (!['open', 'scheduled'].includes(subTask.status)) return res.status(403).json({ message: 'Not accepting applications.' });
         const worker = await User.findById(wid).select('karigarId name skills travelMethod address');
@@ -1304,6 +1333,7 @@ exports.getDirectInvites = async (req, res) => {
             });
             return {
                 jobId: job._id,
+                hireMode: job.hireMode || 'posted',
                 title: job.title,
                 shortDescription: job.shortDescription || '',
                 detailedDescription: job.detailedDescription || '',
@@ -1328,6 +1358,15 @@ exports.getDirectInvites = async (req, res) => {
                 invitedNegotiationAmount,
                 invitedHours,
                 invitedDuration: invitedHours > 0 ? `${invitedHours} hour${invitedHours === 1 ? '' : 's'}` : '',
+                directHire: job.hireMode === 'direct' ? {
+                    requestStatus: job?.directHire?.requestStatus || 'requested',
+                    expectedAmount: Number(job?.directHire?.expectedAmount || 0),
+                    durationValue: Number(job?.directHire?.durationValue || invitedHours || 1),
+                    durationUnit: String(job?.directHire?.durationUnit || ''),
+                    oneLineJD: String(job?.directHire?.oneLineJD || ''),
+                    expectedStartAt: job?.directHire?.expectedStartAt || null,
+                    expectedEndAt: job?.directHire?.expectedEndAt || null,
+                } : null,
                 commute: serializeCommute(commute),
             };
         }));
@@ -1462,4 +1501,51 @@ exports.cancelPendingJobApplication = async (req, res) => {
         console.error('cancelPendingJobApplication:', err);
         return res.status(500).json({ message: 'Failed to cancel application.' });
     }
+};
+
+const getScheduledStartMs = (scheduledDate, scheduledTime) => {
+    if (!scheduledDate || !scheduledTime) return null;
+    const [h, m] = String(scheduledTime).split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    const startAt = new Date(scheduledDate);
+    if (Number.isNaN(startAt.getTime())) return null;
+    startAt.setHours(h, m, 0, 0);
+    return startAt.getTime();
+};
+
+const hasAnyWorkerCommitment = (job) => {
+    const hasAnyApplicant = Array.isArray(job?.applicants) && job.applicants.length > 0;
+    const hasAcceptedApplicant = (job?.applicants || []).some((a) => a?.status === 'accepted');
+    const hasAssignedWorker = Array.isArray(job?.assignedTo) && job.assignedTo.length > 0;
+    const hasFilledSlots = (job?.workerSlots || []).some((s) => s?.status === 'filled' && s?.assignedWorker);
+    return hasAnyApplicant || hasAcceptedApplicant || hasAssignedWorker || hasFilledSlots;
+};
+
+const shouldAutoDeleteSubTask = (subTask, nowMs = Date.now()) => {
+    if (!subTask?.isSubTask) return false;
+    if (!['open', 'scheduled'].includes(subTask?.status)) return false;
+    const startMs = getScheduledStartMs(subTask?.scheduledDate, subTask?.scheduledTime);
+    if (!startMs) return false;
+    if (hasAnyWorkerCommitment(subTask)) return false;
+    return nowMs >= startMs;
+};
+
+const markSubTaskAutoDeleted = async (subTask) => {
+    subTask.status = 'cancelled';
+    subTask.cancelledBy = null;
+    subTask.cancellationReason = 'Auto-cancelled: sub-task expired without any applications.';
+    subTask.cancelledAt = new Date();
+    subTask.applicationsOpen = false;
+    subTask.visibility = false;
+    subTask.archivedByClient = true;
+    subTask.archivedAt = new Date();
+    await subTask.save();
+
+    await createNotification({
+        userId: subTask.postedBy,
+        type: 'job_update',
+        title: 'Sub-task Auto-Deleted',
+        message: `Sub-task "${subTask.title}" was auto-deleted because no worker applied before start time.`,
+        jobId: subTask._id,
+    });
 };

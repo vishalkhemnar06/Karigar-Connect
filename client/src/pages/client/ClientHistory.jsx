@@ -21,6 +21,7 @@ import {
     Phone,
     X,
     Trash2,
+    Search,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { openWorkerProfilePreview } from '../../utils/workerProfilePreview';
@@ -36,6 +37,21 @@ const HISTORY_FILTERS = [
     { key: 'deleted', label: 'Deleted' },
     { key: 'cancelled', label: 'Cancelled' },
     { key: 'other', label: 'Other' },
+];
+
+const HISTORY_AMOUNT_FILTERS = [
+    { key: 'all', label: 'All Amounts' },
+    { key: '0-1000', label: 'Up to ₹1,000' },
+    { key: '1000-5000', label: '₹1,000 - ₹5,000' },
+    { key: '5000-10000', label: '₹5,000 - ₹10,000' },
+    { key: '10000+', label: '₹10,000+' },
+];
+
+const HISTORY_DATE_FILTERS = [
+    { key: 'all', label: 'Any Date' },
+    { key: '7d', label: 'Last 7 Days' },
+    { key: '30d', label: 'Last 30 Days' },
+    { key: '90d', label: 'Last 90 Days' },
 ];
 
 const getHistoryType = (job) => {
@@ -100,6 +116,13 @@ const getSkillBudgetInfo = (job, skill) => {
         negotiationAmount,
         hours: Number(block?.hours || 0),
     };
+};
+
+const normalizeDateInput = (value) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return null;
+    const parsed = new Date(`${trimmed}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const HistoryJobCard = ({ job, onViewDetails, onRepost }) => {
@@ -493,6 +516,12 @@ export default function ClientHistory() {
     const [previewJobId, setPreviewJobId] = useState(null);
     const [selectedIds, setSelectedIds] = useState([]);
     const [statusFilter, setStatusFilter] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [amountFilter, setAmountFilter] = useState('all');
+    const [dateFilter, setDateFilter] = useState('all');
+    const [skillFilter, setSkillFilter] = useState('all');
+    const [startDateFilter, setStartDateFilter] = useState('');
+    const [endDateFilter, setEndDateFilter] = useState('');
     const [confirmState, setConfirmState] = useState({ open: false, type: '', jobId: null });
     const [deleting, setDeleting] = useState(false);
 
@@ -517,11 +546,6 @@ export default function ClientHistory() {
         jobs.filter((job) => ['completed', 'cancelled', 'cancelled_by_client'].includes(job.status) || job.archivedByClient)
     ), [jobs]);
 
-    const filteredHistoryJobs = useMemo(() => {
-        if (statusFilter === 'all') return historyJobs;
-        return historyJobs.filter((job) => getHistoryType(job) === statusFilter);
-    }, [historyJobs, statusFilter]);
-
     const historyFilterCounts = useMemo(() => {
         const counts = { all: historyJobs.length, completed: 0, deleted: 0, cancelled: 0, other: 0 };
         historyJobs.forEach((job) => {
@@ -530,6 +554,89 @@ export default function ClientHistory() {
         });
         return counts;
     }, [historyJobs]);
+
+    const availableSkills = useMemo(() => {
+        const skills = new Set();
+        historyJobs.forEach((job) => {
+            (job.skills || []).forEach((skill) => {
+                const normalized = String(skill || '').trim();
+                if (normalized) skills.add(normalized);
+            });
+            (job.workerSlots || []).forEach((slot) => {
+                const normalized = String(slot?.skill || '').trim();
+                if (normalized) skills.add(normalized);
+            });
+        });
+        return Array.from(skills).sort((a, b) => a.localeCompare(b));
+    }, [historyJobs]);
+
+    const filteredHistoryJobs = useMemo(() => {
+        const q = normalizeText(searchQuery);
+        const minDate = normalizeDateInput(startDateFilter);
+        const maxDate = normalizeDateInput(endDateFilter);
+        const now = new Date();
+
+        return historyJobs.filter((job) => {
+            if (statusFilter !== 'all' && getHistoryType(job) !== statusFilter) return false;
+
+            if (q) {
+                const title = normalizeText(job?.title);
+                const skillPool = [
+                    ...(Array.isArray(job?.skills) ? job.skills : []),
+                    ...((job?.workerSlots || []).map((slot) => slot?.skill)),
+                ].map(normalizeText).filter(Boolean);
+                if (!title.includes(q) && !skillPool.some((skill) => skill.includes(q))) return false;
+            }
+
+            const jobAmount = Number(job?.pricingMeta?.finalPaidPrice || job?.payment || 0);
+            switch (amountFilter) {
+                case '0-1000':
+                    if (jobAmount >= 1000) return false;
+                    break;
+                case '1000-5000':
+                    if (jobAmount < 1000 || jobAmount >= 5000) return false;
+                    break;
+                case '5000-10000':
+                    if (jobAmount < 5000 || jobAmount >= 10000) return false;
+                    break;
+                case '10000+':
+                    if (jobAmount < 10000) return false;
+                    break;
+                default:
+                    break;
+            }
+
+            const jobDate = job?.scheduledDate ? new Date(job.scheduledDate) : (job?.updatedAt ? new Date(job.updatedAt) : null);
+            if (dateFilter !== 'all' && jobDate && !Number.isNaN(jobDate.getTime())) {
+                const diffDays = Math.floor((now.getTime() - jobDate.getTime()) / (24 * 60 * 60 * 1000));
+                if (dateFilter === '7d' && diffDays > 7) return false;
+                if (dateFilter === '30d' && diffDays > 30) return false;
+                if (dateFilter === '90d' && diffDays > 90) return false;
+            }
+
+            if (minDate || maxDate) {
+                if (!jobDate || Number.isNaN(jobDate.getTime())) return false;
+                if (minDate && jobDate < minDate) return false;
+                if (maxDate) {
+                    const endOfDay = new Date(maxDate);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    if (jobDate > endOfDay) return false;
+                }
+            }
+
+            if (skillFilter !== 'all') {
+                const match = [
+                    ...(Array.isArray(job?.skills) ? job.skills : []),
+                    ...((job?.workerSlots || []).map((slot) => slot?.skill)),
+                ]
+                    .map((skill) => String(skill || '').trim().toLowerCase())
+                    .includes(String(skillFilter).trim().toLowerCase());
+                if (!match) return false;
+            }
+
+            return true;
+        });
+    }, [historyJobs, statusFilter, searchQuery, amountFilter, dateFilter, skillFilter, startDateFilter, endDateFilter]);
 
     const historyJobIds = useMemo(() => filteredHistoryJobs.map((job) => String(job._id)), [filteredHistoryJobs]);
     const allSelected = historyJobIds.length > 0 && historyJobIds.every((id) => selectedIds.includes(id));
@@ -690,6 +797,16 @@ export default function ClientHistory() {
         }
     };
 
+    const clearHistoryFilters = () => {
+        setSearchQuery('');
+        setStatusFilter('all');
+        setAmountFilter('all');
+        setDateFilter('all');
+        setSkillFilter('all');
+        setStartDateFilter('');
+        setEndDateFilter('');
+    };
+
     if (loading) {
         return <div className="max-w-6xl mx-auto px-4 py-10 text-sm text-gray-500">Loading history...</div>;
     }
@@ -703,6 +820,66 @@ export default function ClientHistory() {
 
             {historyJobs.length > 0 ? (
                 <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col gap-3">
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+                        <label className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 focus-within:border-orange-300 focus-within:ring-2 focus-within:ring-orange-100 lg:col-span-2">
+                            <Search size={16} className="text-gray-400 shrink-0" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search old posts by job name or skill"
+                                className="w-full bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-none"
+                            />
+                        </label>
+
+                        <select
+                            value={skillFilter}
+                            onChange={(e) => setSkillFilter(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                        >
+                            <option value="all">All Skills</option>
+                            {availableSkills.map((skill) => (
+                                <option key={skill} value={skill}>{skill}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={amountFilter}
+                            onChange={(e) => setAmountFilter(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                        >
+                            {HISTORY_AMOUNT_FILTERS.map((option) => (
+                                <option key={option.key} value={option.key}>{option.label}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={dateFilter}
+                            onChange={(e) => setDateFilter(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                        >
+                            {HISTORY_DATE_FILTERS.map((option) => (
+                                <option key={option.key} value={option.key}>{option.label}</option>
+                            ))}
+                        </select>
+
+                        <input
+                            type="date"
+                            value={startDateFilter}
+                            onChange={(e) => setStartDateFilter(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                            aria-label="Start date filter"
+                        />
+
+                        <input
+                            type="date"
+                            value={endDateFilter}
+                            onChange={(e) => setEndDateFilter(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                            aria-label="End date filter"
+                        />
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-2">
                         {HISTORY_FILTERS.map((filter) => {
                             const isActive = statusFilter === filter.key;
@@ -718,6 +895,13 @@ export default function ClientHistory() {
                                 </button>
                             );
                         })}
+                        <button
+                            type="button"
+                            onClick={clearHistoryFilters}
+                            className="px-3 py-1.5 rounded-xl border text-xs font-bold transition-all bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+                        >
+                            Reset Filters
+                        </button>
                     </div>
 
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

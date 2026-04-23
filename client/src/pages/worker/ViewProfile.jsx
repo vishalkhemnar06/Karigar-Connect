@@ -13,7 +13,7 @@ import {
     Award, Briefcase, BookOpen, Shield, Download, Camera,
     Star, CheckCircle, Clock, Award as AwardIcon, Plus, Trash2,
     ChevronRight, ChevronDown, Globe, Heart, Users, TrendingUp,
-    Upload, FileText, Link, ExternalLink, Smartphone, Home
+    Upload, FileText, Link, ExternalLink, Smartphone, Home, Wallet
 } from 'lucide-react';
 
 const travelMethods = [
@@ -94,6 +94,22 @@ const ViewProfile = () => {
         const n = Number(value);
         if (!Number.isFinite(n) || n <= 0) return 'Not specified';
         return `₹${n.toLocaleString('en-IN')}`;
+    };
+
+    const maskBankAccount = (value = '') => {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (!digits) return 'Not provided';
+        if (digits.length <= 4) return digits;
+        return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+    };
+
+    const maskUpiId = (value = '') => {
+        const upi = String(value || '').trim();
+        if (!upi) return 'Not provided';
+        const [handle, provider] = upi.split('@');
+        if (!provider) return upi;
+        if (!handle || handle.length <= 2) return `**@${provider}`;
+        return `${handle.slice(0, 2)}${'*'.repeat(Math.max(0, handle.length - 2))}@${provider}`;
     };
 
     const downloadPortfolioPdf = async () => {
@@ -483,6 +499,11 @@ const ViewProfile = () => {
             idDocumentType: data.idProof?.idType || '',
             expectedMinPay: data.expectedMinPay || '',
             expectedMaxPay: data.expectedMaxPay || '',
+            payoutPreference: data.payoutPreference || '',
+            payoutUpiId: data.payoutUpiId || '',
+            payoutBankAccountNumber: data.payoutBankAccountNumber || '',
+            payoutBankIfsc: data.payoutBankIfsc || '',
+            payoutAccountHolderName: data.payoutAccountHolderName || '',
             travelMethod: data.travelMethod || 'other',
             preferredJobCategoriesInput: Array.isArray(data.preferredJobCategories) ? data.preferredJobCategories.join(', ') : '',
             emergencyContactName: data.emergencyContact?.name || '',
@@ -839,6 +860,7 @@ const ViewProfile = () => {
     const sections = [
         { id: 'personal', label: 'Personal Info', icon: User },
         { id: 'professional', label: 'Professional', icon: Briefcase },
+        { id: 'payout', label: 'Payout', icon: Wallet },
         { id: 'skills', label: 'Skills', icon: Award },
         { id: 'references', label: 'References', icon: Users },
         { id: 'documents', label: 'Documents', icon: FileText },
@@ -1176,6 +1198,68 @@ const ViewProfile = () => {
                                                 {travelMethods.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                                             </select>
                                         </div>
+                                        <div className="sm:col-span-2 mt-2">
+                                            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                                                <p className="text-xs font-semibold text-orange-800">Payout Details</p>
+                                                <p className="text-[11px] text-orange-700 mt-1">Add how clients should pay you after job completion.</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-xs font-semibold text-gray-700">Payout Preference</label>
+                                            <select
+                                                name="payoutPreference"
+                                                value={formData.payoutPreference || ''}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
+                                            >
+                                                <option value="">Select</option>
+                                                <option value="upi">UPI</option>
+                                                <option value="bank">Bank Transfer</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-xs font-semibold text-gray-700">Account Holder Name (Optional)</label>
+                                            <input
+                                                name="payoutAccountHolderName"
+                                                value={formData.payoutAccountHolderName || ''}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
+                                            />
+                                        </div>
+                                        {formData.payoutPreference === 'upi' && (
+                                            <div className="sm:col-span-2 space-y-2">
+                                                <label className="block text-xs font-semibold text-gray-700">UPI ID</label>
+                                                <input
+                                                    name="payoutUpiId"
+                                                    value={formData.payoutUpiId || ''}
+                                                    onChange={handleChange}
+                                                    placeholder="example@upi"
+                                                    className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
+                                                />
+                                            </div>
+                                        )}
+                                        {formData.payoutPreference === 'bank' && (
+                                            <>
+                                                <div className="space-y-2">
+                                                    <label className="block text-xs font-semibold text-gray-700">Bank Account Number</label>
+                                                    <input
+                                                        name="payoutBankAccountNumber"
+                                                        value={formData.payoutBankAccountNumber || ''}
+                                                        onChange={handleChange}
+                                                        className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="block text-xs font-semibold text-gray-700">IFSC Code</label>
+                                                    <input
+                                                        name="payoutBankIfsc"
+                                                        value={formData.payoutBankIfsc || ''}
+                                                        onChange={(e) => setFormData({ ...formData, payoutBankIfsc: String(e.target.value || '').toUpperCase() })}
+                                                        className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm uppercase"
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
                                         <div className="sm:col-span-2 space-y-2">
                                             <label className="block text-xs font-semibold text-gray-700">Preferred Job Categories (comma separated)</label>
                                             <input
@@ -1583,6 +1667,11 @@ const ViewProfile = () => {
                                     <DetailItem label="e-Shram Number" value={profile.eShramNumber || 'Not provided'} icon={FileText} />
                                     <DetailItem label="Expected Min Pay" value={profile.expectedMinPay ? `₹${Number(profile.expectedMinPay).toLocaleString()}` : 'Not specified'} icon={TrendingUp} />
                                     <DetailItem label="Expected Max Pay" value={profile.expectedMaxPay ? `₹${Number(profile.expectedMaxPay).toLocaleString()}` : 'Not specified'} icon={TrendingUp} />
+                                    <DetailItem label="Payout Preference" value={profile.payoutPreference ? String(profile.payoutPreference).toUpperCase() : 'Not specified'} icon={Wallet} />
+                                    <DetailItem label="UPI ID" value={maskUpiId(profile.payoutUpiId)} icon={Wallet} />
+                                    <DetailItem label="Bank Account" value={maskBankAccount(profile.payoutBankAccountNumber)} icon={Wallet} />
+                                    <DetailItem label="IFSC" value={profile.payoutBankIfsc || 'Not provided'} icon={Wallet} />
+                                    <DetailItem label="Account Holder" value={profile.payoutAccountHolderName || 'Not provided'} icon={User} />
                                     <DetailItem label="Travel Method" value={profile.travelMethod ? String(profile.travelMethod).toUpperCase() : 'Not specified'} icon={MapPin} />
                                     <DetailItem label="Preferred Categories" value={Array.isArray(profile.preferredJobCategories) && profile.preferredJobCategories.length ? profile.preferredJobCategories.join(', ') : 'Not specified'} icon={Briefcase} />
                                     <DetailItem label="Status" value="Active" icon={Shield} color="text-green-600" />
@@ -1599,6 +1688,27 @@ const ViewProfile = () => {
                                         <DetailItem label="Contact Mobile" value={profile.emergencyContact?.mobile} icon={Phone} />
                                     </div>
                                 </div>
+                            </motion.div>
+                        )}
+
+                        {activeSection === 'payout' && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
+                            >
+                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
+                                    <Wallet size={18} />
+                                    Payout Details
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                                    <DetailItem label="Payout Preference" value={profile.payoutPreference ? String(profile.payoutPreference).toUpperCase() : 'Not specified'} icon={Wallet} />
+                                    <DetailItem label="UPI ID" value={maskUpiId(profile.payoutUpiId)} icon={Wallet} />
+                                    <DetailItem label="Bank Account" value={maskBankAccount(profile.payoutBankAccountNumber)} icon={Wallet} />
+                                    <DetailItem label="IFSC" value={profile.payoutBankIfsc || 'Not provided'} icon={Wallet} />
+                                    <DetailItem label="Account Holder" value={profile.payoutAccountHolderName || 'Not provided'} icon={User} />
+                                </div>
+                                <p className="text-xs text-gray-500 mt-4">To change these details, click Edit Profile and update the Payout Details block.</p>
                             </motion.div>
                         )}
 

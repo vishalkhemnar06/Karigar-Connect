@@ -8,7 +8,7 @@ import { useLocation } from 'react-router-dom';
 import {
     Users, UserCheck, UserX, Clock, ShieldX,
     AlertTriangle, MessageSquare, Store, X as CloseIcon,
-    ShieldAlert, BarChart3, Briefcase
+    ShieldAlert, BarChart3, Briefcase, UserRound, Trophy
 } from 'lucide-react';
 
 const NAV_SECTIONS = [
@@ -19,12 +19,17 @@ const NAV_SECTIONS = [
         ]
     },
     {
+        label: 'Directory',
+        items: [
+            { path: '/admin/users', label: 'Users', icon: UserRound, isFilter: false, isSection: true, section: 'users' },
+            { path: '/admin/marketplace', label: 'Marketplace', icon: Store, isFilter: false, isSection: true, section: 'marketplace' },
+            { path: '/admin/leaderboard', label: 'Worker Leaderboard', icon: Trophy, isFilter: false, isSection: true, section: 'leaderboard' },
+        ]
+    },
+    {
         label: 'Workers',
         items: [
             { filter: 'pending',  label: 'Pending Review', icon: Clock,     isFilter: true },
-            { filter: 'approved', label: 'Approved',       icon: UserCheck, isFilter: true },
-            { filter: 'rejected', label: 'Rejected',       icon: UserX,     isFilter: true },
-            { filter: 'blocked',  label: 'Blocked',        icon: ShieldX,   isFilter: true },
         ]
     },
     {
@@ -37,7 +42,7 @@ const NAV_SECTIONS = [
         label: 'Monitoring',
         items: [
             { path: '/admin/fraud', label: 'Fraud Monitor', icon: ShieldAlert, isFilter: false },
-            { path: '/admin/direct-hires', label: 'Direct Hire Payments', icon: Briefcase, isFilter: false, isSection: true, section: 'direct-hires' },
+            { path: '/admin/direct-hires', label: 'Payment Section', icon: Briefcase, isFilter: false, isSection: true, section: 'direct-hires' },
         ]
     },
     {
@@ -102,6 +107,9 @@ const AdminSidebar = ({
                 '/admin/worker-complaints': 'worker-complaints',
                 '/admin/community': 'community',
                 '/admin/shops': 'shops',
+                '/admin/users': 'users',
+                '/admin/marketplace': 'marketplace',
+                '/admin/leaderboard': 'leaderboard',
             };
             onSectionChange(sectionMap[item.path] || 'dashboard');
             onViewModeChange('stats');
@@ -119,6 +127,9 @@ const AdminSidebar = ({
             '/admin/community': 'community',
             '/admin/shops': 'shops',
             '/admin/direct-hires': 'direct-hires',
+                '/admin/users': 'users',
+                '/admin/marketplace': 'marketplace',
+                '/admin/leaderboard': 'leaderboard',
         };
         return currentSection === (sectionMap[item.path] || 'dashboard');
     };

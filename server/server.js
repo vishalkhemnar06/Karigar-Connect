@@ -41,6 +41,9 @@ const shopRoutes       = require('./routes/shopRoutes');
 const adminShopRoutes  = require('./routes/adminShopRoutes');
 const couponRoutes     = require('./routes/couponRoutes');
 
+// ── Payment & Razorpay routes ─────────────────────────────────────────────────
+const paymentRoutes    = require('./routes/paymentRoutes');
+
 const app = express();
 
 app.use(express.json({ limit: '10mb' }));
@@ -214,6 +217,7 @@ app.use('/api/admin/shops',              adminShopRoutes);
 app.use('/api/admin',                    adminRoutes);
 
 app.use('/api/client/complaints',        clientComplaintRoutes);
+app.use('/api/client/payment',           paymentRoutes);
 app.use('/api/client',                   clientRoutes);
 
 app.use('/api/worker/complaints',        workerComplaintRoutes);
@@ -298,14 +302,15 @@ const shouldRunDirectHireSweep = () => String(process.env.DISABLE_DIRECT_HIRE_SW
 const server = app.listen(PORT, HOST, () => {
     console.log(`🚀  Server running on port ${PORT}`);
 
+    // ℹ️  Pricing engine cron has been DISABLED (2024-11-27)
+    // Reason: Transitioned from automatic weekly updates to manual-only with cooldown
+    // Admins now trigger market rate updates manually via POST /api/admin/rates/update-market-manual
+    // with a 6-day cooldown between updates.
+    // Base rates can be imported via CSV upload at POST /api/admin/rates/import-base-csv
+    // (limited to once per week).
+    // To re-enable auto-cron for testing, set DISABLE_PRICING_CRON=false
     if (shouldRunPricingCron()) {
-        cron.schedule('0 2 * * 0', () => {
-            console.log('🔄  Starting weekly pricing engine update...');
-            runWeeklyUpdate().catch((err) => {
-                console.error('❌  Weekly pricing update failed:', err.message);
-            });
-        }, { timezone: 'UTC' });
-        console.log('✅  Pricing engine cron scheduled: every Sunday 02:00 UTC');
+        console.log('ℹ️   Pricing engine auto-cron is currently disabled. Use manual trigger via admin API instead.');
     } else {
         console.log('ℹ️   Pricing engine cron disabled by DISABLE_PRICING_CRON=true');
     }

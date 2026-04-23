@@ -18,7 +18,7 @@ import {
     FileText, Image, Briefcase, AlertCircle,
     LogOut, Menu, X as CloseIcon, Calendar, Smartphone,
     MapPin as MapPinIcon, FileText as FileTextIcon,
-    Camera, Award as AwardIcon, Star, PhoneCall, Store, Gift, Wrench, TrendingUp, BarChart3
+    Camera, Award as AwardIcon, Star, PhoneCall, Store, Gift, Wrench, TrendingUp, BarChart3, RefreshCw
 } from 'lucide-react';
 import {
     PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
@@ -34,6 +34,9 @@ import AdminComplaints from '../../pages/admin/AdminComplaints';
 import AdminWorkerComplaints from '../../pages/admin/AdminWorkerComplaints';
 import AdminCommunity from '../../pages/admin/AdminCommunity';
 import AdminShops from '../../pages/admin/AdminShops';
+import AdminUsersSection from '../../pages/admin/AdminUsersSection';
+import AdminMarketplaceSection from '../../pages/admin/AdminMarketplaceSection';
+import AdminWorkerLeaderboardSection from '../../pages/admin/AdminWorkerLeaderboardSection';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modal: Verify Worker & Assign Points
@@ -254,7 +257,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                     {/* Client-specific */}
                     {user.role === 'client' && (
                         <>
-                            {/* Client Security & Verification */}
                             <div className="bg-gradient-to-r from-red-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-red-100">
                                 <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-red-800 flex items-center">
                                     <AlertCircle size={18} className="mr-2" /> Security & Verification
@@ -269,7 +271,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                 </div>
                             </div>
 
-                            {/* Client Profile & Intent */}
                             <div className="bg-gradient-to-r from-blue-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-blue-100">
                                 <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-blue-800 flex items-center">
                                     <Briefcase size={18} className="mr-2" /> Profile & Intent
@@ -285,7 +286,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                 </div>
                             </div>
 
-                            {/* T&C Acceptance */}
                             <div className="bg-gradient-to-r from-green-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-green-100">
                                 <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-green-800 flex items-center">
                                     <FileTextIcon size={18} className="mr-2" /> Terms & Conditions Acceptance
@@ -298,7 +298,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                 </div>
                             </div>
 
-                            {/* Legacy Fields */}
                             <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
                                 <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-orange-800 flex items-center">
                                     <Briefcase size={18} className="mr-2" /> Additional Information
@@ -315,7 +314,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                         </>
                     )}
 
-                    {/* Documents */}
                     <div className="bg-gradient-to-r from-gray-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-gray-100">
                         <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-gray-800 flex items-center">
                             <FileTextIcon size={18} className="mr-2" /> Documents & Uploads
@@ -329,8 +327,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                 <p className="font-semibold text-orange-600 text-xs uppercase">ID Proof ({idDoc.idType || user.idDocumentType || 'Aadhar Card'})</p>
                                 <FileLink path={idDoc.filePath || user.idProof} label="View ID Proof" icon={FileText} />
                             </div>
-                            
-                            {/* Client-specific documents */}
                             {user.role === 'client' && (
                                 <>
                                     <div className="space-y-2">
@@ -354,8 +350,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     </div>
                                 </>
                             )}
-
-                            {/* Worker-specific documents */}
                             {user.role === 'worker' && (
                                 <>
                                     <div className="space-y-2">
@@ -511,13 +505,36 @@ const AdminDashboard = () => {
     const [userToVerify,   setUserToVerify]   = useState(null);
     const [activeFilter,   setActiveFilter]   = useState(navState.activeFilter || 'pending');
     const [searchTerm,     setSearchTerm]     = useState('');
+    const [workerReviewTab, setWorkerReviewTab] = useState(
+        ['pending', 'approved', 'rejected', 'blocked'].includes(navState.activeFilter) ? navState.activeFilter : 'pending'
+    );
+    const [workerSearchByTab, setWorkerSearchByTab] = useState({
+        pending: '',
+        approved: '',
+        rejected: '',
+        blocked: '',
+    });
+    const [workerCityByTab, setWorkerCityByTab] = useState({
+        pending: 'all',
+        approved: 'all',
+        rejected: 'all',
+        blocked: 'all',
+    });
     const [sortConfig,     setSortConfig]     = useState({ key: null, direction: 'asc' });
     const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
     const [isLoggedIn,     setIsLoggedIn]     = useState(true);
-    const [currentSection, setCurrentSection] = useState(navState.currentSection || 'dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops'
+    const [currentSection, setCurrentSection] = useState(navState.currentSection || 'dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops', 'users', 'marketplace', 'leaderboard'
     const [viewMode, setViewMode] = useState(navState.viewMode || 'stats'); // 'stats' or 'records'
     const [directHirePayments, setDirectHirePayments] = useState([]);
     const [directHireLoading, setDirectHireLoading] = useState(false);
+    const [directHireTab, setDirectHireTab] = useState('pending');
+    const [directHireCityFilter, setDirectHireCityFilter] = useState('all');
+    const [directHireSkillFilter, setDirectHireSkillFilter] = useState('all');
+    const [directHireSearch, setDirectHireSearch] = useState('');
+    const [directHireCityOptions, setDirectHireCityOptions] = useState([]);
+    const [directHireSkillOptions, setDirectHireSkillOptions] = useState([]);
+    const [directHireSummary, setDirectHireSummary] = useState({ totalPaidAmount: 0, count: 0 });
+    const [directHireActionLoading, setDirectHireActionLoading] = useState({});
     const [dashboardStats, setDashboardStats] = useState({
         ivrStats: {},
         shops: 0,
@@ -573,8 +590,17 @@ const AdminDashboard = () => {
     const fetchDirectHirePayments = async () => {
         try {
             setDirectHireLoading(true);
-            const response = await api.getAdminPendingDirectHirePayments();
-            setDirectHirePayments(Array.isArray(response?.data?.jobs) ? response.data.jobs : []);
+            const response = await api.getAdminDirectHirePayments({
+                tab: directHireTab,
+                city: directHireCityFilter,
+                skill: directHireSkillFilter,
+                search: directHireSearch,
+            });
+            const rows = Array.isArray(response?.data?.jobs) ? response.data.jobs : [];
+            setDirectHirePayments(rows);
+            setDirectHireCityOptions(Array.isArray(response?.data?.filters?.cities) ? response.data.filters.cities : []);
+            setDirectHireSkillOptions(Array.isArray(response?.data?.filters?.skills) ? response.data.filters.skills : []);
+            setDirectHireSummary(response?.data?.summary || { totalPaidAmount: 0, count: rows.length });
         } catch (err) {
             console.error('Error fetching direct hire payments:', err);
         } finally {
@@ -591,13 +617,72 @@ const AdminDashboard = () => {
         if (currentSection === 'direct-hires') {
             fetchDirectHirePayments();
         }
-    }, [currentSection]);
+    }, [currentSection, directHireTab, directHireCityFilter, directHireSkillFilter, directHireSearch]);
+
+    const formatMoney = (amount) => `₹${Number(amount || 0).toLocaleString('en-IN')}`;
+
+    const formatJobDateTime = (job) => {
+        const sourceDate = job?.directHire?.expectedStartAt || job?.scheduledDate;
+        if (!sourceDate) return 'Not scheduled';
+        const date = new Date(sourceDate);
+        const dateText = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        const timeText = job?.scheduledTime || date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        return `${dateText} • ${timeText}`;
+    };
+
+    const handleWarnClient = async (jobId) => {
+        try {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`warn-${jobId}`]: true }));
+            await api.adminWarnDirectHireClient(jobId);
+            await fetchDirectHirePayments();
+        } catch (err) {
+            console.error('Warning failed:', err);
+        } finally {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`warn-${jobId}`]: false }));
+        }
+    };
+
+    const handleBlockClient = async (jobId) => {
+        try {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`block-${jobId}`]: true }));
+            await api.adminBlockDirectHireClient(jobId);
+            await fetchDirectHirePayments();
+        } catch (err) {
+            console.error('Block failed:', err);
+        } finally {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`block-${jobId}`]: false }));
+        }
+    };
+
+    const handleUnblockClient = async (jobId) => {
+        try {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`unblock-${jobId}`]: true }));
+            await api.adminUnblockDirectHireClient(jobId);
+            await fetchDirectHirePayments();
+        } catch (err) {
+            console.error('Unblock failed:', err);
+        } finally {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`unblock-${jobId}`]: false }));
+        }
+    };
 
     useEffect(() => {
         if (navState.activeFilter) setActiveFilter(navState.activeFilter);
         if (navState.currentSection) setCurrentSection(navState.currentSection);
         if (navState.viewMode) setViewMode(navState.viewMode);
     }, [navState.activeFilter, navState.currentSection, navState.viewMode]);
+
+    useEffect(() => {
+        if (['pending', 'approved', 'rejected', 'blocked'].includes(navState.activeFilter)) {
+            setWorkerReviewTab(navState.activeFilter);
+        }
+    }, [navState.activeFilter]);
+
+    useEffect(() => {
+        if (activeFilter === 'pending') {
+            setWorkerReviewTab('pending');
+        }
+    }, [activeFilter]);
 
     useEffect(() => {
         if (activeFilter !== 'pending') return;
@@ -641,6 +726,46 @@ const AdminDashboard = () => {
         }
         return data;
     }, [activeFilter, workers, clients, searchTerm, sortConfig]);
+
+    const workerCityOptions = useMemo(() => {
+        const tabWorkers = workers.filter((worker) => worker.verificationStatus === workerReviewTab);
+        const cities = Array.from(new Set(
+            tabWorkers
+                .map((worker) => String(worker?.address?.city || worker?.city || '').trim())
+                .filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b));
+
+        return cities;
+    }, [workers, workerReviewTab]);
+
+    const workerReviewRows = useMemo(() => {
+        const query = String(workerSearchByTab[workerReviewTab] || '').trim().toLowerCase();
+        const cityFilter = String(workerCityByTab[workerReviewTab] || 'all').trim().toLowerCase();
+        let data = workers.filter((worker) => worker.verificationStatus === workerReviewTab);
+
+        if (cityFilter !== 'all') {
+            data = data.filter((worker) => String(worker?.address?.city || worker?.city || '').trim().toLowerCase() === cityFilter);
+        }
+
+        if (query) {
+            data = data.filter((worker) => [
+                worker?.name,
+                worker?.mobile,
+                worker?.karigarId,
+            ].some((value) => String(value || '').toLowerCase().includes(query)));
+        }
+
+        return data;
+    }, [workers, workerReviewTab, workerSearchByTab, workerCityByTab]);
+
+    const currentWorkerSearch = workerSearchByTab[workerReviewTab] || '';
+    const setCurrentWorkerSearch = (value) => {
+        setWorkerSearchByTab((prev) => ({ ...prev, [workerReviewTab]: value }));
+    };
+    const currentWorkerCity = workerCityByTab[workerReviewTab] || 'all';
+    const setCurrentWorkerCity = (value) => {
+        setWorkerCityByTab((prev) => ({ ...prev, [workerReviewTab]: value }));
+    };
 
     const handleSort = (key) => setSortConfig(prev => ({
         key,
@@ -723,6 +848,271 @@ const AdminDashboard = () => {
             </div>
         );
     };
+
+    const WorkerReviewBoard = ({
+        currentTab,
+        onTabChange,
+        searchValue,
+        onSearchChange,
+        cityValue,
+        onCityChange,
+        cityOptions,
+        rows,
+        stats,
+        onRefresh,
+        currentAdminId,
+        onViewDetails,
+        onClaimWorker,
+        onStatusUpdate,
+        onDelete,
+        onVerifyOpen,
+    }) => {
+        const tabs = [
+            { key: 'pending', label: 'Pending', count: stats.pending, icon: Clock, tone: 'amber' },
+            { key: 'approved', label: 'Approved', count: stats.approved, icon: UserCheck, tone: 'green' },
+            { key: 'rejected', label: 'Rejected', count: stats.rejected, icon: UserX, tone: 'red' },
+            { key: 'blocked', label: 'Blocked', count: stats.blocked, icon: ShieldX, tone: 'slate' },
+        ];
+
+        const tabTone = {
+            amber: 'from-amber-400 to-orange-500',
+            green: 'from-emerald-500 to-green-600',
+            red: 'from-rose-500 to-red-600',
+            slate: 'from-slate-600 to-slate-700',
+        };
+
+        const chipTone = {
+            pending: 'bg-amber-100 text-amber-800 border-amber-200',
+            approved: 'bg-green-100 text-green-800 border-green-200',
+            rejected: 'bg-red-100 text-red-800 border-red-200',
+            blocked: 'bg-slate-100 text-slate-800 border-slate-200',
+        };
+
+        const renderCard = (user) => {
+            const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
+            const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
+            const claimedByOther = lockOwnerId && !claimedByMe;
+            const city = user?.address?.city || user?.city || 'N/A';
+
+            return (
+                <div key={user._id} className="group rounded-3xl border border-orange-100 bg-white shadow-sm overflow-hidden hover:shadow-xl transition-all duration-300">
+                    <div className={`h-20 bg-gradient-to-r ${
+                        user.verificationStatus === 'approved' ? 'from-emerald-400 to-green-500' :
+                        user.verificationStatus === 'rejected' ? 'from-rose-400 to-red-500' :
+                        user.verificationStatus === 'blocked' ? 'from-slate-500 to-slate-700' :
+                        'from-amber-400 to-orange-500'
+                    }`} />
+
+                    <div className="px-5 pb-5 -mt-10">
+                        <div className="flex items-start gap-3">
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <img
+                                    src={getImageUrl(user.photo)}
+                                    alt={user.name}
+                                    className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-lg bg-white"
+                                    onError={(event) => { event.currentTarget.src = '/default-avatar.png'; }}
+                                />
+                                <div className="pt-1 min-w-0 flex-1">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-orange-500">Worker</p>
+                                    <h3 className="text-lg font-black text-gray-900 leading-tight break-words whitespace-normal">{user.name}</h3>
+                                    <p className="text-sm text-gray-500 mt-1">{city}</p>
+                                </div>
+                            </div>
+                            <span className={`shrink-0 px-3 py-1 rounded-full border text-[11px] font-black uppercase tracking-[0.18em] ${chipTone[user.verificationStatus] || chipTone.pending}`}>
+                                {user.verificationStatus}
+                            </span>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                            <InfoPill label="Mobile" value={user.mobile || 'N/A'} />
+                            <InfoPill label="Karigar ID" value={user.karigarId || 'N/A'} mono />
+                            <InfoPill label="Points" value={user.points || 0} />
+                            <InfoPill label="Experience" value={`${user.experience || 0} yrs`} />
+                        </div>
+
+                        {user.role === 'worker' && user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
+                            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                Locked by {user.reviewLock.lockedBy.name || 'Admin'}
+                            </div>
+                        )}
+
+                        <div className="mt-4 grid grid-cols-1 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onViewDetails(user)}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-sm font-bold text-white hover:shadow-md transition-shadow"
+                            >
+                                <Eye size={16} /> View Details
+                            </button>
+
+                            {user.role === 'worker' && user.verificationStatus === 'pending' && (
+                                !lockOwnerId ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onClaimWorker(user._id)}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100 transition-colors"
+                                    >
+                                        <ShieldCheck size={16} /> Claim Review
+                                    </button>
+                                ) : claimedByMe ? (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => onVerifyOpen(user)}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 transition-colors"
+                                        >
+                                            <Check size={16} /> Approve
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const reason = window.prompt('Enter rejection reason:') || '';
+                                                onStatusUpdate(user._id, 'rejected', 0, reason);
+                                            }}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-500 transition-colors"
+                                        >
+                                            <X size={16} /> Reject
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-sm font-bold text-slate-600">
+                                        Under Review
+                                    </div>
+                                )
+                            )}
+
+                            {user.role === 'worker' && user.verificationStatus === 'approved' && (
+                                <button
+                                    type="button"
+                                    onClick={() => onStatusUpdate(user._id, 'blocked')}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                                >
+                                    <ShieldX size={16} /> Block Account
+                                </button>
+                            )}
+
+                            {user.role === 'worker' && user.verificationStatus === 'blocked' && (
+                                <button
+                                    type="button"
+                                    onClick={() => onStatusUpdate(user._id, 'unblocked')}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                >
+                                    <ShieldCheck size={16} /> Unblock Account
+                                </button>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => onDelete(user._id, user.name, user.role)}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
+                            >
+                                <Trash2 size={16} /> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        return (
+            <div className="bg-white rounded-3xl border border-orange-100 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-orange-100 bg-gradient-to-r from-orange-50 via-white to-white space-y-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-500">Workers</p>
+                            <h3 className="text-2xl font-black text-gray-900">Pending Review Board</h3>
+                            <p className="text-sm text-gray-500">Switch between worker statuses. Search only matches the active tab by name or mobile.</p>
+                        </div>
+                        <div className="flex items-center gap-2 w-full lg:w-auto">
+                            <button
+                                type="button"
+                                onClick={onRefresh}
+                                className="inline-flex items-center justify-center rounded-2xl border border-orange-200 bg-white p-3 text-orange-600 hover:bg-orange-50 hover:border-orange-300 transition-colors"
+                                title="Refresh Pending Review"
+                                aria-label="Refresh Pending Review"
+                            >
+                                <RefreshCw size={16} />
+                            </button>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 lg:flex-none">
+                            {tabs.map((tab) => {
+                                const Icon = tab.icon;
+                                const active = currentTab === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => onTabChange(tab.key)}
+                                        className={`rounded-2xl border px-4 py-3 text-left transition-all ${active ? `bg-gradient-to-r ${tabTone[tab.tone]} text-white border-transparent shadow-lg shadow-orange-100` : 'bg-white border-gray-200 text-gray-700 hover:border-orange-200 hover:bg-orange-50'}`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <Icon size={16} />
+                                            <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
+                                                {tab.count}
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-sm font-bold">{tab.label}</p>
+                                    </button>
+                                );
+                            })}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+                        <select
+                            value={cityValue}
+                            onChange={(event) => onCityChange(event.target.value)}
+                            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 lg:min-w-[220px]"
+                        >
+                            <option value="all">All Cities</option>
+                            {cityOptions.map((city) => (
+                                <option key={city} value={city.toLowerCase()}>{city}</option>
+                            ))}
+                        </select>
+                        <div className="relative flex-1">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                value={searchValue}
+                                onChange={(event) => onSearchChange(event.target.value)}
+                                placeholder={`Search ${currentTab} workers by name or mobile`}
+                                className="w-full rounded-2xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50"
+                            />
+                        </div>
+                        {searchValue && (
+                            <button
+                                type="button"
+                                onClick={() => onSearchChange('')}
+                                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
+                            >
+                                Clear Search
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-6">
+                    {rows.length ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {rows.map((worker) => renderCard(worker))}
+                        </div>
+                    ) : (
+                        <div className="rounded-3xl border border-dashed border-orange-200 bg-orange-50/50 p-10 text-center text-gray-500">
+                            <p className="text-lg font-bold text-gray-700">No {currentTab} workers found.</p>
+                            <p className="mt-2 text-sm">Try a different search term or switch tabs.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    const InfoPill = ({ label, value, mono = false }) => (
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">{label}</p>
+            <p className={`mt-1 text-sm font-bold text-gray-900 ${mono ? 'font-mono' : ''}`}>{value}</p>
+        </div>
+    );
 
     const SortHeader = ({ label, sortKey }) => (
         <button onClick={() => handleSort(sortKey)} className="flex items-center font-semibold text-gray-700 hover:text-orange-700 text-sm">
@@ -988,7 +1378,9 @@ const AdminDashboard = () => {
                             <div className="bg-white rounded-xl shadow-sm border">
                                 <div className="p-6 border-b space-y-4">
                                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                                        <h3 className="text-lg font-bold capitalize">{activeFilter} Records ({filteredData.length})</h3>
+                                        <h3 className="text-lg font-bold capitalize">
+                                            {activeFilter === 'clients' ? `Client Records (${filteredData.length})` : 'Worker Review'}
+                                        </h3>
                                         {activeFilter === 'approved' && (
                                             <div className="relative group">
                                                 <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
@@ -1001,28 +1393,29 @@ const AdminDashboard = () => {
                                             </div>
                                         )}
                                     </div>
-                                    
-                                    {/* Search and Filter Bar */}
-                                    <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
-                                        <div className="relative flex-1">
-                                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                placeholder={`Search by name, mobile, or ${activeFilter !== 'clients' ? 'Karigar ID' : 'email'}...`}
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm transition-all"
-                                            />
+
+                                    {activeFilter === 'clients' && (
+                                        <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+                                            <div className="relative flex-1">
+                                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search by name, mobile, or email..."
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm transition-all"
+                                                />
+                                            </div>
+                                            {searchTerm && (
+                                                <button
+                                                    onClick={() => setSearchTerm('')}
+                                                    className="px-3 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors"
+                                                >
+                                                    Clear Search
+                                                </button>
+                                            )}
                                         </div>
-                                        {searchTerm && (
-                                            <button
-                                                onClick={() => setSearchTerm('')}
-                                                className="px-3 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors"
-                                            >
-                                                Clear Search
-                                            </button>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
 
                                 <div className="p-4">
@@ -1030,8 +1423,27 @@ const AdminDashboard = () => {
                                         <div className="text-center py-12">
                                             <div className="animate-spin h-10 w-10 border-4 border-orange-600 border-t-transparent rounded-full mx-auto"></div>
                                         </div>
+                                    ) : activeFilter !== 'clients' ? (
+                                        <WorkerReviewBoard
+                                            currentTab={workerReviewTab}
+                                            onTabChange={setWorkerReviewTab}
+                                            searchValue={currentWorkerSearch}
+                                            onSearchChange={setCurrentWorkerSearch}
+                                            cityValue={currentWorkerCity}
+                                            onCityChange={setCurrentWorkerCity}
+                                            cityOptions={workerCityOptions}
+                                            rows={workerReviewRows}
+                                            stats={stats}
+                                            onRefresh={() => fetchData(true)}
+                                            currentAdminId={currentAdminId}
+                                            onViewDetails={setSelectedUser}
+                                            onClaimWorker={handleClaimWorker}
+                                            onStatusUpdate={handleStatusUpdate}
+                                            onDelete={handleDelete}
+                                            onVerifyOpen={setUserToVerify}
+                                        />
                                     ) : filteredData.length > 0 ? (
-                                        <>
+                                            <>
                                             {/* Card Grid - Show on all devices */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                                                 {filteredData.map(user => {
@@ -1203,7 +1615,7 @@ const AdminDashboard = () => {
                                                     );
                                                 })}
                                             </div>
-                                        </>
+                                            </>
                                     ) : (
                                         <div className="text-center py-16 text-gray-400">
                                             <div className="text-4xl mb-4">📋</div>
@@ -1216,14 +1628,66 @@ const AdminDashboard = () => {
                     )}
 
                     {currentSection === 'fraud' && <FraudMonitor />}
+                    {currentSection === 'users' && <AdminUsersSection />}
+                    {currentSection === 'marketplace' && <AdminMarketplaceSection />}
+                    {currentSection === 'leaderboard' && <AdminWorkerLeaderboardSection />}
                     {currentSection === 'direct-hires' && (
                         <div className="space-y-4">
                             <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <div>
-                                        <h2 className="text-xl font-black text-gray-900">Direct Hire Pending Payments</h2>
-                                        <p className="text-sm text-gray-500">Jobs overdue by more than 30 minutes after the expected end time.</p>
+                                        <h2 className="text-xl font-black text-gray-900">Payment Section</h2>
+                                        <p className="text-sm text-gray-500">Track pending and completed direct hire payments with city and skill filtering.</p>
                                     </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDirectHireTab('pending')}
+                                            className={`px-4 py-2 rounded-xl font-bold border ${directHireTab === 'pending' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-700 border-gray-200'}`}
+                                        >
+                                            Pending Payments
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDirectHireTab('completed')}
+                                            className={`px-4 py-2 rounded-xl font-bold border ${directHireTab === 'completed' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-700 border-gray-200'}`}
+                                        >
+                                            Completed Payments
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-2">
+                                    <select
+                                        value={directHireCityFilter}
+                                        onChange={(e) => setDirectHireCityFilter(e.target.value)}
+                                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                                    >
+                                        <option value="all">All Cities</option>
+                                        {directHireCityOptions.map((city) => (
+                                            <option key={city} value={city.toLowerCase()}>{city}</option>
+                                        ))}
+                                    </select>
+
+                                    <select
+                                        value={directHireSkillFilter}
+                                        onChange={(e) => setDirectHireSkillFilter(e.target.value)}
+                                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                                    >
+                                        <option value="all">All Skills</option>
+                                        {directHireSkillOptions.map((skill) => (
+                                            <option key={skill} value={skill.toLowerCase()}>{skill}</option>
+                                        ))}
+                                    </select>
+
+                                    <input
+                                        type="text"
+                                        value={directHireSearch}
+                                        onChange={(e) => setDirectHireSearch(e.target.value)}
+                                        placeholder="Search client name or phone"
+                                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                                    />
+
                                     <button
                                         type="button"
                                         onClick={fetchDirectHirePayments}
@@ -1232,46 +1696,100 @@ const AdminDashboard = () => {
                                         Refresh
                                     </button>
                                 </div>
+
+                                {directHireTab === 'completed' && (
+                                    <div className="mt-3 text-sm font-bold text-emerald-700">
+                                        Total Paid Amount: {formatMoney(directHireSummary.totalPaidAmount || 0)}
+                                    </div>
+                                )}
                             </div>
 
                             {directHireLoading ? (
-                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">Loading pending direct hire payments...</div>
+                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">Loading payment records...</div>
                             ) : directHirePayments.length === 0 ? (
-                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">No pending direct hire payments found.</div>
+                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">No payment records found for selected filters.</div>
                             ) : (
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                    {directHirePayments.map(({ job, overdueMinutes }) => (
+                                <div className="grid grid-cols-1 gap-4">
+                                    {directHirePayments.map((row) => {
+                                        const job = row?.job || {};
+                                        const clientLocked = Boolean(job?.postedBy?.paymentLock?.active);
+                                        return (
                                         <div key={job._id} className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5 space-y-3">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
                                                     <h3 className="text-lg font-black text-gray-900">{job.title}</h3>
-                                                    <p className="text-sm text-gray-500">{job.postedBy?.name} • {job.directHire?.workerId?.name || 'Worker'}</p>
+                                                    <p className="text-sm text-gray-500">{job.postedBy?.name} • {job.postedBy?.mobile || 'N/A'}</p>
                                                 </div>
-                                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-100">{overdueMinutes} min overdue</span>
+                                                {row?.isOverdue ? (
+                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-100">Overdue • {row.overdueMinutes} min</span>
+                                                ) : (
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${directHireTab === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                                                        {directHireTab === 'completed' ? 'Payment Done' : 'Pending'}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-gray-600">
-                                                <div><span className="font-semibold text-gray-800">Amount:</span> ₹{Number(job.directHire?.expectedAmount || 0).toLocaleString('en-IN')}</div>
-                                                <div><span className="font-semibold text-gray-800">Payment:</span> {job.directHire?.paymentStatus || 'pending'}</div>
-                                                <div><span className="font-semibold text-gray-800">Client:</span> {job.postedBy?.mobile || 'N/A'}</div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
+                                                <div><span className="font-semibold text-gray-800">Date & Time:</span> {formatJobDateTime(job)}</div>
+                                                <div><span className="font-semibold text-gray-800">Duration:</span> {job?.directHire?.durationValue || 1} {job?.directHire?.durationUnit || '/day'}</div>
+                                                <div><span className="font-semibold text-gray-800">City:</span> {job?.location?.city || row?.city || 'N/A'}</div>
+                                                <div><span className="font-semibold text-gray-800">Address:</span> {job?.location?.fullAddress || 'N/A'}</div>
+                                                <div><span className="font-semibold text-gray-800">Skill:</span> {row?.skill || (job?.skills || []).join(', ') || 'N/A'}</div>
+                                                <div><span className="font-semibold text-gray-800">Payment Status:</span> {row?.paymentStatus || 'pending'}</div>
                                             </div>
-                                            <div className="flex gap-2 flex-wrap">
-                                                <button
-                                                    type="button"
-                                                    onClick={async () => {
-                                                        try {
-                                                            await api.adminUnblockDirectHireClient(job._id);
-                                                            await fetchDirectHirePayments();
-                                                        } catch (err) {
-                                                            console.error('Unblock failed:', err);
-                                                        }
-                                                    }}
-                                                    className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold"
-                                                >
-                                                    Unblock Client
-                                                </button>
+
+                                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                                                <p className="text-xs font-black text-gray-700 uppercase tracking-wider mb-2">Workers & Payments</p>
+                                                <div className="space-y-2">
+                                                    {(row?.paymentRows || []).map((pay, idx) => (
+                                                        <div key={`${job._id}-worker-${idx}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                                            <div className="font-semibold text-gray-800">{pay.name} • {pay.mobile || 'N/A'}</div>
+                                                            <div className="text-gray-700">{formatMoney(pay.amount || 0)} • {pay.method || 'cash'} {pay.paid ? '(Paid)' : '(Pending)'}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
+
+                                            {directHireTab === 'pending' && (
+                                                <div className="flex gap-2 flex-wrap">
+                                                    <a
+                                                        href={job?.postedBy?.mobile ? `tel:${job.postedBy.mobile}` : undefined}
+                                                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold"
+                                                    >
+                                                        Call Client
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleWarnClient(job._id)}
+                                                        disabled={directHireActionLoading[`warn-${job._id}`]}
+                                                        className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-60"
+                                                    >
+                                                        {directHireActionLoading[`warn-${job._id}`] ? 'Sending...' : 'Send Warning SMS'}
+                                                    </button>
+                                                    {!clientLocked ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleBlockClient(job._id)}
+                                                            disabled={directHireActionLoading[`block-${job._id}`]}
+                                                            className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold disabled:opacity-60"
+                                                        >
+                                                            {directHireActionLoading[`block-${job._id}`] ? 'Blocking...' : 'Block Services'}
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleUnblockClient(job._id)}
+                                                            disabled={directHireActionLoading[`unblock-${job._id}`]}
+                                                            className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold disabled:opacity-60"
+                                                        >
+                                                            {directHireActionLoading[`unblock-${job._id}`] ? 'Unblocking...' : 'Unblock Services'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

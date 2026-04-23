@@ -100,6 +100,13 @@ const AdminWorkerProfile = () => {
       return;
     }
 
+    if (section === 'users' || section === 'marketplace') {
+      navigate('/admin/dashboard', {
+        state: { currentSection: section, viewMode: 'stats' },
+      });
+      return;
+    }
+
     const sectionRoutes = {
       fraud: '/admin/fraud',
       complaints: '/admin/complaints',

@@ -9,7 +9,15 @@ import {
     Sparkles, Calendar, Briefcase, Zap, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getImageUrl, getDirectInvites, getWorkerDirectHires, acceptDirectInvite, rejectDirectInvite } from '../../api/index';
+import {
+    getImageUrl,
+    getDirectInvites,
+    getWorkerDirectHires,
+    acceptDirectInvite,
+    rejectDirectInvite,
+    acceptDirectHireTicket,
+    rejectDirectHireTicket,
+} from '../../api/index';
 
 export default function DirectInvites() {
     const [invites, setInvites] = useState([]);
@@ -20,6 +28,9 @@ export default function DirectInvites() {
     const [filter, setFilter] = useState('all'); // 'all', 'pending', 'viewed'
     const [directHires, setDirectHires] = useState([]);
     const [directHireLoading, setDirectHireLoading] = useState(false);
+    const [directHireDeclineReasons, setDirectHireDeclineReasons] = useState({});
+    const [selectedDirectHire, setSelectedDirectHire] = useState(null);
+    const [showDirectHireDetails, setShowDirectHireDetails] = useState(false);
 
     useEffect(() => {
         loadInvites();
@@ -112,15 +123,58 @@ export default function DirectInvites() {
         }
     };
 
-    const filtered = invites.filter(i => {
+    const handleAcceptDirectHire = async (jobId) => {
+        try {
+            setResponding(jobId);
+            const { data } = await acceptDirectHireTicket(jobId);
+            toast.success(data.message || 'Direct hire accepted!');
+            setDirectHires((prev) => prev.filter(j => j._id !== jobId));
+            setSelectedInvite(null);
+            await loadDirectHires();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to accept direct hire');
+        } finally {
+            setResponding(null);
+        }
+    };
+
+    const handleRejectDirectHire = async (jobId) => {
+        const reason = String(directHireDeclineReasons[jobId] || '').trim();
+        if (!reason || reason.length < 5) {
+            toast.error('Decline reason required (min 5 characters).');
+            return;
+        }
+        try {
+            setResponding(jobId);
+            const { data } = await rejectDirectHireTicket(jobId, { reason });
+            toast.success(data.message || 'Direct hire declined');
+            setDirectHires((prev) => prev.filter(j => j._id !== jobId));
+            setSelectedInvite(null);
+            setSelectedDirectHire(null);
+            setDirectHireDeclineReasons((prev) => {
+                const next = { ...prev };
+                delete next[jobId];
+                return next;
+            });
+            await loadDirectHires();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to decline direct hire');
+        } finally {
+            setResponding(null);
+        }
+    };
+
+    const smartMatchInvites = invites.filter(i => String(i?.hireMode || '').toLowerCase() !== 'direct');
+
+    const filtered = smartMatchInvites.filter(i => {
         if (filter === 'pending') return !i.hasApplied;
         if (filter === 'viewed') return i.hasApplied;
         return true;
     });
     const isDirectHiredTab = filter === 'direct-hired';
 
-    const pendingCount = invites.filter(i => !i.hasApplied).length;
-    const appliedCount = invites.filter(i => i.hasApplied).length;
+    const pendingCount = smartMatchInvites.filter(i => !i.hasApplied).length;
+    const appliedCount = smartMatchInvites.filter(i => i.hasApplied).length;
 
     if (loading) {
         return (
@@ -204,7 +258,13 @@ export default function DirectInvites() {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {directHires.map((job) => (
+                            {directHires.map((job) => {
+                                const dh = job.directHire || {};
+                                const isPending = String(dh.requestStatus || '') === 'requested';
+                                const isRejected = String(dh.requestStatus || '') === 'rejected';
+                                const rejectReason = String(directHireDeclineReasons[job._id] || '');
+
+                                return (
                                 <div key={job._id} className="bg-white rounded-2xl border-2 border-gray-100 shadow-sm p-4">
                                     <div className="flex items-start gap-3">
                                         <img
@@ -216,16 +276,74 @@ export default function DirectInvites() {
                                         <div className="flex-1 min-w-0">
                                             <h3 className="font-black text-gray-900 truncate text-sm sm:text-base">{job.title}</h3>
                                             <p className="text-xs text-gray-500">{job.postedBy?.name}</p>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-[11px] text-gray-600">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2 text-[11px] text-gray-600">
                                                 <div className="flex items-center gap-1"><Calendar size={11} /> {job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : 'Date not set'}</div>
                                                 <div className="flex items-center gap-1"><Clock size={11} /> {job.scheduledTime || 'Time not set'}</div>
-                                                <div className="flex items-center gap-1"><IndianRupee size={11} /> {Number(job.directHire?.expectedAmount || 0).toLocaleString()}</div>
+                                                {!isRejected && <div className="flex items-center gap-1"><IndianRupee size={11} /> ₹{Number(dh.expectedAmount || 0).toLocaleString()}</div>}
+                                                <div className="flex items-center gap-1"><Clock size={11} /> {Number(dh.durationValue || 1)} {dh.durationUnit || '/hour'}</div>
+                                            </div>
+                                            <div className="mt-2 text-[11px] text-gray-600 space-y-1">
+                                                <p className="line-clamp-2"><span className="font-semibold">JD:</span> {dh.oneLineJD || job.shortDescription || job.description || 'Not available'}</p>
+                                                <p className="line-clamp-1"><span className="font-semibold">Location:</span> {formatLocation(job.location)}</p>
+                                                {String(dh.requestStatus || '') === 'rejected' && dh.requestRejectedReason ? (
+                                                    <p className="text-red-600"><span className="font-semibold">Decline reason:</span> {dh.requestRejectedReason}</p>
+                                                ) : null}
                                             </div>
                                         </div>
-                                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold border border-emerald-200">{job.directHire?.requestStatus || 'direct'}</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            String(dh.requestStatus || '') === 'accepted'
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                : String(dh.requestStatus || '') === 'rejected'
+                                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                        }`}>{dh.requestStatus || 'direct'}</span>
                                     </div>
+
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedDirectHire(job);
+                                                setShowDirectHireDetails(true);
+                                            }}
+                                            className="px-3 py-2 rounded-xl text-xs font-bold border border-indigo-200 text-indigo-700 bg-indigo-50"
+                                        >
+                                            View Details
+                                        </button>
+
+                                        {isPending ? (
+                                            <>
+                                                <button
+                                                    onClick={() => handleAcceptDirectHire(job._id)}
+                                                    disabled={responding === job._id}
+                                                    className="px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white disabled:opacity-60"
+                                                >
+                                                    {responding === job._id ? 'Accepting...' : 'Accept'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleRejectDirectHire(job._id)}
+                                                    disabled={responding === job._id}
+                                                    className="px-3 py-2 rounded-xl text-xs font-bold bg-red-600 text-white disabled:opacity-60"
+                                                >
+                                                    {responding === job._id ? 'Declining...' : 'Decline'}
+                                                </button>
+                                            </>
+                                        ) : null}
+                                    </div>
+
+                                    {isPending ? (
+                                        <div className="mt-2">
+                                            <textarea
+                                                value={rejectReason}
+                                                onChange={(e) => setDirectHireDeclineReasons((prev) => ({ ...prev, [job._id]: e.target.value }))}
+                                                placeholder="Reason for decline (required, min 5 chars)"
+                                                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs"
+                                                rows={2}
+                                            />
+                                        </div>
+                                    ) : null}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )
                 ) : filtered.length === 0 ? (
@@ -523,6 +641,67 @@ export default function DirectInvites() {
                         )}
                     </div>
                 )}
+
+                {showDirectHireDetails && selectedDirectHire ? (
+                    <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center">
+                        <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl max-h-[88vh] overflow-y-auto">
+                            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h4 className="text-lg font-black text-gray-900">Direct Hire Details</h4>
+                                <button onClick={() => setShowDirectHireDetails(false)} className="text-gray-500 hover:text-gray-700 text-sm font-semibold">Close</button>
+                            </div>
+                            <div className="p-5 space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <p className="text-[11px] text-gray-500">Title</p>
+                                        <p className="text-sm font-bold text-gray-900">{selectedDirectHire.title}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <p className="text-[11px] text-gray-500">Status</p>
+                                        <p className="text-sm font-semibold text-gray-800">{selectedDirectHire.directHire?.requestStatus || 'requested'}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <p className="text-[11px] text-gray-500">Date & Time</p>
+                                        <p className="text-sm font-semibold text-gray-800">
+                                            {selectedDirectHire.scheduledDate ? new Date(selectedDirectHire.scheduledDate).toLocaleDateString() : 'Date not set'}
+                                            {selectedDirectHire.scheduledTime ? ` · ${selectedDirectHire.scheduledTime}` : ''}
+                                        </p>
+                                    </div>
+                                    {!isRejected && (
+                                        <div className="rounded-xl border border-gray-200 p-3">
+                                            <p className="text-[11px] text-gray-500">Amount</p>
+                                            <p className="text-sm font-semibold text-gray-800">₹{Number(selectedDirectHire.directHire?.expectedAmount || 0).toLocaleString()}</p>
+                                        </div>
+                                    )}
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <p className="text-[11px] text-gray-500">Duration</p>
+                                        <p className="text-sm font-semibold text-gray-800">{Number(selectedDirectHire.directHire?.durationValue || 1)} {selectedDirectHire.directHire?.durationUnit || '/hour'}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 p-3">
+                                        <p className="text-[11px] text-gray-500">Client</p>
+                                        <p className="text-sm font-semibold text-gray-800">{selectedDirectHire.postedBy?.name || 'Client'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200 p-3">
+                                    <p className="text-[11px] text-gray-500 mb-1">Location</p>
+                                    <p className="text-sm font-semibold text-gray-800">{formatLocation(selectedDirectHire.location)}</p>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200 p-3">
+                                    <p className="text-[11px] text-gray-500 mb-1">Job Description</p>
+                                    <p className="text-sm text-gray-700 leading-relaxed">{selectedDirectHire.directHire?.oneLineJD || selectedDirectHire.shortDescription || selectedDirectHire.description || 'No details provided.'}</p>
+                                </div>
+
+                                {selectedDirectHire.directHire?.requestRejectedReason ? (
+                                    <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                                        <p className="text-[11px] text-red-700 font-bold">Decline Reason</p>
+                                        <p className="text-sm text-red-700">{selectedDirectHire.directHire.requestRejectedReason}</p>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
