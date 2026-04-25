@@ -14,7 +14,6 @@ import os
 import shutil
 import urllib.request
 import zipfile
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 
@@ -30,39 +29,18 @@ log = logging.getLogger("face_service")
 
 # ── InsightFace model (loaded once on startup) ────────────────────────────────
 
-# Lazy loading globals
+# Single shared model instance (loaded eagerly at startup)
 face_analyzer = None
 loaded_model_name = None
 startup_error = None
 
-def get_face_analyzer():
-    global face_analyzer, loaded_model_name, startup_error
-    if face_analyzer is not None:
-        return face_analyzer
-    try:
-        face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
-        startup_error = None
-        log.info("InsightFace model loaded (model pack: %s)", loaded_model_name)
-    except Exception as exc:
-        log.warning("InsightFace model load failed: %s", exc)
-        try:
-            download_model_pack(INSIGHTFACE_MODEL_PACK)
-            face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
-            startup_error = None
-            log.info("InsightFace model loaded after auto-download (model pack: %s)", loaded_model_name)
-        except Exception as retry_exc:
-            face_analyzer = None
-            loaded_model_name = None
-            startup_error = str(retry_exc)
-            log.exception("Failed to load InsightFace model after auto-download")
-    return face_analyzer
-
 INSIGHTFACE_MODEL_ROOT = Path(os.path.expanduser(os.getenv("INSIGHTFACE_MODEL_ROOT", "~/.insightface/models")))
-INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_l")
+INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_s")
 INSIGHTFACE_MODEL_BASE_URL = os.getenv(
     "INSIGHTFACE_MODEL_BASE_URL",
     "https://github.com/deepinsight/insightface/releases/download/v0.7",
 )
+INSIGHTFACE_DET_SIZE = int(os.getenv("INSIGHTFACE_DET_SIZE", "256"))
 
 
 def model_pack_has_onnx(model_name: str) -> bool:
@@ -165,7 +143,8 @@ def init_face_analyzer(model_candidates=None):
     from insightface.app import FaceAnalysis
 
     if model_candidates is None:
-        model_candidates = [INSIGHTFACE_MODEL_PACK, "buffalo_sc", "buffalo_l", "buffalo_m", "buffalo_s"]
+        # Keep a strict candidate list to avoid accidentally loading larger model packs.
+        model_candidates = [INSIGHTFACE_MODEL_PACK]
     model_candidates = list(dict.fromkeys(model_candidates))
     errors = []
 
@@ -177,13 +156,13 @@ def init_face_analyzer(model_candidates=None):
                 allowed_modules=["detection", "recognition"],
                 providers=["CPUExecutionProvider"],
             )
-            analyzer.prepare(ctx_id=-1, det_size=(320, 320))
+            analyzer.prepare(ctx_id=-1, det_size=(INSIGHTFACE_DET_SIZE, INSIGHTFACE_DET_SIZE))
             return analyzer, model_name
         except TypeError:
             # Older InsightFace releases use a smaller constructor and local model files.
             try:
                 analyzer = FaceAnalysis(name=model_name)
-                analyzer.prepare(ctx_id=-1, det_size=(320, 320))
+                analyzer.prepare(ctx_id=-1, det_size=(INSIGHTFACE_DET_SIZE, INSIGHTFACE_DET_SIZE))
                 return analyzer, model_name
             except Exception as exc:
                 errors.append(f"{model_name}: {exc!r}")
@@ -199,6 +178,27 @@ def init_face_analyzer(model_candidates=None):
 
 
 app = FastAPI(title="KarigarConnect Face Service", version="1.0.0")
+
+
+@app.on_event("startup")
+def load_models_on_startup():
+    global face_analyzer, loaded_model_name, startup_error
+    try:
+        face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
+        startup_error = None
+        log.info("InsightFace model loaded (model pack: %s)", loaded_model_name)
+    except Exception as exc:
+        log.warning("InsightFace model load failed: %s", exc)
+        try:
+            download_model_pack(INSIGHTFACE_MODEL_PACK)
+            face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
+            startup_error = None
+            log.info("InsightFace model loaded after auto-download (model pack: %s)", loaded_model_name)
+        except Exception as retry_exc:
+            face_analyzer = None
+            loaded_model_name = None
+            startup_error = str(retry_exc)
+            log.exception("Failed to load InsightFace model after auto-download")
 
 # Allow calls from Node.js backend only (adjust origins for production)
 app.add_middleware(
@@ -227,7 +227,7 @@ def extract_face_embedding(img_bgr: np.ndarray):
     Run face detection + ArcFace embedding on a BGR image.
     Returns (embedding: ndarray[512], det_score: float) or (None, None).
     """
-    analyzer = get_face_analyzer()
+    analyzer = face_analyzer
     if analyzer is None:
         raise RuntimeError("Face models not loaded")
     faces = analyzer.get(img_bgr)
@@ -261,8 +261,7 @@ class DuplicateRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    # Check if model is loaded or can be loaded
-    analyzer = get_face_analyzer()
+    analyzer = face_analyzer
     return {
         "status": "ok",
         "models_loaded": analyzer is not None,
@@ -277,7 +276,7 @@ async def extract_embedding(image: UploadFile = File(...)):
     Detect face in uploaded image → generate 512-dim ArcFace embedding.
     Accepts: JPEG, PNG, WebP
     """
-    analyzer = get_face_analyzer()
+    analyzer = face_analyzer
     if analyzer is None:
         detail = "Face models not loaded."
         if startup_error:
