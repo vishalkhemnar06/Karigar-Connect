@@ -29,8 +29,13 @@ WORKER_META_PATH = DATA_DIR / "workers_meta.json"
 JOB_META_PATH = DATA_DIR / "jobs_meta.json"
 FEEDBACK_PATH = DATA_DIR / "feedback_stats.json"
 
-MODEL_NAME = os.getenv("SENTENCE_TRANSFORMER_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+MODEL_NAME = os.getenv(
+    "SENTENCE_TRANSFORMER_MODEL",
+    "all-MiniLM-L6-v2"
+)
 TOP_K_DEFAULT = int(os.getenv("SEMANTIC_TOP_K_DEFAULT", "30"))
+HOST = os.getenv("HOST", os.getenv("SEMANTIC_SERVICE_HOST", "0.0.0.0"))
+PORT = int(os.getenv("PORT", os.getenv("SEMANTIC_SERVICE_PORT", "5100")))
 
 model: Optional[SentenceTransformer] = None
 lock = threading.RLock()
@@ -706,6 +711,5 @@ def submit_feedback(payload: FeedbackPayload) -> dict:
 
 
 if __name__ == "__main__":
-    host = os.getenv("SEMANTIC_SERVICE_HOST", "0.0.0.0")
-    port = int(os.getenv("SEMANTIC_SERVICE_PORT", "5100"))
-    uvicorn.run(app, host=host, port=port)
+    log.info("Starting semantic matching service on %s:%s", HOST, PORT)
+    uvicorn.run(app, host=HOST, port=PORT)
