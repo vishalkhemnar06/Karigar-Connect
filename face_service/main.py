@@ -14,6 +14,7 @@ import os
 import shutil
 import urllib.request
 import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 
@@ -27,6 +28,13 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("face_service")
 
+# Keep CPU runtime memory predictable on low-memory hosts (Render free tier, etc.).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("ORT_NUM_THREADS", "1")
+
 # ── InsightFace model (loaded once on startup) ────────────────────────────────
 
 # Single shared model instance (loaded eagerly at startup)
@@ -35,12 +43,12 @@ loaded_model_name = None
 startup_error = None
 
 INSIGHTFACE_MODEL_ROOT = Path(os.path.expanduser(os.getenv("INSIGHTFACE_MODEL_ROOT", "~/.insightface/models")))
-INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_s")
+INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_sc")
 INSIGHTFACE_MODEL_BASE_URL = os.getenv(
     "INSIGHTFACE_MODEL_BASE_URL",
     "https://github.com/deepinsight/insightface/releases/download/v0.7",
 )
-INSIGHTFACE_DET_SIZE = int(os.getenv("INSIGHTFACE_DET_SIZE", "256"))
+INSIGHTFACE_DET_SIZE = int(os.getenv("INSIGHTFACE_DET_SIZE", "160"))
 
 
 def model_pack_has_onnx(model_name: str) -> bool:
@@ -177,10 +185,6 @@ def init_face_analyzer(model_candidates=None):
     )
 
 
-app = FastAPI(title="KarigarConnect Face Service", version="1.0.0")
-
-
-@app.on_event("startup")
 def load_models_on_startup():
     global face_analyzer, loaded_model_name, startup_error
     try:
@@ -199,6 +203,15 @@ def load_models_on_startup():
             loaded_model_name = None
             startup_error = str(retry_exc)
             log.exception("Failed to load InsightFace model after auto-download")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_models_on_startup()
+    yield
+
+
+app = FastAPI(title="KarigarConnect Face Service", version="1.0.0", lifespan=lifespan)
 
 # Allow calls from Node.js backend only (adjust origins for production)
 app.add_middleware(
@@ -355,5 +368,5 @@ def check_duplicate(req: DuplicateRequest):
 
 # ── Entry ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    port = int(os.getenv("FACE_SERVICE_PORT", 8001))
+    port = int(os.getenv("PORT", os.getenv("FACE_SERVICE_PORT", 8001)))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
