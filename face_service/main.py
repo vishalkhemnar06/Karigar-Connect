@@ -28,17 +28,27 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("face_service")
 
+# Keep CPU runtime memory predictable on low-memory hosts (Render free tier, etc.).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("ORT_NUM_THREADS", "1")
+
 # ── InsightFace model (loaded once on startup) ────────────────────────────────
+
+# Single shared model instance (loaded eagerly at startup)
 face_analyzer = None
 loaded_model_name = None
 startup_error = None
 
 INSIGHTFACE_MODEL_ROOT = Path(os.path.expanduser(os.getenv("INSIGHTFACE_MODEL_ROOT", "~/.insightface/models")))
-INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_l")
+INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_sc")
 INSIGHTFACE_MODEL_BASE_URL = os.getenv(
     "INSIGHTFACE_MODEL_BASE_URL",
     "https://github.com/deepinsight/insightface/releases/download/v0.7",
 )
+INSIGHTFACE_DET_SIZE = int(os.getenv("INSIGHTFACE_DET_SIZE", "160"))
 
 
 def model_pack_has_onnx(model_name: str) -> bool:
@@ -141,7 +151,8 @@ def init_face_analyzer(model_candidates=None):
     from insightface.app import FaceAnalysis
 
     if model_candidates is None:
-        model_candidates = [INSIGHTFACE_MODEL_PACK, "buffalo_sc", "buffalo_l", "buffalo_m", "buffalo_s"]
+        # Keep a strict candidate list to avoid accidentally loading larger model packs.
+        model_candidates = [INSIGHTFACE_MODEL_PACK]
     model_candidates = list(dict.fromkeys(model_candidates))
     errors = []
 
@@ -153,13 +164,13 @@ def init_face_analyzer(model_candidates=None):
                 allowed_modules=["detection", "recognition"],
                 providers=["CPUExecutionProvider"],
             )
-            analyzer.prepare(ctx_id=-1, det_size=(320, 320))
+            analyzer.prepare(ctx_id=-1, det_size=(INSIGHTFACE_DET_SIZE, INSIGHTFACE_DET_SIZE))
             return analyzer, model_name
         except TypeError:
             # Older InsightFace releases use a smaller constructor and local model files.
             try:
                 analyzer = FaceAnalysis(name=model_name)
-                analyzer.prepare(ctx_id=-1, det_size=(320, 320))
+                analyzer.prepare(ctx_id=-1, det_size=(INSIGHTFACE_DET_SIZE, INSIGHTFACE_DET_SIZE))
                 return analyzer, model_name
             except Exception as exc:
                 errors.append(f"{model_name}: {exc!r}")
@@ -174,32 +185,29 @@ def init_face_analyzer(model_candidates=None):
     )
 
 
-@asynccontextmanager
-async def lifespan(app_instance):
-    del app_instance
+def load_models_on_startup():
     global face_analyzer, loaded_model_name, startup_error
-
-    log.info("Loading InsightFace models...")
     try:
-        face_analyzer, loaded_model_name = init_face_analyzer()
+        face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
         startup_error = None
-        log.info("InsightFace models loaded successfully (model pack: %s)", loaded_model_name)
+        log.info("InsightFace model loaded (model pack: %s)", loaded_model_name)
     except Exception as exc:
-        log.warning("Initial InsightFace load failed: %s", exc)
+        log.warning("InsightFace model load failed: %s", exc)
         try:
             download_model_pack(INSIGHTFACE_MODEL_PACK)
             face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
             startup_error = None
-            log.info(
-                "InsightFace models loaded successfully after auto-download (model pack: %s)",
-                loaded_model_name,
-            )
+            log.info("InsightFace model loaded after auto-download (model pack: %s)", loaded_model_name)
         except Exception as retry_exc:
             face_analyzer = None
             loaded_model_name = None
             startup_error = str(retry_exc)
-            log.exception("Failed to load InsightFace models after auto-download")
+            log.exception("Failed to load InsightFace model after auto-download")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_models_on_startup()
     yield
 
 
@@ -232,9 +240,10 @@ def extract_face_embedding(img_bgr: np.ndarray):
     Run face detection + ArcFace embedding on a BGR image.
     Returns (embedding: ndarray[512], det_score: float) or (None, None).
     """
-    if face_analyzer is None:
+    analyzer = face_analyzer
+    if analyzer is None:
         raise RuntimeError("Face models not loaded")
-    faces = face_analyzer.get(img_bgr)
+    faces = analyzer.get(img_bgr)
     if not faces:
         return None, None
     # Pick the largest detected face (most likely the subject)
@@ -265,9 +274,10 @@ class DuplicateRequest(BaseModel):
 
 @app.get("/health")
 def health():
+    analyzer = face_analyzer
     return {
         "status": "ok",
-        "models_loaded": face_analyzer is not None,
+        "models_loaded": analyzer is not None,
         "model": loaded_model_name,
         "startup_error": startup_error,
     }
@@ -279,7 +289,8 @@ async def extract_embedding(image: UploadFile = File(...)):
     Detect face in uploaded image → generate 512-dim ArcFace embedding.
     Accepts: JPEG, PNG, WebP
     """
-    if face_analyzer is None:
+    analyzer = face_analyzer
+    if analyzer is None:
         detail = "Face models not loaded."
         if startup_error:
             detail = f"Face models not loaded: {startup_error}"
@@ -357,5 +368,5 @@ def check_duplicate(req: DuplicateRequest):
 
 # ── Entry ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    port = int(os.getenv("FACE_SERVICE_PORT", 8001))
+    port = int(os.getenv("PORT", os.getenv("FACE_SERVICE_PORT", 8001)))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

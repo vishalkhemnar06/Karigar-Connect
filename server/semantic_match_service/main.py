@@ -29,10 +29,24 @@ WORKER_META_PATH = DATA_DIR / "workers_meta.json"
 JOB_META_PATH = DATA_DIR / "jobs_meta.json"
 FEEDBACK_PATH = DATA_DIR / "feedback_stats.json"
 
-MODEL_NAME = os.getenv("SENTENCE_TRANSFORMER_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+MODEL_NAME = os.getenv(
+    "SENTENCE_TRANSFORMER_MODEL",
+    "paraphrase-MiniLM-L3-v2"
+)
 TOP_K_DEFAULT = int(os.getenv("SEMANTIC_TOP_K_DEFAULT", "30"))
+HOST = os.getenv("HOST", os.getenv("SEMANTIC_SERVICE_HOST", "0.0.0.0"))
+PORT = int(os.getenv("PORT", os.getenv("SEMANTIC_SERVICE_PORT", "5100")))
 
 model: Optional[SentenceTransformer] = None
+
+def get_model():
+    global model
+    if model is None:
+        from sentence_transformers import SentenceTransformer
+        model_name = MODEL_NAME
+        log.info("Lazy-loading sentence transformer: %s", model_name)
+        model = SentenceTransformer(model_name)
+    return model
 lock = threading.RLock()
 
 worker_vectors: Dict[str, np.ndarray] = {}
@@ -168,9 +182,8 @@ def build_job_text(meta: dict) -> str:
 
 
 def encode_text(text: str) -> np.ndarray:
-    if model is None:
-        raise RuntimeError("SentenceTransformer model not loaded")
-    emb = model.encode([text], normalize_embeddings=True, convert_to_numpy=True)
+    m = get_model()
+    emb = m.encode([text], normalize_embeddings=True, convert_to_numpy=True)
     return emb[0].astype("float32")
 
 
@@ -499,9 +512,6 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup() -> None:
-    global model
-    log.info("Loading sentence transformer model: %s", MODEL_NAME)
-    model = SentenceTransformer(MODEL_NAME)
     load_state()
     log.info("Semantic matching service ready. workers=%d jobs=%d", len(worker_vectors), len(job_vectors))
 
@@ -706,6 +716,5 @@ def submit_feedback(payload: FeedbackPayload) -> dict:
 
 
 if __name__ == "__main__":
-    host = os.getenv("SEMANTIC_SERVICE_HOST", "0.0.0.0")
-    port = int(os.getenv("SEMANTIC_SERVICE_PORT", "5100"))
-    uvicorn.run(app, host=host, port=port)
+    log.info("Starting semantic matching service on %s:%s", HOST, PORT)
+    uvicorn.run(app, host=HOST, port=PORT)

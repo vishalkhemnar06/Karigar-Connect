@@ -44,12 +44,13 @@ const averageIfPositive = (minValue, maxValue) => {
 };
 
 const buildWorkerCitySkillRate = (rateDoc, fallbackSkillName = '') => {
-    const hourRate = averageIfPositive(rateDoc?.localHourlyMin, rateDoc?.localHourlyMax)
+    const rates = rateDoc?.rates || {};
+    const hourRate = averageIfPositive(rates.hourly, rates.hour, rateDoc?.localHourlyMin, rateDoc?.localHourlyMax)
         || averageIfPositive(rateDoc?.platformHourlyMin, rateDoc?.platformHourlyMax);
-    const dayRate = averageIfPositive(rateDoc?.localDayMin, rateDoc?.localDayMax)
+    const dayRate = averageIfPositive(rates.daily, rates.day, rateDoc?.localDayMin, rateDoc?.localDayMax)
         || averageIfPositive(rateDoc?.platformDayMin, rateDoc?.platformDayMax);
 
-    const platformCostMin = Number(rateDoc?.platformCostMin);
+    const platformCostMin = Number(rates.visit ?? rateDoc?.platformCostMin);
     const platformCostMax = Number(rateDoc?.platformCostMax);
     const visitRate = averageIfPositive(platformCostMin, platformCostMax);
 

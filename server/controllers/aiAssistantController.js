@@ -1250,7 +1250,8 @@ const getRateSummaryByCity = async (cityKey = '') => {
     };
 
     for (const row of rows) {
-        const hourlyCandidates = [row.platformHourlyMin, row.platformHourlyMax, row.localHourlyMin, row.localHourlyMax]
+        const nested = row.rates || {};
+        const hourlyCandidates = [nested.hourly, nested.hour, row.platformHourlyMin, row.platformHourlyMax, row.localHourlyMin, row.localHourlyMax]
             .filter((value) => Number.isFinite(Number(value)) && Number(value) > 0)
             .map(Number);
         if (hourlyCandidates.length) {
@@ -1265,6 +1266,7 @@ const getRateSummaryByCity = async (cityKey = '') => {
         }
 
         const visitCandidates = [];
+        if (Number.isFinite(nested.visit) && nested.visit > 0) visitCandidates.push(Number(nested.visit));
         if (Number.isFinite(row.platformCostMin) && row.platformCostMin > 0) visitCandidates.push(Number(row.platformCostMin));
         if (Number.isFinite(row.platformCostMax) && row.platformCostMax > 0) visitCandidates.push(Number(row.platformCostMax));
         if (Number.isFinite(row.localDayMin) && row.localDayMin > 0) visitCandidates.push(Number(row.localDayMin));
