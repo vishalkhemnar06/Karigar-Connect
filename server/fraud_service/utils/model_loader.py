@@ -6,6 +6,7 @@ Exposes predict() used by route handlers.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
+import logging
 import os, pickle, json
 import pandas as pd
 import numpy as np
@@ -102,31 +103,58 @@ RISK_THRESHOLDS = {
 
 class FraudModelLoader:
     def __init__(self):
-        self.models    = {}
+        self.models     = {}
         self.explainers = {}
-        self.metrics   = {}
+        self.metrics    = {}
+        self.disabled   = False
         self._load()
 
     def _load(self):
+        missing_roles = []
+
         for role in ('worker', 'client'):
             mp = os.path.join(MODEL_DIR, f'xgb_{role}.pkl')
             sp = os.path.join(MODEL_DIR, f'shap_{role}.pkl')
             ep = os.path.join(MODEL_DIR, f'metrics_{role}.json')
 
-            if not os.path.exists(mp):
-                raise FileNotFoundError(
-                    f'Model not found: {mp}\n'
-                    f'Run: cd server/fraud_service && python train.py '
-                    f'--workers <csv> --clients <csv>'
-                )
-            with open(mp, 'rb') as f: self.models[role]      = pickle.load(f)
-            with open(sp, 'rb') as f: self.explainers[role]  = pickle.load(f)
-            with open(ep)       as f: self.metrics[role]      = json.load(f)
+            if not os.path.exists(mp) or not os.path.exists(sp) or not os.path.exists(ep):
+                missing_roles.append(role)
+                continue
+
+            with open(mp, 'rb') as f:
+                self.models[role] = pickle.load(f)
+            with open(sp, 'rb') as f:
+                self.explainers[role] = pickle.load(f)
+            with open(ep) as f:
+                self.metrics[role] = json.load(f)
+
+        if missing_roles:
+            self.disabled = True
+            logging.warning(
+                'Fraud model files are missing for roles: %s. '
+                'Fraud prediction endpoints are running in safe fallback mode. '
+                'Generate models with: cd server/fraud_service && python train.py '
+                '--workers <csv> --clients <csv>',
+                ', '.join(missing_roles)
+            )
 
     def _features(self, role: str) -> list:
         return WORKER_FEATURES if role == 'worker' else CLIENT_FEATURES
 
     def predict(self, feature_dict: dict, role: str) -> dict:
+        if self.disabled or role not in self.models:
+            logging.warning(
+                'Predict called while fraud models are unavailable. '
+                'Returning safe default output for role=%s.', role
+            )
+            return {
+                'fraud_probability': 0.0,
+                'fraud_percent':     0.0,
+                'is_fraud':          False,
+                'risk_level':        'SAFE',
+                'top_reasons':       [],
+            }
+
         features = self._features(role)
         X = pd.DataFrame([feature_dict])[features].fillna(0)
         prob = float(self.models[role].predict_proba(X)[0][1])
@@ -140,7 +168,7 @@ class FraudModelLoader:
         else:
             risk_level = 'SAFE'
 
-        is_fraud    = prob >= 0.50
+        is_fraud = prob >= 0.50
         top_reasons = self._explain(X, role, features)
 
         return {

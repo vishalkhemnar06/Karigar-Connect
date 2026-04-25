@@ -209,13 +209,14 @@ if __name__ == "__main__":
 
     scheduler = start_scheduler()
 
-    # FIX: Use 127.0.0.1 (IPv4) so Node.js can connect without
-    #      hitting the IPv6 ::1 ECONNREFUSED issue.
-    #      allow_unsafe_werkzeug=True silences the Werkzeug dev-server
-    #      warning that causes the "write() before start_response" error
-    #      when Flask-SocketIO tries to hijack the WSGI stack.
-    HOST = os.environ.get("FRAUD_SERVICE_HOST", "127.0.0.1")
-    PORT = int(os.environ.get("FRAUD_SERVICE_PORT", 5001))
+    # When deployed on Render, the platform provides the PORT env var.
+    # Locally we still support FRAUD_SERVICE_HOST / FRAUD_SERVICE_PORT.
+    DEFAULT_HOST = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    HOST = os.environ.get(
+        "HOST",
+        os.environ.get("FRAUD_SERVICE_HOST", DEFAULT_HOST)
+    )
+    PORT = int(os.environ.get("PORT", os.environ.get("FRAUD_SERVICE_PORT", 5001)))
 
     try:
 

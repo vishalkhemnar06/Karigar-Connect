@@ -99,11 +99,6 @@ server/fraud_service/.venv/
 server/fraud_service/.venv*/
 server/fraud_service/*.csv
 server/fraud_service/.env
-server/fraud_service/models/
-server/fraud_service/models/*.pkl
-server/fraud_service/models/*.joblib
-server/fraud_service/models/*.npy
-server/fraud_service/models/*.npz
 
 # =========================
 # Runtime Uploads
