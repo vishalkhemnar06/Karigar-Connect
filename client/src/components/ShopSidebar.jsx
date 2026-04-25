@@ -16,7 +16,7 @@ import {
 
 const ShopSidebar = ({ page = 'analytics', onPageChange = () => {}, onLogout = () => {} }) => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [scrolled, setScrolled] = useState(false);
+    const [_scrolled, setScrolled] = useState(false);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -31,12 +31,12 @@ const ShopSidebar = ({ page = 'analytics', onPageChange = () => {}, onLogout = (
     }, [page]);
 
     const navLinks = [
-        { key: 'analytics', icon: <BarChart3 size={20} />, text: 'Analytics' },
-        { key: 'coupon', icon: <QrCode size={20} />, text: 'Coupon' },
-        { key: 'products', icon: <Package size={20} />, text: 'Products' },
-        { key: 'history', icon: <History size={20} />, text: 'History' },
-        { key: 'profile', icon: <UserCheck size={20} />, text: 'Profile' },
-        { key: 'settings', icon: <Settings size={20} />, text: 'Settings' },
+        { key: 'analytics', icon: <BarChart3 size={20} />, text: 'Analytics', guideId: 'shop-sidebar-analytics' },
+        { key: 'coupon', icon: <QrCode size={20} />, text: 'Coupon', guideId: 'shop-sidebar-coupon' },
+        { key: 'products', icon: <Package size={20} />, text: 'Products', guideId: 'shop-sidebar-products' },
+        { key: 'history', icon: <History size={20} />, text: 'History', guideId: 'shop-sidebar-history' },
+        { key: 'profile', icon: <UserCheck size={20} />, text: 'Profile', guideId: 'shop-sidebar-profile' },
+        { key: 'settings', icon: <Settings size={20} />, text: 'Settings', guideId: 'shop-sidebar-settings' },
     ];
 
     const handlePageClick = (key) => {
@@ -74,6 +74,7 @@ const ShopSidebar = ({ page = 'analytics', onPageChange = () => {}, onLogout = (
                             return (
                                 <button
                                     key={link.key}
+                                    data-guide-id={link.guideId}
                                     onClick={() => handlePageClick(link.key)}
                                     className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all group text-base font-medium tracking-wide ${
                                         isActive 
@@ -112,6 +113,7 @@ const ShopSidebar = ({ page = 'analytics', onPageChange = () => {}, onLogout = (
                         return (
                             <button
                                 key={link.key}
+                                data-guide-id={link.guideId}
                                 onClick={() => handlePageClick(link.key)}
                                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all group text-base font-semibold tracking-wide ${
                                     isActive 

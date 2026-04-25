@@ -1,8 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as api from '../api';
 import { getImageUrl } from '../constants/config';
-import { Briefcase, Send, ShieldCheck, X } from 'lucide-react';
+import { 
+  Briefcase, Send, ShieldCheck, X, Calendar, Clock, 
+  MapPin, IndianRupee, User, Phone, Mail, Award,
+  Star, TrendingUp, Zap, Gift, Heart, ThumbsUp,
+  CheckCircle, AlertCircle, Loader2, DollarSign,
+  Building2, Home, CreditCard, Smartphone, Users
+} from 'lucide-react';
 
 const isSmartphoneWorker = (worker) => /smart|android|iphone|ios/.test(String(worker?.phoneType || '').toLowerCase());
 
@@ -35,6 +42,34 @@ const defaultForm = {
     },
 };
 
+const timeOptions = {
+    hours: Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')),
+    minutes: ['00', '15', '30', '45'],
+    periods: ['AM', 'PM'],
+};
+
+const parseTimeParts = (time24) => {
+    if (!time24) return { hour: '09', minute: '00', period: 'AM' };
+    const [hourStr = '09', minuteStr = '00'] = String(time24).split(':');
+    const hourNum = Number(hourStr);
+    const minuteNum = Number(minuteStr || '0');
+    const period = hourNum >= 12 ? 'PM' : 'AM';
+    const displayHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
+    return {
+        hour: String(displayHour).padStart(2, '0'),
+        minute: String(Number.isFinite(minuteNum) ? minuteNum : 0).padStart(2, '0'),
+        period,
+    };
+};
+
+const buildTime24FromParts = ({ hour, minute, period }) => {
+    let hourNum = Number(hour);
+    const minuteNum = Number(minute);
+    if (period === 'PM' && hourNum < 12) hourNum += 12;
+    if (period === 'AM' && hourNum === 12) hourNum = 0;
+    return `${String(hourNum).padStart(2, '0')}:${String(minuteNum).padStart(2, '0')}`;
+};
+
 const getPricingReasonMessage = (pricingMeta) => {
     if (!pricingMeta) return '';
     const multipliers = pricingMeta.multipliers || {};
@@ -47,24 +82,20 @@ const getPricingReasonMessage = (pricingMeta) => {
         reasons.push(festivalName);
     }
     
-    // Check holiday
     if (dayType === 'holiday') {
         reasons.push('Indian Public Holiday');
     }
     
-    // Check weekend
     if (dayType === 'weekend') {
         reasons.push('Weekend');
     }
     
-    // Check if there's any multiplier applied beyond base (even if we can't identify the specific reason)
     const multiplier = Number(multipliers.finalMultiplier || 1);
     if (multiplier > 1.01 && reasons.length === 0) {
         reasons.push('High demand');
     }
     
     const reasonText = reasons.join(', ');
-    
     if (!reasonText) return '';
     return `Due to ${reasonText}, cost is higher. You can select another date to reduce cost.`;
 };
@@ -88,6 +119,7 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
     const [submitting, setSubmitting] = useState(false);
     const [workerSkills, setWorkerSkills] = useState([]);
     const [loadingWorkerSkills, setLoadingWorkerSkills] = useState(false);
+    const [timeParts, setTimeParts] = useState(parseTimeParts(defaultForm.scheduledTime));
 
     const selectedWorkerIsSmartphone = useMemo(() => isSmartphoneWorker(worker), [worker]);
     const fallbackWorkerSkills = useMemo(() => extractSkillNames(worker?.skills), [worker]);
@@ -106,8 +138,13 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
             setForm(prefillForm(worker, client));
             setPricingMeta(null);
             setWorkerSkills([]);
+            setTimeParts(parseTimeParts(defaultForm.scheduledTime));
         }
     }, [isOpen, worker, client]);
+
+    useEffect(() => {
+        setTimeParts(parseTimeParts(form.scheduledTime));
+    }, [form.scheduledTime]);
 
     useEffect(() => {
         let active = true;
@@ -167,6 +204,12 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
             },
         }));
         setPricingMeta(null);
+    };
+
+    const updateScheduledTime = (nextTimeParts) => {
+        const normalized = buildTime24FromParts(nextTimeParts);
+        setTimeParts(nextTimeParts);
+        updateField('scheduledTime', normalized);
     };
 
     const fetchSuggestedAmount = async () => {
@@ -238,7 +281,7 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
                 paymentMode: form.paymentMode,
                 oneLineJD: form.oneLineJD,
             });
-            toast.success('Direct hire request sent.');
+            toast.success('Direct hire request sent successfully!');
             setForm(prefillForm(worker, client));
             setPricingMeta(null);
             onSuccess?.();
@@ -253,145 +296,369 @@ export default function DirectHireModal({ isOpen, worker, client, onClose, onSuc
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 overflow-auto">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full my-4">
-                <form onSubmit={submitDirectHire} className="space-y-3 p-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-orange-700 font-black text-lg">
-                            <Briefcase size={20} /> Create Direct Hire
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-auto"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ scale: 0.95, y: 20, opacity: 0 }}
+                    animate={{ scale: 1, y: 0, opacity: 1 }}
+                    exit={{ scale: 0.95, y: 20, opacity: 0 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                    className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full my-4 overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* Header - Compact */}
+                    <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                                    <Briefcase size="18" className="text-white" />
+                                </div>
+                                <div>
+                                    <h2 className="text-white font-bold text-base">Direct Hire Worker</h2>
+                                    <p className="text-orange-100 text-[10px] mt-0.5">Create a direct hiring request</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="p-1.5 hover:bg-white/20 rounded-lg transition-all"
+                            >
+                                <X size="18" className="text-white" />
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="p-1 hover:bg-gray-100 rounded-full"
-                        >
-                            <X size={24} />
-                        </button>
                     </div>
 
-                    {worker ? (
-                        <div className="rounded-2xl border border-orange-100 bg-orange-50 p-3">
-                            <div className="flex items-center gap-3">
-                                <img
-                                    src={getImageUrl(worker.photo)}
-                                    alt={worker.name}
-                                    className="w-12 h-12 rounded-xl object-cover border border-orange-200"
-                                    onError={(e) => { e.currentTarget.src = '/admin.png'; }}
-                                />
-                                <div className="min-w-0">
-                                    <p className="font-black text-gray-900 truncate">{worker.name}</p>
-                                    <p className="text-xs text-gray-500 truncate">{worker.karigarId || worker._id}</p>
-                                    <div className={`mt-1 inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${selectedWorkerIsSmartphone ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50'}`}>
-                                        <ShieldCheck size={12} /> {selectedWorkerIsSmartphone ? 'Smartphone worker' : 'Non-smartphone worker'}
+                    <form onSubmit={submitDirectHire} className="p-4 space-y-3">
+                        {/* Worker Card - Compact */}
+                        {worker && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg p-2.5 border border-orange-200"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <img
+                                        src={getImageUrl(worker.photo)}
+                                        alt={worker.name}
+                                        className="w-10 h-10 rounded-lg object-cover border border-orange-200"
+                                        onError={(e) => { e.currentTarget.src = '/admin.png'; }}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                            <p className="font-bold text-gray-800 text-sm truncate">{worker.name}</p>
+                                            {worker.verificationStatus === 'approved' && (
+                                                <CheckCircle size="12" className="text-emerald-500" />
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 font-mono truncate">{worker.karigarId || worker._id}</p>
+                                    </div>
+                                    <div className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                        selectedWorkerIsSmartphone 
+                                            ? 'bg-emerald-100 text-emerald-700' 
+                                            : 'bg-red-100 text-red-700'
+                                    }`}>
+                                        <Smartphone size="10" />
+                                        {selectedWorkerIsSmartphone ? 'Smartphone' : 'Basic Phone'}
+                                    </div>
+                                    {worker.avgStars > 0 && (
+                                        <div className="flex items-center gap-1">
+                                            <div className="flex gap-0.5">
+                                                {[1,2,3,4,5].map(star => (
+                                                    <Star key={star} size="10" className={star <= worker.avgStars ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'} />
+                                                ))}
+                                            </div>
+                                            <span className="text-[9px] text-gray-500">({worker.completedJobs || 0})</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* Two Column Layout for Fields */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {/* Left Column */}
+                            <div className="space-y-3">
+                                {/* Job Details */}
+                                <div>
+                                    <h3 className="text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-1.5">
+                                        <Briefcase size="12" className="text-orange-500" />
+                                        Job Details
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+                                                Skill <span className="text-red-500">*</span>
+                                            </label>
+                                            <select
+                                                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none"
+                                                value={form.skill}
+                                                onChange={(e) => updateField('skill', e.target.value)}
+                                                disabled={loadingWorkerSkills || skillOptions.length === 0}
+                                            >
+                                                <option value="">
+                                                    {loadingWorkerSkills ? 'Loading...' : 'Select skill'}
+                                                </option>
+                                                {skillOptions.map((skill) => (
+                                                    <option key={skill} value={skill}>{skill}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+                                                Duration
+                                            </label>
+                                            <div className="flex gap-1">
+                                                <input 
+                                                    type="number" 
+                                                    min="1" 
+                                                    className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                                    value={form.durationValue} 
+                                                    onChange={(e) => updateField('durationValue', e.target.value)} 
+                                                />
+                                                <select 
+                                                    className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none bg-white" 
+                                                    value={form.durationUnit} 
+                                                    onChange={(e) => updateField('durationUnit', e.target.value)}
+                                                >
+                                                    <option value="/day">Per Day</option>
+                                                    <option value="/hour">Per Hour</option>
+                                                    <option value="/visit">Per Visit</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+                                                Date <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <Calendar size="11" className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                <input 
+                                                    type="date" 
+                                                    className="w-full rounded-lg border border-gray-200 pl-7 pr-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                                    value={form.scheduledDate} 
+                                                    onChange={(e) => updateField('scheduledDate', e.target.value)} 
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+                                                Time <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="flex gap-1">
+                                                <select
+                                                    className="w-full rounded-lg border border-gray-200 px-1 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none bg-white"
+                                                    value={timeParts.hour}
+                                                    onChange={(e) => updateScheduledTime({ ...timeParts, hour: e.target.value })}
+                                                >
+                                                    {timeOptions.hours.map((hour) => (
+                                                        <option key={hour} value={hour}>{hour}</option>
+                                                    ))}
+                                                </select>
+                                                <select
+                                                    className="w-full rounded-lg border border-gray-200 px-1 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none bg-white"
+                                                    value={timeParts.minute}
+                                                    onChange={(e) => updateScheduledTime({ ...timeParts, minute: e.target.value })}
+                                                >
+                                                    {timeOptions.minutes.map((minute) => (
+                                                        <option key={minute} value={minute}>{minute}</option>
+                                                    ))}
+                                                </select>
+                                                <select
+                                                    className="w-full rounded-lg border border-gray-200 px-1 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none bg-white"
+                                                    value={timeParts.period}
+                                                    onChange={(e) => updateScheduledTime({ ...timeParts, period: e.target.value })}
+                                                >
+                                                    {timeOptions.periods.map((period) => (
+                                                        <option key={period} value={period}>{period}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+                                                Payment Mode
+                                            </label>
+                                            <select 
+                                                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none bg-white" 
+                                                value={form.paymentMode} 
+                                                onChange={(e) => updateField('paymentMode', e.target.value)}
+                                            >
+                                                <option value="cash">💵 Cash</option>
+                                                <option value="upi">📱 UPI</option>
+                                                <option value="bank_transfer">🏦 Bank Transfer</option>
+                                                <option value="online">💳 Online</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="col-span-2">
+                                            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+                                                Job Description
+                                            </label>
+                                            <input 
+                                                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                                placeholder="Brief job description..." 
+                                                value={form.oneLineJD} 
+                                                onChange={(e) => updateField('oneLineJD', e.target.value)} 
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    ) : null}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <select
-                            className="w-full rounded-xl border border-gray-200 px-3 py-2"
-                            value={form.skill}
-                            onChange={(e) => updateField('skill', e.target.value)}
-                            disabled={loadingWorkerSkills || skillOptions.length === 0}
-                        >
-                            <option value="">
-                                {loadingWorkerSkills ? 'Loading skills...' : 'Select worker skill'}
-                            </option>
-                            {skillOptions.map((skill) => (
-                                <option key={skill} value={skill}>{skill}</option>
-                            ))}
-                        </select>
-                        <select className="w-full rounded-xl border border-gray-200 px-3 py-2" value={form.durationUnit} onChange={(e) => updateField('durationUnit', e.target.value)}>
-                            <option value="/day">Per Day</option>
-                            <option value="/hour">Per Hour</option>
-                            <option value="/visit">Per Visit</option>
-                        </select>
-                        <input type="number" min="1" className="w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="Duration" value={form.durationValue} onChange={(e) => updateField('durationValue', e.target.value)} />
-                        <input type="date" className="w-full rounded-xl border border-gray-200 px-3 py-2" value={form.scheduledDate} onChange={(e) => updateField('scheduledDate', e.target.value)} />
-                        <input type="time" className="w-full rounded-xl border border-gray-200 px-3 py-2" value={form.scheduledTime} onChange={(e) => updateField('scheduledTime', e.target.value)} />
-                        <input className="w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="City" value={form.location.city} onChange={(e) => updateLocationField('city', e.target.value)} />
-                    </div>
-                    {isOpen && !loadingWorkerSkills && skillOptions.length === 0 && (
-                        <p className="text-xs text-red-600">No registered skills found for this worker profile.</p>
-                    )}
+                            {/* Right Column */}
+                            <div className="space-y-3">
+                                {/* Location Details - Compact */}
+                                <div>
+                                    <h3 className="text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-1.5">
+                                        <MapPin size="12" className="text-orange-500" />
+                                        Location
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input 
+                                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                            placeholder="City" 
+                                            value={form.location.city} 
+                                            onChange={(e) => updateLocationField('city', e.target.value)} 
+                                        />
+                                        <input 
+                                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                            placeholder="Locality" 
+                                            value={form.location.locality} 
+                                            onChange={(e) => updateLocationField('locality', e.target.value)} 
+                                        />
+                                        <input 
+                                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                            placeholder="State" 
+                                            value={form.location.state} 
+                                            onChange={(e) => updateLocationField('state', e.target.value)} 
+                                        />
+                                        <input 
+                                            className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                            placeholder="Pincode" 
+                                            value={form.location.pincode} 
+                                            onChange={(e) => updateLocationField('pincode', e.target.value)} 
+                                        />
+                                        <input 
+                                            className="col-span-2 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none" 
+                                            placeholder="Full Address" 
+                                            value={form.location.fullAddress} 
+                                            onChange={(e) => updateLocationField('fullAddress', e.target.value)} 
+                                        />
+                                    </div>
+                                </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input className="w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="Locality" value={form.location.locality} onChange={(e) => updateLocationField('locality', e.target.value)} />
-                        <input className="w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="State" value={form.location.state} onChange={(e) => updateLocationField('state', e.target.value)} />
-                        <input className="w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="Pincode" value={form.location.pincode} onChange={(e) => updateLocationField('pincode', e.target.value)} />
-                        <select className="w-full rounded-xl border border-gray-200 px-3 py-2" value={form.paymentMode} onChange={(e) => updateField('paymentMode', e.target.value)}>
-                            <option value="cash">Cash</option>
-                            <option value="upi">UPI</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                            <option value="online">Online</option>
-                        </select>
-                        <input className="w-full rounded-xl border border-gray-200 px-3 py-2 sm:col-span-2" placeholder="Full address" value={form.location.fullAddress} onChange={(e) => updateLocationField('fullAddress', e.target.value)} />
-                    </div>
+                                {/* Pricing Section - Compact */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="text-[11px] font-bold text-amber-800 flex items-center gap-1.5">
+                                            <IndianRupee size="12" /> Pricing
+                                        </h3>
+                                        <button
+                                            type="button"
+                                            onClick={fetchSuggestedAmount}
+                                            disabled={fetchingAmount || !selectedWorkerIsSmartphone}
+                                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold hover:shadow-md transition-all disabled:opacity-50"
+                                        >
+                                            {fetchingAmount ? (
+                                                <Loader2 size="10" className="animate-spin" />
+                                            ) : (
+                                                <Zap size="10" />
+                                            )}
+                                            Get Amount
+                                        </button>
+                                    </div>
 
-                    <input className="w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="JD in one line" value={form.oneLineJD} onChange={(e) => updateField('oneLineJD', e.target.value)} />
+                                    {displayUnitRate > 0 && (
+                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                            <div className="bg-amber-50 rounded-lg p-1.5 text-center">
+                                                <p className="text-[8px] text-gray-500 font-semibold">Unit Rate</p>
+                                                <p className="text-xs font-bold text-amber-700">
+                                                    ₹{displayUnitRate.toLocaleString()}
+                                                    <span className="text-[9px]">{form.durationUnit}</span>
+                                                </p>
+                                            </div>
+                                            <div className="bg-amber-50 rounded-lg p-1.5 text-center">
+                                                <p className="text-[8px] text-gray-500 font-semibold">Total</p>
+                                                <p className="text-xs font-bold text-amber-700">
+                                                    ₹{displayTotalEstimate > 0 ? displayTotalEstimate.toLocaleString() : '-'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
 
-                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 space-y-3">
-                        <button
-                            type="button"
-                            onClick={fetchSuggestedAmount}
-                            disabled={fetchingAmount || !selectedWorkerIsSmartphone}
-                            className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black py-2 disabled:opacity-60"
-                        >
-                            {fetchingAmount ? 'Fetching Amount...' : 'Get Amount'}
-                        </button>
+                                    <div>
+                                        <label className="block text-[9px] font-semibold text-amber-800 mb-0.5">
+                                            Your Offer <span className="text-red-500">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            <IndianRupee size="11" className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                className="w-full rounded-lg border border-gray-200 pl-7 pr-2 py-1.5 text-xs bg-white focus:border-orange-400 focus:ring-1 focus:ring-orange-100 outline-none"
+                                                placeholder="Enter amount"
+                                                value={form.expectedAmount}
+                                                disabled={!form.fetchedAmount}
+                                                onChange={(e) => updateField('expectedAmount', e.target.value)}
+                                            />
+                                        </div>
+                                        {fetchedAmountNum > 0 && (
+                                            <p className="text-[9px] text-amber-700 mt-1 flex items-center gap-0.5">
+                                                <AlertCircle size="8" />
+                                                Range: ₹{minAllowed.toLocaleString()} - ₹{maxAllowed.toLocaleString()}
+                                            </p>
+                                        )}
+                                        {isExpectedOutOfRange && (
+                                            <p className="text-[9px] text-red-600 mt-0.5 flex items-center gap-0.5">
+                                                <AlertCircle size="8" /> Amount out of range!
+                                            </p>
+                                        )}
+                                    </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div className="rounded-xl border border-gray-200 bg-gray-100 px-3 py-2">
-                                <div className="text-xs text-gray-600">Unit Rate</div>
-                                <div className="text-sm font-semibold text-gray-800">
-                                    ₹{displayUnitRate > 0 ? displayUnitRate.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '-'}{form.durationUnit}
+                                    {pricingMeta && getPricingReasonMessage(pricingMeta) && (
+                                        <div className="bg-amber-50 rounded-lg p-1.5 mt-2 border border-amber-200">
+                                            <p className="text-[9px] text-amber-700 flex items-start gap-1">
+                                                <AlertCircle size="8" className="flex-shrink-0 mt-0.5" />
+                                                {getPricingReasonMessage(pricingMeta)}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <div className="rounded-xl border border-gray-200 bg-gray-100 px-3 py-2">
-                                <div className="text-xs text-gray-600">Total Estimated</div>
-                                <div className="text-sm font-semibold text-gray-800">
-                                    ₹{displayTotalEstimate > 0 ? displayTotalEstimate.toLocaleString('en-IN') : '-'}
-                                </div>
-                            </div>
                         </div>
 
-                        <input
-                            type="number"
-                            min="1"
-                            className="rounded-xl border border-gray-200 px-3 py-2 bg-gray-50"
-                            placeholder="Enter your amount"
-                            value={form.expectedAmount}
-                            disabled={!form.fetchedAmount}
-                            onChange={(e) => updateField('expectedAmount', e.target.value)}
-                        />
-                        {fetchedAmountNum > 0 && (
-                            <p className="text-xs text-amber-700 font-semibold">
-                                Allowed edit range: ₹{minAllowed.toLocaleString('en-IN')} to ₹{maxAllowed.toLocaleString('en-IN')}.
-                            </p>
-                        )}
-                        {isExpectedOutOfRange && (
-                            <p className="text-xs text-red-600 font-semibold">
-                                Warning: amount is outside allowed range.
-                            </p>
-                        )}
-                        {pricingMeta && getPricingReasonMessage(pricingMeta) && (
-                            <p className="text-xs text-amber-700 font-semibold bg-amber-100 rounded-lg px-2 py-2">
-                                {getPricingReasonMessage(pricingMeta)}
-                            </p>
-                        )}
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={submitting || !worker || !selectedWorkerIsSmartphone || !form.fetchedAmount}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 text-white font-black py-3 disabled:opacity-50"
-                    >
-                        <Send size={16} /> {submitting ? 'Sending...' : 'Send Direct Hire'}
-                    </button>
-                </form>
-            </div>
-        </div>
+                        {/* Submit Button - Compact */}
+                        <motion.button
+                            whileTap={{ scale: 0.98 }}
+                            type="submit"
+                            disabled={submitting || !worker || !selectedWorkerIsSmartphone || !form.fetchedAmount}
+                            className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-2 text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                        >
+                            {submitting ? (
+                                <>
+                                    <Loader2 size="14" className="animate-spin" />
+                                    Sending Request...
+                                </>
+                            ) : (
+                                <>
+                                    <Send size="14" />
+                                    Send Direct Hire Request
+                                </>
+                            )}
+                        </motion.button>
+                    </form>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
     );
 }

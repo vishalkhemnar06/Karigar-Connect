@@ -5,6 +5,7 @@ const multer   = require('multer');
 const { protect, client } = require('../middleware/authMiddleware');
 const {
     getClientProfile, updateClientProfile,
+    getClientMarketplaceDiscount,
     getClientJobs, postJob, deleteJob, cancelJob, updateJobStatus,
     permanentlyDeleteHistoryJob, permanentlyDeleteSelectedHistoryJobs, permanentlyDeleteAllHistoryJobs,
     uploadCompletionPhotos, removeCompletionPhoto, startJob, toggleJobApplications,
@@ -36,6 +37,7 @@ const { jobPhotoUploader, profilePhotoUploader, mixedUploader, clientJobPhotoUpl
 const faceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/profile',        protect, client, getClientProfile);
+router.get('/marketplace/discount', protect, client, getClientMarketplaceDiscount);
 router.get('/profile/document-preview-url', protect, client, getClientDocumentPreviewUrl);
 router.put('/profile/update', protect, client, mixedUploader.fields([
     { name: 'photo', maxCount: 1 },

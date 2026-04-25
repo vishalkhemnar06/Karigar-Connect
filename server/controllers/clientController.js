@@ -21,7 +21,8 @@ const Groq = require('groq-sdk');
 const { createNotification }           = require('../utils/notificationHelper');
 const { checkWorkerScheduleConflict, validateWorkTime, canStartJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
-const { sendCustomSms, sendPasswordChangeOtpSms } = require('../utils/smsHelper');
+const { sendCustomSms, sendPasswordChangeOtpSms, buildWorkerApplicationDecisionSms, formatDateTime, formatAddress } = require('../utils/smsHelper');
+const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const { upsertJobById, removeJobById, getWorkersForJob, submitFeedback } = require('../services/semanticMatchingService');
 const faceClient = require('../utils/faceServiceClient');
@@ -307,7 +308,7 @@ const getWorkerSkills = (skills = []) =>
         .map((s) => String(s).trim())
         .filter(Boolean);
 
-const formatAddress = (address = {}) => {
+const formatWorkerAddress = (address = {}) => {
     const chunks = [
         address?.house,
         address?.street,
@@ -355,7 +356,7 @@ const buildFallbackWorkerSummary = (worker = {}) => {
         { label: 'Points', value: String(worker.points || 0) },
         { label: 'Average Rating', value: `${Number(worker.avgStars || 0).toFixed(1)} (${worker.ratingCount || 0} reviews)` },
         { label: 'Contact', value: worker.mobile || worker.email || 'Not provided' },
-        { label: 'Address', value: formatAddress(worker.address) },
+        { label: 'Address', value: formatWorkerAddress(worker.address) },
         { label: 'Verification', value: worker.verificationStatus || 'unknown' },
     ];
 
@@ -386,7 +387,7 @@ const generateSummaryWithGroq = async (worker = {}) => {
         ratingCount: Number(worker.ratingCount || 0),
         mobile: worker.mobile || '',
         email: worker.email || '',
-        address: formatAddress(worker.address),
+        address: formatWorkerAddress(worker.address),
         verificationStatus: worker.verificationStatus || '',
     };
 
@@ -1243,6 +1244,32 @@ exports.getClientProfile = async (req, res) => {
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 
+const getMarketplaceDiscountPct = (completedJobs = 0) => {
+    if (completedJobs >= 30) return 25;
+    if (completedJobs >= 15) return 20;
+    return 10;
+};
+
+exports.getClientMarketplaceDiscount = async (req, res) => {
+    try {
+        const client = await User.findOne({ _id: req.user.id, role: 'client' }).select('_id name');
+        if (!client) return res.status(404).json({ message: 'Client not found.' });
+
+        const completedJobs = await Job.countDocuments({ postedBy: client._id, status: 'completed' });
+        const discountPct = getMarketplaceDiscountPct(completedJobs);
+
+        return res.json({
+            completedJobs,
+            discountPct,
+            discountLabel: `${discountPct}% off`,
+            message: 'Discount applied automatically based on completed jobs. No coupon code required.',
+        });
+    } catch (err) {
+        console.error('getClientMarketplaceDiscount:', err);
+        return res.status(500).json({ message: 'Failed to fetch marketplace discount.' });
+    }
+};
+
 exports.updateClientProfile = async (req, res) => {
     try {
         const c = await User.findById(req.user.id);
@@ -1962,9 +1989,18 @@ exports.respondToApplicant = async (req, res) => {
 
             const workerUser = await User.findById(workerId).select('mobile name');
             if (workerUser?.mobile) {
+                const clientUser = await User.findById(job.postedBy).select('name mobile');
                 await sendCustomSms(
                     workerUser.mobile,
-                    `KarigarConnect: Congratulations ${workerUser.name || 'Worker'}! You are accepted for job "${job.title}" (${skill}).`
+                    buildWorkerApplicationDecisionSms({
+                        accepted: true,
+                        jobTitle: job.title,
+                        clientName: clientUser?.name || 'N/A',
+                        clientMobile: clientUser?.mobile || 'N/A',
+                        scheduledDate: job.scheduledDate || job.createdAt,
+                        scheduledTime: job.scheduledTime || '',
+                        address: formatAddress(job),
+                    })
                 );
             }
         } else {
@@ -1978,9 +2014,16 @@ exports.respondToApplicant = async (req, res) => {
 
             const workerUser = await User.findById(workerId).select('mobile name');
             if (workerUser?.mobile) {
+                const clientUser = await User.findById(job.postedBy).select('name mobile');
                 await sendCustomSms(
                     workerUser.mobile,
-                    `KarigarConnect: Your application for job "${job.title}" was rejected. Reason: ${rejectionReason}`
+                    buildWorkerApplicationDecisionSms({
+                        accepted: false,
+                        jobTitle: job.title,
+                        clientName: clientUser?.name || 'N/A',
+                        clientMobile: clientUser?.mobile || 'N/A',
+                        rejectionReason,
+                    })
                 );
             }
         }
@@ -2092,9 +2135,18 @@ exports.respondToSubTaskApplicant = async (req, res) => {
 
             const workerUser = await User.findById(workerId).select('mobile name');
             if (workerUser?.mobile) {
+                const clientUser = await User.findById(subTask.postedBy).select('name mobile');
                 await sendCustomSms(
                     workerUser.mobile,
-                    `KarigarConnect: You are accepted for sub-task "${subTask.title}" (Parent job: "${parentJob.title}").`
+                    buildWorkerApplicationDecisionSms({
+                        accepted: true,
+                        jobTitle: `${parentJob.title} / ${subTask.title}`,
+                        clientName: clientUser?.name || 'N/A',
+                        clientMobile: clientUser?.mobile || 'N/A',
+                        scheduledDate: subTask.scheduledDate || parentJob.scheduledDate || subTask.createdAt,
+                        scheduledTime: subTask.scheduledTime || parentJob.scheduledTime || '',
+                        address: formatAddress(subTask.parentJobId || parentJob),
+                    })
                 );
             }
         } else {
@@ -2108,9 +2160,16 @@ exports.respondToSubTaskApplicant = async (req, res) => {
 
             const workerUser = await User.findById(workerId).select('mobile name');
             if (workerUser?.mobile) {
+                const clientUser = await User.findById(subTask.postedBy).select('name mobile');
                 await sendCustomSms(
                     workerUser.mobile,
-                    `KarigarConnect: Your application for sub-task "${subTask.title}" was rejected. Reason: ${rejectionReason}`
+                    buildWorkerApplicationDecisionSms({
+                        accepted: false,
+                        jobTitle: `${parentJob.title} / ${subTask.title}`,
+                        clientName: clientUser?.name || 'N/A',
+                        clientMobile: clientUser?.mobile || 'N/A',
+                        rejectionReason,
+                    })
                 );
             }
         }
@@ -2652,15 +2711,23 @@ exports.inviteWorkersToJob = async (req, res) => {
 exports.getWorkerPublicProfile = async (req, res) => {
     try {
         const w = await findWorkerByIdOrKarigarId(req.params.workerId, {
-            select: 'name photo karigarId skills overallExperience points verificationStatus location address mobile phoneType travelMethod',
+            select: 'name photo karigarId skills overallExperience points verificationStatus address phoneType travelMethod',
         });
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const dailyProfile = await getWorkerDailyProfileSnapshot(w);
         const completedJobs = await Job.countDocuments({ assignedTo: w._id, status: 'completed' });
         const ratings       = await Rating.find({ worker: w._id }).populate('client','name photo').sort({ createdAt: -1 }).limit(10);
         const avgStars      = ratings.length ? ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length : 0;
+        const worker = w.toObject();
+        const publicAddress = worker.address ? {
+            city: worker.address.city || '',
+            locality: worker.address.locality || '',
+            state: worker.address.state || '',
+        } : null;
         return res.json({
-            ...w.toObject(),
+            ...worker,
+            address: publicAddress,
+            mobile: undefined,
             completedJobs,
             avgStars: Math.round(avgStars * 10) / 10,
             ratings,
@@ -2673,7 +2740,7 @@ exports.generateWorkerProfileSummary = async (req, res) => {
     try {
         const workerId = req.params.workerId;
         const worker = await User.findById(workerId)
-            .select('role name photo karigarId skills overallExperience experience points verificationStatus location address mobile email travelMethod');
+            .select('role name photo karigarId skills overallExperience experience points verificationStatus address travelMethod');
 
         if (!worker || worker.role === 'client') {
             return res.status(404).json({ message: 'Worker not found.' });
@@ -2688,8 +2755,14 @@ exports.generateWorkerProfileSummary = async (req, res) => {
         ]);
 
         const stats = ratingStats?.[0] || { avgStars: 0, ratingCount: 0 };
+        const workerObject = worker.toObject();
         const workerData = {
-            ...worker.toObject(),
+            ...workerObject,
+            address: workerObject.address ? {
+                city: workerObject.address.city || '',
+                locality: workerObject.address.locality || '',
+                state: workerObject.address.state || '',
+            } : null,
             completedJobs,
             avgStars: Number(stats.avgStars || 0),
             ratingCount: Number(stats.ratingCount || 0),
@@ -2829,6 +2902,15 @@ exports.sendClientPasswordChangeOtp = async (req, res) => {
             return res.status(400).json({ message: 'No mobile number linked to your account.' });
         }
 
+        const cooldownKey = `client:password-change-otp:${req.user.id}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -2838,7 +2920,12 @@ exports.sendClientPasswordChangeOtp = async (req, res) => {
         client.passwordChangeVerifiedTokenExpiry = undefined;
         await client.save({ validateBeforeSave: false });
 
-        await sendPasswordChangeOtpSms(client.mobile, otp, client.name);
+        const smsResult = await sendPasswordChangeOtpSms(client.mobile, otp, client.name);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
 
         return res.json({
             message: `OTP sent to your registered mobile number ending in ${client.mobile.slice(-4)}.`,

@@ -2,7 +2,7 @@
 // FIXED: Input re-render bug resolved — all field components defined outside ShopRegister.
 // IMPROVED: Professional 3-step design, proper file preview, image handling.
 
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
@@ -22,6 +22,8 @@ const SHOP_CATEGORIES = [
 ];
 
 const ID_TYPES = ['Aadhar Card', 'PAN Card', 'Voter ID', 'Driving Licence', 'Passport'];
+
+const DRAFT_KEY = 'shop_register_draft_v1';
 
 // ── Stable field components (OUTSIDE ShopRegister) ───────────────────────────
 
@@ -212,6 +214,58 @@ const ShopRegister = () => {
     const [ownerPhotoPreview, setOwnerPhotoPreview] = useState(null);
     const [shopLogoPreview, setShopLogoPreview]     = useState(null);
     const [shopPhotoPreview, setShopPhotoPreview]   = useState(null);
+
+    // ── Load draft from sessionStorage on mount ─────────────────────────────────
+    useEffect(() => {
+        try {
+            const raw = sessionStorage.getItem(DRAFT_KEY);
+            if (!raw) return;
+            const draft = JSON.parse(raw);
+
+            if (draft.mobile) setMobile(draft.mobile);
+            if (draft.email) setEmail(draft.email);
+            if (draft.password) setPassword(draft.password);
+            if (draft.confirmPwd) setConfirmPwd(draft.confirmPwd);
+            if (draft.mobileOtpSent) setMobileOtpSent(draft.mobileOtpSent);
+            if (draft.emailOtpSent) setEmailOtpSent(draft.emailOtpSent);
+            if (draft.mobileVerified) setMobileVerified(draft.mobileVerified);
+            if (draft.emailVerified) setEmailVerified(draft.emailVerified);
+            if (draft.termsAgreed) setTermsAgreed(draft.termsAgreed);
+            if (draft.ownerName) setOwnerName(draft.ownerName);
+            if (draft.shopName) setShopName(draft.shopName);
+            if (draft.gstNumber) setGstNumber(draft.gstNumber);
+            if (draft.category) setCategory(draft.category);
+            if (draft.customCategory) setCustomCategory(draft.customCategory);
+            if (draft.address) setAddress(draft.address);
+            if (draft.city) setCity(draft.city);
+            if (draft.pincode) setPincode(draft.pincode);
+            if (draft.locality) setLocality(draft.locality);
+            if (draft.idType) setIdType(draft.idType);
+            if (draft.latitude) setLatitude(draft.latitude);
+            if (draft.longitude) setLongitude(draft.longitude);
+            if (draft.ownerPhotoPreview) setOwnerPhotoPreview(draft.ownerPhotoPreview);
+            if (draft.shopLogoPreview) setShopLogoPreview(draft.shopLogoPreview);
+            if (draft.shopPhotoPreview) setShopPhotoPreview(draft.shopPhotoPreview);
+            if (typeof draft.step === 'number') setStep(draft.step);
+        } catch {
+            sessionStorage.removeItem(DRAFT_KEY);
+        }
+    }, []);
+
+    // ── Save draft to sessionStorage on state changes ───────────────────────────
+    useEffect(() => {
+        const draft = {
+            mobile, email, password, confirmPwd, mobileOtp, emailOtp,
+            mobileOtpSent, emailOtpSent, mobileVerified, emailVerified,
+            termsAgreed, ownerName, shopName, gstNumber, category, customCategory,
+            address, city, pincode, locality, idType, latitude, longitude,
+            ownerPhotoPreview, shopLogoPreview, shopPhotoPreview, step,
+        };
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }, [mobile, email, password, confirmPwd, mobileOtp, emailOtp, mobileOtpSent, emailOtpSent,
+        mobileVerified, emailVerified, termsAgreed, ownerName, shopName, gstNumber, category,
+        customCategory, address, city, pincode, locality, idType, latitude, longitude,
+        ownerPhotoPreview, shopLogoPreview, shopPhotoPreview, step]);
 
     // Stable onChange handlers (no remount)
     const onMobile = useCallback(e => setMobile(e.target.value), []);
@@ -429,6 +483,7 @@ const ShopRegister = () => {
             if (gstnCertificate) fd.append('gstnCertificate', gstnCertificate);
 
             await api.shopRegister(fd);
+            sessionStorage.removeItem(DRAFT_KEY); // Clear draft after successful registration
             setSubmitted(true);
         } catch (e) {
             toast.error(e.response?.data?.message || 'Registration failed.');

@@ -1,22 +1,11 @@
 // server/controllers/shopController.js
-// FIXED: normPath() applied to every req.file / req.files save so paths are
-//        stored as  "uploads/filename"  (forward slashes, relative, no drive letter).
-//        Express serves these at  GET /uploads/filename  via the static middleware.
 
 const Shop        = require('../models/shopModel');
 const Product     = require('../models/productModel');
 const Coupon      = require('../models/couponModel');
 const Transaction = require('../models/transactionModel');
-const path        = require('path');
 
-// ── PATH NORMALISATION (same helper as shopAuthController) ────────────────────
-const normPath = (filePath) => {
-    if (!filePath) return null;
-    const normalised = filePath.replace(/\\/g, '/');
-    const idx = normalised.indexOf('uploads/');
-    if (idx !== -1) return normalised.slice(idx);
-    return `uploads/${path.basename(normalised)}`;
-};
+const resolveMediaPath = (file) => file?.path || file?.secure_url || file?.url || null;
 
 // ── PROFILE ───────────────────────────────────────────────────────────────────
 exports.getShopProfile = async (req, res) => {
@@ -38,8 +27,8 @@ exports.updateShopProfile = async (req, res) => {
         fields.forEach(f => { if (req.body[f] !== undefined) shop[f] = req.body[f]; });
 
         const files = req.files || {};
-        if (files.shopLogo?.[0])   shop.shopLogo   = normPath(files.shopLogo[0].path);
-        if (files.ownerPhoto?.[0]) shop.ownerPhoto = normPath(files.ownerPhoto[0].path);
+        if (files.shopLogo?.[0])   shop.shopLogo   = resolveMediaPath(files.shopLogo[0]);
+        if (files.ownerPhoto?.[0]) shop.ownerPhoto = resolveMediaPath(files.ownerPhoto[0]);
 
         await shop.save({ validateBeforeSave: false });
         return res.json(shop);
@@ -88,7 +77,7 @@ exports.addProduct = async (req, res) => {
         const { name, description, price, stock } = req.body;
         if (!name || !price) return res.status(400).json({ message: 'Name and price required.' });
 
-        const image = normPath(req.file?.path);   // ← FIX: normalise path
+        const image = resolveMediaPath(req.file);
         const product = await Product.create({
             shop: req.shop.id,
             name,
@@ -114,7 +103,7 @@ exports.editProduct = async (req, res) => {
         if (description !== undefined) product.description = description;
         if (price !== undefined)       product.price       = Number(price);
         if (stock !== undefined)       product.stock       = Number(stock);
-        if (req.file)                  product.image       = normPath(req.file.path);  // ← FIX
+        if (req.file)                  product.image       = resolveMediaPath(req.file);
 
         await product.save();
         return res.json(product);
@@ -178,7 +167,7 @@ exports.applyCoupon = async (req, res) => {
         if (product.stock < 1)
             return res.status(400).json({ message: 'Product is out of stock.' });
 
-        const productPhoto   = normPath(req.file?.path);   // ← FIX
+        const productPhoto   = resolveMediaPath(req.file);
         const discountAmount = Math.round((coupon.discountPct / 100) * product.price);
         const finalPrice     = product.price - discountAmount;
 

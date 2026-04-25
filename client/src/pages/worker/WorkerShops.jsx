@@ -11,7 +11,8 @@ import {
     DollarSign, ExternalLink, Copy, Check, ShoppingBag,
     Shield, Zap, Sparkles, Heart, Eye, History,
     ZoomIn, ZoomOut, ChevronLeft, Instagram, Facebook,
-    Globe, Clock3, CreditCard, BadgeCheck, Truck, ThumbsUp, Camera
+    Globe, Clock3, CreditCard, BadgeCheck, Truck, ThumbsUp, Camera,
+    User, Verified
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -52,6 +53,7 @@ class ErrorBoundary extends React.Component {
                 <div className="p-8 text-center">
                     <AlertCircle className="mx-auto text-red-500 mb-3" size={48} />
                     <p className="text-gray-600">Something went wrong. Please refresh the page.</p>
+                    <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold">Refresh</button>
                 </div>
             );
         }
@@ -68,7 +70,6 @@ const MiniMap = ({ latitude, longitude, shopName }) => {
     useEffect(() => {
         if (!mapRef.current || !latitude || !longitude) return;
 
-        // Initialize map if not already done
         if (!mapInstanceRef.current) {
             mapInstanceRef.current = L.map(mapRef.current).setView([latitude, longitude], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -76,14 +77,11 @@ const MiniMap = ({ latitude, longitude, shopName }) => {
                 maxZoom: 19,
             }).addTo(mapInstanceRef.current);
 
-            // Add marker
             markerRef.current = L.marker([latitude, longitude])
                 .bindPopup(shopName || 'Shop Location')
                 .addTo(mapInstanceRef.current);
-            
             markerRef.current.openPopup();
         } else {
-            // Update existing map
             mapInstanceRef.current.setView([latitude, longitude], 15);
             if (markerRef.current) {
                 markerRef.current.setLatLng([latitude, longitude]);
@@ -92,7 +90,6 @@ const MiniMap = ({ latitude, longitude, shopName }) => {
             }
         }
 
-        // Cleanup function
         return () => {
             if (mapInstanceRef.current) {
                 mapInstanceRef.current.remove();
@@ -182,7 +179,7 @@ const ImageViewer = ({ images, initialIndex, onClose }) => {
 
 // ── SKELETON LOADER ─────────────────────────────────────────────────────────────
 const ShopCardSkeleton = () => (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden animate-pulse">
+    <div className="bg-white rounded-xl shadow-md overflow-hidden animate-pulse">
         <div className="h-28 bg-gradient-to-r from-gray-200 to-gray-100"></div>
         <div className="p-4 space-y-3">
             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
@@ -192,7 +189,7 @@ const ShopCardSkeleton = () => (
     </div>
 );
 
-// ── COUPON CARD ─────────────────────────────────────────────────────────────────
+// ── COUPON CARD (Enhanced) ─────────────────────────────────────────────────────
 const CouponCard = ({ coupon, onCopyCode }) => {
     const isExpired = new Date() > new Date(coupon.expiresAt);
     const [copied, setCopied] = useState(false);
@@ -209,7 +206,7 @@ const CouponCard = ({ coupon, onCopyCode }) => {
         <motion.div
             whileHover={{ y: -4, scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
-            className={`relative overflow-hidden rounded-2xl p-5 border transition-all duration-300 ${
+            className={`relative overflow-hidden rounded-xl p-5 border transition-all duration-300 ${
                 coupon.isUsed ? 'bg-gray-50 border-gray-200 opacity-70' :
                 isExpired ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-200' :
                 'bg-gradient-to-r from-amber-50 to-orange-50 border-orange-200 shadow-lg'
@@ -217,16 +214,16 @@ const CouponCard = ({ coupon, onCopyCode }) => {
         >
             <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-orange-200/30 to-amber-200/30 rounded-full -mr-12 -mt-12" />
             <div className="relative z-10">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-4 flex-1">
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl flex-shrink-0 ${
+                        <div className={`w-14 h-14 rounded-xl flex items-center justify-center font-black text-xl flex-shrink-0 ${
                             coupon.isUsed || isExpired ? 'bg-gray-300 text-gray-600' : 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg'
                         }`}>
                             {coupon.discountPct}%
                         </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono font-bold text-gray-800 text-xl tracking-wider">{coupon.code}</span>
+                                <span className="font-mono font-bold text-gray-800 text-lg tracking-wider">{coupon.code}</span>
                                 <motion.button whileTap={{ scale: 0.9 }} onClick={handleCopy} className="p-1.5 hover:bg-white/50 rounded-lg transition-all">
                                     {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-gray-400" />}
                                 </motion.button>
@@ -246,7 +243,7 @@ const CouponCard = ({ coupon, onCopyCode }) => {
                 </div>
 
                 {!coupon.isUsed && !isExpired && (
-                    <div className="mt-4 bg-white/80 rounded-xl p-3 border border-orange-100">
+                    <div className="mt-4 bg-white/80 rounded-lg p-3 border border-orange-100">
                         <p className="text-xs text-orange-700 font-medium flex items-center gap-2">
                             <Sparkles size={12} /> Show this code at any partner shop for {coupon.discountPct}% off on tools ≥ ₹1000
                         </p>
@@ -257,8 +254,7 @@ const CouponCard = ({ coupon, onCopyCode }) => {
     );
 };
 
-// ── COUPON HISTORY SECTION ──────────────────────────────────────────────────────
-// Enhanced Coupon History Section with Circular Logo and Professional Layout
+// ── COUPON HISTORY SECTION (Enhanced) ──────────────────────────────────────────
 const CouponHistorySection = () => {
     const [searchCode, setSearchCode] = useState('');
     const [couponDetails, setCouponDetails] = useState(null);
@@ -306,7 +302,6 @@ const CouponHistorySection = () => {
                 variants={fadeInUp}
                 className="relative overflow-hidden bg-gradient-to-br from-purple-600 via-purple-500 to-pink-500 rounded-2xl p-6 text-white shadow-2xl"
             >
-                {/* Animated Background Elements */}
                 <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 animate-pulse" />
                 <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mb-16" />
                 <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-white/5 rounded-full -translate-x-1/2 -translate-y-1/2 blur-2xl" />
@@ -366,7 +361,7 @@ const CouponHistorySection = () => {
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
-                        className="bg-gradient-to-r from-red-50 to-red-100 border border-red-200 rounded-2xl p-5 flex items-start gap-3 shadow-sm"
+                        className="bg-gradient-to-r from-red-50 to-red-100 border border-red-200 rounded-xl p-5 flex items-start gap-3 shadow-sm"
                     >
                         <div className="p-1 bg-red-500 rounded-full">
                             <AlertCircle size={18} className="text-white" />
@@ -422,7 +417,7 @@ const CouponHistorySection = () => {
                     {/* Status & Usage Timeline */}
                     <div className="p-6 border-b border-gray-100">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl">
                                 <div className="p-2 bg-blue-100 rounded-full">
                                     <Calendar size={16} className="text-blue-600" />
                                 </div>
@@ -496,7 +491,7 @@ const CouponHistorySection = () => {
                             </div>
 
                             {/* Shop Header with Circular Logo */}
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 p-5 bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border border-orange-100">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 p-5 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-100">
                                 <div className="flex-shrink-0">
                                     <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-orange-300 shadow-lg bg-white">
                                         {imgSrc(couponDetails.shop.shopLogo) ? (
@@ -531,8 +526,7 @@ const CouponHistorySection = () => {
 
                             {/* Shop Info Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Owner Info */}
-                                <div className="group bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
+                                <div className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
                                     <div className="flex items-center gap-2 mb-2">
                                         <div className="p-1.5 bg-blue-50 rounded-lg">
                                             <Users size={14} className="text-blue-600" />
@@ -542,9 +536,8 @@ const CouponHistorySection = () => {
                                     <p className="font-bold text-gray-800 text-base">{couponDetails.shop.ownerName || 'Not specified'}</p>
                                 </div>
 
-                                {/* Contact Info */}
                                 {couponDetails.shop.mobile && (
-                                    <div className="group bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
+                                    <div className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
                                         <div className="flex items-center gap-2 mb-2">
                                             <div className="p-1.5 bg-green-50 rounded-lg">
                                                 <Phone size={14} className="text-green-600" />
@@ -553,17 +546,16 @@ const CouponHistorySection = () => {
                                         </div>
                                         <a 
                                             href={`tel:${couponDetails.shop.mobile}`}
-                                            className="font-bold text-green-700 flex items-center gap-2 text-base hover:underline group"
+                                            className="font-bold text-green-700 flex items-center gap-2 text-base hover:underline"
                                         >
-                                            <Phone size={14} className="group-hover:animate-pulse" />
+                                            <Phone size={14} />
                                             {couponDetails.shop.mobile}
                                         </a>
                                     </div>
                                 )}
 
-                                {/* Email */}
                                 {couponDetails.shop.email && (
-                                    <div className="group bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
+                                    <div className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
                                         <div className="flex items-center gap-2 mb-2">
                                             <div className="p-1.5 bg-purple-50 rounded-lg">
                                                 <Mail size={14} className="text-purple-600" />
@@ -579,9 +571,8 @@ const CouponHistorySection = () => {
                                     </div>
                                 )}
 
-                                {/* Address */}
                                 {couponDetails.shop.address && (
-                                    <div className="md:col-span-2 group bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
+                                    <div className="md:col-span-2 bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
                                         <div className="flex items-center gap-2 mb-2">
                                             <div className="p-1.5 bg-red-50 rounded-lg">
                                                 <MapPin size={14} className="text-red-600" />
@@ -594,7 +585,6 @@ const CouponHistorySection = () => {
                                             {couponDetails.shop.state && `, ${couponDetails.shop.state}`}
                                             {couponDetails.shop.pincode && ` - ${couponDetails.shop.pincode}`}
                                         </p>
-                                        {/* Google Maps Link */}
                                         {couponDetails.shop.shopLocation?.latitude && couponDetails.shop.shopLocation?.longitude && (
                                             <a 
                                                 href={`https://maps.google.com/?q=${couponDetails.shop.shopLocation.latitude},${couponDetails.shop.shopLocation.longitude}`}
@@ -621,30 +611,51 @@ const CouponHistorySection = () => {
                                     </div>
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                         {imgSrc(couponDetails.shop.shopPhoto) && (
-                                            <div className="relative group cursor-pointer rounded-xl overflow-hidden h-32 bg-gray-100">
+                                            <div 
+                                                onClick={() => {
+                                                    setViewerImage(couponDetails.shop.shopPhoto);
+                                                    setViewerImages([couponDetails.shop.shopPhoto]);
+                                                }}
+                                                className="relative group cursor-pointer rounded-xl overflow-hidden h-32 bg-gray-100"
+                                            >
                                                 <img 
                                                     src={imgSrc(couponDetails.shop.shopPhoto)} 
                                                     alt="Shop front"
                                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                                                 />
-                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all" />
+                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                                                    <div className="p-2 bg-white/90 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Maximize2 size={16} className="text-gray-800" />
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                         {couponDetails.shop.shopImages?.slice(0, 2).map((img, idx) => (
-                                            <div key={idx} className="relative group cursor-pointer rounded-xl overflow-hidden h-32 bg-gray-100">
+                                            <div 
+                                                key={idx} 
+                                                onClick={() => {
+                                                    setViewerImage(img);
+                                                    setViewerImages([img]);
+                                                }}
+                                                className="relative group cursor-pointer rounded-xl overflow-hidden h-32 bg-gray-100"
+                                            >
                                                 <img 
                                                     src={imgSrc(img)} 
                                                     alt={`Shop view ${idx + 1}`}
                                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                                                 />
-                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all" />
+                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                                                    <div className="p-2 bg-white/90 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Maximize2 size={16} className="text-gray-800" />
+                                                    </div>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Business Hours (if available) */}
+                            {/* Business Hours */}
                             {couponDetails.shop.businessHours && (
                                 <div className="bg-gray-50 rounded-xl p-4">
                                     <div className="flex items-center gap-2 mb-2">
@@ -670,8 +681,7 @@ const CouponHistorySection = () => {
                                         <h4 className="font-bold text-gray-800 text-lg">Purchase Details</h4>
                                     </div>
 
-                                    {/* Product Card with Image and Info */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border border-green-100">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-100">
                                         {/* Product Image */}
                                         <div className="flex items-center justify-center">
                                             {couponDetails.product.productImage ? (
@@ -687,7 +697,7 @@ const CouponHistorySection = () => {
                                                         alt={couponDetails.product.productName}
                                                         className="w-full h-64 object-cover group-hover:scale-110 transition-transform duration-300"
                                                     />
-                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center" >
+                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
                                                         <div className="p-3 bg-white/90 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Maximize2 size={24} className="text-gray-800" />
                                                         </div>
@@ -708,7 +718,6 @@ const CouponHistorySection = () => {
                                                     <p className="font-black text-gray-800 text-xl">{couponDetails.product.productName}</p>
                                                 </div>
 
-                                                {/* Pricing Info */}
                                                 <div className="space-y-2">
                                                     <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-200">
                                                         <span className="text-xs text-gray-500 uppercase">Original Price</span>
@@ -821,7 +830,7 @@ const ShopCard = ({ shop, onClick }) => (
         className="group cursor-pointer"
         onClick={() => onClick(shop)}
     >
-        <div className="relative bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-2xl">
+        <div className="relative bg-white rounded-xl shadow-md overflow-hidden transition-all duration-300 hover:shadow-xl">
             <div className="relative h-32 bg-gradient-to-r from-orange-400 to-amber-400 flex items-center justify-center overflow-hidden">
                 {imgSrc(shop.shopLogo) ? (
                     <img src={imgSrc(shop.shopLogo)} className="w-24 h-24 object-cover rounded-xl shadow-md group-hover:scale-110 transition-transform duration-500" alt="" />
@@ -901,16 +910,18 @@ const ShopsMapModal = ({ shops, onClose }) => {
     }, [shops]);
 
     return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl shadow-2xl overflow-hidden w-full h-full max-w-4xl max-h-[90vh] flex flex-col">
-                <div className="flex items-center justify-between p-5 bg-gradient-to-r from-orange-500 to-amber-500">
-                    <h2 className="text-xl font-black text-white flex items-center gap-2"><MapPin size={24} /> Shops Map View</h2>
-                    <button onClick={onClose} className="text-white/80 hover:text-white p-2 hover:bg-white/20 rounded-full"><X size={24} /></button>
-                </div>
-                <div ref={mapContainer} className="flex-1 bg-gray-100" style={{ minHeight: '400px' }} />
-                <div className="p-4 bg-gray-50 border-t"><p className="text-xs text-gray-600">Showing {shops.filter(s => s.shopLocation?.latitude).length} shop(s) with location data.</p></div>
+        <AnimatePresence>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl shadow-2xl overflow-hidden w-full h-full max-w-4xl max-h-[90vh] flex flex-col">
+                    <div className="flex items-center justify-between p-5 bg-gradient-to-r from-orange-500 to-amber-500">
+                        <h2 className="text-xl font-black text-white flex items-center gap-2"><MapPin size={24} /> Shops Map View</h2>
+                        <button onClick={onClose} className="text-white/80 hover:text-white p-2 hover:bg-white/20 rounded-full"><X size={24} /></button>
+                    </div>
+                    <div ref={mapContainer} className="flex-1 bg-gray-100" style={{ minHeight: '400px' }} />
+                    <div className="p-4 bg-gray-50 border-t"><p className="text-xs text-gray-600">Showing {shops.filter(s => s.shopLocation?.latitude).length} shop(s) with location data.</p></div>
+                </motion.div>
             </motion.div>
-        </motion.div>
+        </AnimatePresence>
     );
 };
 
@@ -1048,19 +1059,18 @@ const ShopDetailModal = ({ shop, discountPct, onClose }) => {
                             </div>
                         )}
 
-                        {/* Professional Shop Info Tab */}
+                        {/* Shop Info Tab */}
                         {activeTab === 'info' && (
                             <div className="space-y-6">
-                                {/* Contact & Business Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5">
+                                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5">
                                         <h4 className="text-sm font-bold text-orange-600 uppercase tracking-wider mb-4 flex items-center gap-2"><Phone size={14} /> Contact Information</h4>
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-3 text-sm"><Phone size={16} className="text-gray-500" /><span className="text-gray-700">{shop?.mobile || 'Not provided'}</span></div>
                                             <div className="flex items-center gap-3 text-sm"><Mail size={16} className="text-gray-500" /><span className="text-gray-700 break-all">{shop?.email || 'Not provided'}</span></div>
                                         </div>
                                     </div>
-                                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-5">
+                                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5">
                                         <h4 className="text-sm font-bold text-blue-600 uppercase tracking-wider mb-4 flex items-center gap-2"><BadgeCheck size={14} /> Business Details</h4>
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-3 text-sm"><Tag size={16} className="text-gray-500" /><span className="text-gray-700">{shop?.category || 'General'}</span></div>
@@ -1070,21 +1080,18 @@ const ShopDetailModal = ({ shop, discountPct, onClose }) => {
                                     </div>
                                 </div>
 
-                                {/* Address Card */}
-                                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5">
+                                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-5">
                                     <h4 className="text-sm font-bold text-purple-600 uppercase tracking-wider mb-4 flex items-center gap-2"><MapPin size={14} /> Address</h4>
                                     <p className="text-gray-700 text-sm">{shop?.address}, {shop?.city}, {shop?.state || 'Maharashtra'} - {shop?.pincode}</p>
                                 </div>
 
-                                {/* About Section */}
                                 {shop?.about && (
-                                    <div className="bg-gray-50 rounded-2xl p-5">
+                                    <div className="bg-gray-50 rounded-xl p-5">
                                         <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-2"><Globe size={14} /> About Shop</h4>
                                         <p className="text-gray-700 text-sm leading-relaxed">{shop.about}</p>
                                     </div>
                                 )}
 
-                                {/* Shop Stats */}
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="bg-white border border-gray-100 rounded-xl p-3 text-center shadow-sm">
                                         <Users size={18} className="mx-auto text-orange-500 mb-1" />
@@ -1105,7 +1112,7 @@ const ShopDetailModal = ({ shop, discountPct, onClose }) => {
                             </div>
                         )}
 
-                        {/* Location Tab with MiniMap (Fixed) */}
+                        {/* Location Tab */}
                         {activeTab === 'location' && (
                             <div className="space-y-4">
                                 {shop?.shopLocation?.latitude && shop?.shopLocation?.longitude ? (
@@ -1146,7 +1153,7 @@ const ShopDetailModal = ({ shop, discountPct, onClose }) => {
 
                     {/* Footer */}
                     {discountPct > 0 && (
-                        <div className="border-t bg-green-50 p-4 pb-safe">
+                        <div className="border-t bg-green-50 p-4">
                             <div className="flex items-center gap-2 text-green-700 text-sm">
                                 <Sparkles size={16} />
                                 <p className="font-semibold">Your {discountPct}% discount applies to products with MRP ≥ ₹1000</p>
@@ -1228,71 +1235,91 @@ const WorkerShops = () => {
 
     return (
         <ErrorBoundary>
-            <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
+            <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-20">
                 <AnimatePresence>
                     {selectedShop && <ShopDetailModal shop={selectedShop} discountPct={activeCoupon?.discountPct || 0} onClose={() => setSelectedShop(null)} />}
                     {showMapModal && <ShopsMapModal shops={shops} onClose={() => setShowMapModal(false)} />}
                 </AnimatePresence>
 
-                <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto pb-28">
-                    {/* Header */}
-                    <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg">
-                                <Store size={24} className="text-white" />
-                            </div>
-                            <div>
-                                <h1 className="text-3xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">Tool Shops</h1>
-                                <p className="text-gray-500 text-sm">Browse partner shops & use your earned coupons</p>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                    
+                    {/* Hero Header */}
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        data-guide-id="worker-page-shops"
+                        className="mb-8"
+                    >
+                        <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                        <Store size="24" className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h1 className="text-2xl font-black">Tool Shops</h1>
+                                        <p className="text-white/90 text-sm mt-0.5">Browse partner shops & use your earned coupons</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <div className="bg-white/15 rounded-xl px-3 py-1.5 text-center">
+                                        <p className="text-xl font-bold">{shops.length}</p>
+                                        <p className="text-[10px] text-white/80">Partner Shops</p>
+                                    </div>
+                                    <div className="bg-white/15 rounded-xl px-3 py-1.5 text-center">
+                                        <p className="text-xl font-bold">{myCoupons.length}</p>
+                                        <p className="text-[10px] text-white/80">My Coupons</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </motion.div>
 
                     {/* Tabs */}
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2 bg-white rounded-2xl p-1.5 mb-6 shadow-sm overflow-x-auto scrollbar-hide">
+                    <div className="flex gap-2 bg-white rounded-xl p-1.5 mb-6 shadow-sm overflow-x-auto scrollbar-hide">
                         {[
                             { key: 'shops', label: 'Browse Shops', icon: Store, count: shops.length },
                             { key: 'maps', label: 'View Map', icon: MapPin, count: shops.filter(s => s.shopLocation?.latitude).length },
                             { key: 'coupons', label: 'My Coupons', icon: Ticket, count: myCoupons.length },
-                            { key: 'shopping-history', label: 'Bought History', icon: ShoppingBag, count: historyLoaded ? purchaseHistory.length : null },
+                            { key: 'shopping-history', label: 'Purchase History', icon: ShoppingBag, count: historyLoaded ? purchaseHistory.length : null },
                             { key: 'coupon-history', label: 'Coupon History', icon: History, count: null },
                         ].map(({ key, label, icon: Icon, count }) => (
                             <motion.button
                                 key={key}
                                 whileTap={{ scale: 0.95 }}
                                 onClick={() => key === 'maps' ? setShowMapModal(true) : setTab(key)}
-                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
                                     tab === key ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md' : 'text-gray-600 hover:bg-orange-50'
                                 }`}
                             >
-                                <Icon size={16} />
+                                <Icon size="16" />
                                 {label}
                                 {count !== null && count > 0 && <span className={`px-1.5 py-0.5 rounded-full text-xs ${tab === key ? 'bg-white/20' : 'bg-gray-100'}`}>{count}</span>}
                             </motion.button>
                         ))}
-                    </motion.div>
+                    </div>
 
                     {/* Shops Tab */}
                     {tab === 'shops' && (
                         <motion.div initial="initial" animate="animate" variants={staggerContainer} className="space-y-5">
                             <div className="space-y-3">
                                 <div className="relative">
-                                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <Search size="18" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                     <input type="text" placeholder="Search shops by name, category or city..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full pl-11 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all" />
+                                        className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all" />
                                 </div>
                                 <div className="flex gap-2">
-                                    <motion.button whileTap={{ scale: 0.95 }} onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:border-orange-300">
-                                        <Filter size={14} /> Filter <ChevronDown size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                                    <motion.button whileTap={{ scale: 0.95 }} onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:border-orange-300 bg-white">
+                                        <Filter size="14" /> Filter <ChevronDown size="12" className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
                                     </motion.button>
-                                    <motion.button whileTap={{ scale: 0.95 }} onClick={load} className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:border-orange-300">
-                                        <RefreshCw size={14} className={loadingShops ? 'animate-spin' : ''} /> <span className="hidden sm:inline">Refresh</span>
+                                                                       <motion.button whileTap={{ scale: 0.95 }} onClick={load} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:border-orange-300 bg-white">
+                                        <RefreshCw size="14" className={loadingShops ? 'animate-spin' : ''} /> Refresh
                                     </motion.button>
                                 </div>
                                 <AnimatePresence>
                                     {showFilters && (
                                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2 overflow-hidden">
-                                            <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm bg-white">
+                                            <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
                                                 {categories.map(cat => <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>)}
                                             </select>
                                             {(searchTerm || selectedCategory !== 'all') && (
@@ -1310,7 +1337,7 @@ const WorkerShops = () => {
                                     {[...Array(8)].map((_, i) => <ShopCardSkeleton key={i} />)}
                                 </div>
                             ) : filteredShops.length === 0 ? (
-                                <motion.div variants={fadeInUp} className="text-center py-16 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                <motion.div variants={fadeInUp} className="text-center py-16 bg-white rounded-xl border border-gray-100 shadow-sm">
                                     <Store size={56} className="mx-auto text-gray-300 mb-3" />
                                     <p className="text-gray-400 font-medium">No shops found</p>
                                     <p className="text-sm text-gray-400 mt-1">Try adjusting your search</p>
@@ -1334,13 +1361,23 @@ const WorkerShops = () => {
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16" />
                                 <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12" />
                                 <div className="relative z-10">
-                                    <div className="flex items-center gap-2 mb-2"><Gift size={20} /><h3 className="text-xl font-bold">Monthly Discount Coupon</h3></div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Gift size={20} />
+                                        <h3 className="text-xl font-bold">Monthly Discount Coupon</h3>
+                                    </div>
                                     <p className="text-orange-100 text-sm mb-4">Based on your leaderboard rank and completed jobs, earn a discount coupon every month. Valid for 7 days once generated.</p>
                                     {activeCoupon ? (
                                         <div className="bg-white/20 backdrop-blur rounded-xl p-4">
                                             <div className="flex flex-wrap items-center justify-between gap-3">
-                                                <div><p className="text-orange-100 text-xs uppercase tracking-wider">Your Active Coupon</p><p className="font-mono font-black text-2xl tracking-wider">{activeCoupon.code}</p><p className="text-orange-100 text-sm mt-1">{activeCoupon.discountPct}% OFF</p></div>
-                                                <div className="text-right"><p className="text-orange-100 text-xs">Expires in</p><p className="font-bold text-xl">{Math.ceil((new Date(activeCoupon.expiresAt) - new Date()) / (1000 * 60 * 60 * 24))} days</p></div>
+                                                <div>
+                                                    <p className="text-orange-100 text-xs uppercase tracking-wider">Your Active Coupon</p>
+                                                    <p className="font-mono font-black text-2xl tracking-wider">{activeCoupon.code}</p>
+                                                    <p className="text-orange-100 text-sm mt-1">{activeCoupon.discountPct}% OFF</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-orange-100 text-xs">Expires in</p>
+                                                    <p className="font-bold text-xl">{Math.ceil((new Date(activeCoupon.expiresAt) - new Date()) / (1000 * 60 * 60 * 24))} days</p>
+                                                </div>
                                             </div>
                                         </div>
                                     ) : (
@@ -1351,12 +1388,39 @@ const WorkerShops = () => {
                                 </div>
                             </motion.div>
 
-                            <motion.div variants={fadeInUp} className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5">
-                                <div className="flex items-start gap-3"><Award size={20} className="text-blue-600 flex-shrink-0 mt-0.5" /><div><h4 className="font-bold text-blue-800">How to Earn Coupons</h4><p className="text-sm text-blue-700">Complete jobs and climb the leaderboard to earn higher discount tiers:</p><div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3"><div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">5%</p><p className="text-xs text-blue-600">25+ points</p></div><div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">10%</p><p className="text-xs text-blue-600">50+ points</p></div><div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">15%</p><p className="text-xs text-blue-600">100+ points</p></div><div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">20%</p><p className="text-xs text-blue-600">200+ points</p></div></div><p className="text-xs text-blue-600 mt-3 flex items-center gap-1"><Clock size={10} /> One coupon per month · Valid for 7 days · Min purchase ₹1000</p></div></div>
+                            <motion.div variants={fadeInUp} className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
+                                <div className="flex items-start gap-3">
+                                    <Award size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <h4 className="font-bold text-blue-800">How to Earn Coupons</h4>
+                                        <p className="text-sm text-blue-700">Complete jobs and climb the leaderboard to earn higher discount tiers:</p>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                                            <div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">5%</p><p className="text-xs text-blue-600">25+ points</p></div>
+                                            <div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">10%</p><p className="text-xs text-blue-600">50+ points</p></div>
+                                            <div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">15%</p><p className="text-xs text-blue-600">100+ points</p></div>
+                                            <div className="bg-white/60 rounded-lg p-2 text-center"><p className="font-bold text-blue-700">20%</p><p className="text-xs text-blue-600">200+ points</p></div>
+                                        </div>
+                                        <p className="text-xs text-blue-600 mt-3 flex items-center gap-1"><Clock size={10} /> One coupon per month · Valid for 7 days · Min purchase ₹1000</p>
+                                    </div>
+                                </div>
                             </motion.div>
 
-                            <div><div className="flex items-center justify-between mb-4"><h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><History size={18} className="text-orange-500" /> Coupon History</h3><span className="text-xs text-gray-400">{myCoupons.length} total</span></div>
-                                {myCoupons.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-gray-100"><Ticket size={48} className="mx-auto text-gray-300 mb-2" /><p className="text-gray-400 font-medium">No coupons yet</p><p className="text-sm text-gray-400 mt-1">Complete jobs to earn your first coupon!</p></div>) : (<div className="space-y-3">{myCoupons.map(c => <CouponCard key={c._id} coupon={c} onCopyCode={() => toast.success('Coupon code copied!')} />)}</div>)}
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><History size={18} className="text-orange-500" /> Coupon History</h3>
+                                    <span className="text-xs text-gray-400">{myCoupons.length} total</span>
+                                </div>
+                                {myCoupons.length === 0 ? (
+                                    <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+                                        <Ticket size={48} className="mx-auto text-gray-300 mb-2" />
+                                        <p className="text-gray-400 font-medium">No coupons yet</p>
+                                        <p className="text-sm text-gray-400 mt-1">Complete jobs to earn your first coupon!</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {myCoupons.map(c => <CouponCard key={c._id} coupon={c} onCopyCode={() => toast.success('Coupon code copied!')} />)}
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     )}
@@ -1367,14 +1431,14 @@ const WorkerShops = () => {
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                                        <ShoppingBag size={18} className="text-orange-500" /> Bought / Shopping History
+                                        <ShoppingBag size={18} className="text-orange-500" /> Purchase History
                                     </h3>
                                     <p className="text-xs text-gray-500 mt-1">Your previous purchases with coupon and shop details</p>
                                 </div>
                                 <motion.button
                                     whileTap={{ scale: 0.95 }}
                                     onClick={loadPurchaseHistory}
-                                    className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:border-orange-300"
+                                    className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:border-orange-300 bg-white"
                                 >
                                     <RefreshCw size={13} className={loadingHistory ? 'animate-spin' : ''} /> Refresh
                                 </motion.button>
@@ -1385,7 +1449,7 @@ const WorkerShops = () => {
                                     {[...Array(4)].map((_, i) => <ShopCardSkeleton key={`history-skel-${i}`} />)}
                                 </div>
                             ) : purchaseHistory.length === 0 ? (
-                                <div className="text-center py-14 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                <div className="text-center py-14 bg-white rounded-xl border border-gray-100 shadow-sm">
                                     <ShoppingBag size={48} className="mx-auto text-gray-300 mb-2" />
                                     <p className="text-gray-500 font-semibold">No shopping history yet</p>
                                     <p className="text-sm text-gray-400 mt-1">Your purchases will appear here after using coupons at partner shops.</p>
@@ -1400,11 +1464,11 @@ const WorkerShops = () => {
                                                 key={txn._id}
                                                 initial={{ opacity: 0, y: 18 }}
                                                 animate={{ opacity: 1, y: 0 }}
-                                                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+                                                className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
                                             >
                                                 <div className="p-4 border-b bg-gradient-to-r from-orange-50 to-amber-50">
                                                     <div className="flex items-center justify-between gap-3">
-                                                        <p className="font-black text-gray-800 text-sm">{txn.product?.name || 'Product'}</p>
+                                                        <p className="font-bold text-gray-800 text-sm">{txn.product?.name || 'Product'}</p>
                                                         <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
                                                             {txn.coupon?.discountPct ?? txn.discountPct ?? 0}% OFF
                                                         </span>
@@ -1441,7 +1505,7 @@ const WorkerShops = () => {
                                                         </div>
                                                         <div className="bg-orange-50 rounded-lg p-2">
                                                             <p className="text-orange-600">Final Price</p>
-                                                            <p className="font-black text-orange-700">₹{Number(txn.finalPrice || 0).toLocaleString('en-IN')}</p>
+                                                            <p className="font-bold text-orange-700">₹{Number(txn.finalPrice || 0).toLocaleString('en-IN')}</p>
                                                         </div>
                                                         <div className="bg-purple-50 rounded-lg p-2">
                                                             <p className="text-purple-600">Coupon</p>

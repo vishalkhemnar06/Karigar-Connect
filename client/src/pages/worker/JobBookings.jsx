@@ -1,5 +1,5 @@
 // client/src/pages/worker/JobBookings.jsx
-// FIXED: i18n translation issues, mobile optimization, and component bugs
+// IMPROVED: Industry-oriented design with premium UI, consistent with system theme
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,8 +10,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Briefcase, MapPin, Calendar, Clock, IndianRupee, Users,
     Star, Shield, AlertCircle, CheckCircle, XCircle, Truck,
-    Phone, Mail, ExternalLink,
-    Navigation, Loader2, Award, TrendingUp, Zap, Gift, Lock, MessageCircle, X, Eye
+    Phone, Mail, ExternalLink, Navigation, Loader2, Award, 
+    TrendingUp, Zap, Gift, Lock, MessageCircle, X, Eye,
+    Building2, ThumbsUp, Clock3, CalendarDays, Wallet, 
+    FileText, UserCircle, Verified, Home, Route, AlertTriangle
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -26,10 +28,10 @@ const normSkill = (s) => {
 
 const formatPaymentMethod = (method) => {
     switch (method) {
-        case 'cash': return 'Cash';
-        case 'upi_qr': return 'Online UPI / QR';
-        case 'bank_transfer': return 'Direct Bank Account';
-        default: return 'Flexible (Any)';
+        case 'cash': return 'Cash on Completion';
+        case 'upi_qr': return 'UPI / QR Code';
+        case 'bank_transfer': return 'Bank Transfer';
+        default: return 'Flexible Payment';
     }
 };
 
@@ -42,10 +44,10 @@ const formatCommuteText = (commute) => {
 };
 
 const getCommuteToneClass = (commute) => {
-    if (!commute?.available) return 'text-gray-500';
-    if (commute.distanceColor === 'green') return 'text-emerald-700';
-    if (commute.distanceColor === 'yellow') return 'text-amber-700';
-    return 'text-rose-700';
+    if (!commute?.available) return 'text-gray-400';
+    if (commute.distanceColor === 'green') return 'text-emerald-600';
+    if (commute.distanceColor === 'yellow') return 'text-amber-600';
+    return 'text-rose-600';
 };
 
 const openGoogleMapsDirections = ({ lat, lng }) => {
@@ -98,29 +100,30 @@ const getCancelInfo = (job) => {
 const useStatusConfig = () => {
     const { t } = useTranslation();
     return {
-        open:                { label: t('common.open', 'Open'),      color: 'bg-green-500', bg: 'bg-green-50',  text: 'text-green-700',  icon: Zap },
-        scheduled:           { label: t('common.scheduled', 'Scheduled'), color: 'bg-blue-500',  bg: 'bg-blue-50',   text: 'text-blue-700',   icon: Calendar },
-        running:             { label: t('common.running', 'Running'),   color: 'bg-yellow-500',bg: 'bg-yellow-50', text: 'text-yellow-700', icon: Truck },
-        completed:           { label: t('common.completed', 'Completed'), color: 'bg-emerald-500',bg:'bg-emerald-50',text: 'text-emerald-700',icon: CheckCircle },
-        cancelled_by_client: { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
-        cancelled_by_worker: { label: t('job_bookings.cancelled_by_worker', 'Cancelled by Worker'), color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', icon: XCircle },
-        cancelled:           { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500',   bg: 'bg-red-50',    text: 'text-red-700',    icon: XCircle },
+        open:                { label: t('common.open', 'Open for Applications'), color: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: Zap, badge: 'Open' },
+        scheduled:           { label: t('common.scheduled', 'Scheduled'), color: 'bg-blue-500', bg: 'bg-blue-50', text: 'text-blue-700', icon: Calendar, badge: 'Confirmed' },
+        running:             { label: t('common.running', 'In Progress'), color: 'bg-amber-500', bg: 'bg-amber-50', text: 'text-amber-700', icon: Truck, badge: 'Active' },
+        completed:           { label: t('common.completed', 'Completed'), color: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: CheckCircle, badge: 'Done' },
+        cancelled_by_client: { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', icon: XCircle, badge: 'Cancelled' },
+        cancelled_by_worker: { label: t('job_bookings.cancelled_by_worker', 'Cancelled'), color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', icon: XCircle, badge: 'Cancelled' },
+        cancelled:           { label: t('common.cancelled', 'Cancelled'), color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', icon: XCircle, badge: 'Cancelled' },
     };
 };
 
-function SBadge({ status }) {
+function SBadge({ status, size = 'sm' }) {
     const STATUS_CONFIG = useStatusConfig();
-    const config = STATUS_CONFIG[status] || { label: status || 'Unknown', bg: 'bg-gray-100', text: 'text-gray-600', icon: AlertCircle };
+    const config = STATUS_CONFIG[status] || { label: status || 'Unknown', bg: 'bg-gray-100', text: 'text-gray-600', icon: AlertCircle, badge: 'Unknown' };
     const Icon = config.icon;
+    const sizeClasses = size === 'sm' ? 'text-xs px-2.5 py-1 gap-1' : 'text-sm px-3 py-1.5 gap-1.5';
     return (
-        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${config.bg} ${config.text} shadow-sm`}>
-            <Icon size={12} />
-            <span className="truncate">{config.label}</span>
+        <span className={`inline-flex items-center ${sizeClasses} font-bold rounded-full ${config.bg} ${config.text} shadow-sm border border-current/10`}>
+            <Icon size={size === 'sm' ? 12 : 14} />
+            <span className="truncate">{config.badge}</span>
         </span>
     );
 }
 
-// ── Cancel Confirm Modal (Mobile Optimized) ──────────────────────────────────────
+// ── Cancel Confirm Modal ──────────────────────────────────────────────────────
 function CancelModal({ job, mySlot, onClose, onCancelled }) {
     const { t } = useTranslation();
     const [reason, setReason] = useState('');
@@ -145,7 +148,6 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
         }
     };
 
-    // Handle escape key
     useEffect(() => {
         const handleEscape = (e) => {
             if (e.key === 'Escape') onClose();
@@ -167,35 +169,37 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: '100%', opacity: 0 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="bg-white w-full sm:rounded-3xl sm:max-w-md rounded-t-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto"
+                className="bg-white w-full sm:rounded-2xl sm:max-w-md rounded-t-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center gap-3 mb-4 sticky top-0 bg-white pb-2">
-                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <AlertCircle size={20} className="text-red-500" />
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-md">
+                        <AlertTriangle size={22} className="text-white" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-black text-gray-900">{t('job_bookings.cancel_assignment', 'Cancel Assignment')}</h3>
-                        <p className="text-xs text-gray-500 truncate">{job?.title || 'Job'}</p>
+                    <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900">{t('job_bookings.cancel_assignment', 'Cancel Assignment')}</h3>
+                        <p className="text-xs text-gray-500">{job?.title || 'Job'}</p>
                     </div>
-                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
                         <X size={18} className="text-gray-400" />
                     </button>
                 </div>
 
                 {mySlot && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4">
-                        <p className="text-xs text-orange-600 font-semibold">{t('job_bookings.your_role', 'Your Role')}</p>
-                        <p className="text-sm font-bold text-orange-700 capitalize">{mySlot.skill}</p>
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 mb-4">
+                        <p className="text-xs text-amber-600 font-semibold flex items-center gap-1">
+                            <Award size={12} /> {t('job_bookings.your_role', 'Your Assigned Role')}
+                        </p>
+                        <p className="text-sm font-bold text-amber-700 capitalize mt-0.5">{mySlot.skill}</p>
                     </div>
                 )}
 
-                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 mb-4">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5">
                     <div className="flex items-start gap-2">
                         <AlertCircle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
                         <div>
-                            <p className="text-xs font-bold text-red-700 mb-0.5">⚠️ {t('job_bookings.warning', 'Warning')}</p>
-                            <p className="text-xs text-red-600">{t('job_bookings.cancel_warning', 'Cancelling may affect your reliability score.')}</p>
+                            <p className="text-xs font-bold text-red-700 mb-0.5">⚠️ {t('job_bookings.warning', 'Important Note')}</p>
+                            <p className="text-xs text-red-600">{t('job_bookings.cancel_warning', 'Cancelling may affect your reliability score and future job opportunities.')}</p>
                         </div>
                     </div>
                 </div>
@@ -214,13 +218,13 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
                     rows={3}
                     value={reason}
                     onChange={e => setReason(e.target.value)}
-                    placeholder={t('job_bookings.reason_placeholder', 'Please explain why you need to cancel...')}
-                    className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-red-300 focus:ring-4 focus:ring-red-50 resize-none mb-4"
+                    placeholder={t('job_bookings.reason_placeholder', 'Please explain why you need to cancel (e.g., emergency, scheduling conflict)...')}
+                    className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100 resize-none mb-5"
                 />
-                <div className="flex gap-3 sticky bottom-0 bg-white pt-2 pb-1">
+                <div className="flex gap-3">
                     <button 
                         onClick={onClose} 
-                        className="flex-1 py-3 border-2 border-gray-200 text-gray-600 rounded-xl font-semibold hover:bg-gray-50 transition-all active:bg-gray-100"
+                        className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl font-semibold hover:bg-gray-50 transition-all active:bg-gray-100"
                     >
                         {t('job_bookings.keep_job', 'Keep Job')}
                     </button>
@@ -237,6 +241,7 @@ function CancelModal({ job, mySlot, onClose, onCancelled }) {
     );
 }
 
+// ── Booking Detail Modal ──────────────────────────────────────────────────────
 function BookingDetailModal({ jobId, workerSkills, onClose }) {
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -273,35 +278,39 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: '100%', opacity: 0 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="bg-white w-full sm:rounded-3xl shadow-2xl sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+                className="bg-white w-full sm:rounded-2xl shadow-xl sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
                 onClick={e => e.stopPropagation()}
             >
                 {loading ? (
-                    <div className="p-6 text-center">
-                        <Loader2 size={32} className="animate-spin text-orange-500 mx-auto mb-3" />
-                        <p className="text-gray-500 text-sm">Loading job details...</p>
+                    <div className="p-8 text-center">
+                        <Loader2 size="40" className="animate-spin text-orange-500 mx-auto mb-4" />
+                        <p className="text-gray-500">Loading job details...</p>
                     </div>
                 ) : error || !job ? (
-                    <div className="p-6 text-center">
-                        <AlertCircle size={42} className="text-red-500 mx-auto mb-3" />
-                        <p className="text-gray-600 text-sm">{error || 'Job not found.'}</p>
-                        <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-100 rounded-xl text-sm">Close</button>
+                    <div className="p-8 text-center">
+                        <AlertCircle size="48" className="text-red-500 mx-auto mb-4" />
+                        <p className="text-gray-600">{error || 'Job not found.'}</p>
+                        <button onClick={onClose} className="mt-5 px-5 py-2.5 bg-gray-100 rounded-xl text-sm font-semibold">Close</button>
                     </div>
                 ) : (
                     <>
-                        <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 sm:px-6 py-4 sm:py-5 flex-shrink-0">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                    <h2 className="text-white font-black text-lg sm:text-xl leading-tight line-clamp-2">{job.title}</h2>
-                                    <div className="flex flex-wrap gap-2 mt-2">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-5 flex-shrink-0">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Briefcase size="18" className="text-white/80" />
+                                        <h2 className="text-white font-bold text-xl leading-tight">{job.title}</h2>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
                                         {job.urgent && (
                                             <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                                                <Zap size={10} /> Urgent
+                                                <Zap size="10" /> Urgent Hiring
                                             </span>
                                         )}
                                         {job.negotiable && (
                                             <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                                                <Gift size={10} /> Negotiable
+                                                <Gift size="10" /> Negotiable
                                             </span>
                                         )}
                                         {job.shift && (
@@ -311,27 +320,36 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                         )}
                                     </div>
                                 </div>
-                                <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white flex-shrink-0 active:scale-95">
+                                <button 
+                                    onClick={onClose} 
+                                    className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all active:scale-95"
+                                >
                                     ✕
                                 </button>
                             </div>
                         </div>
 
-                        <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
+                        {/* Content */}
+                        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+                            {/* Client Info */}
                             {job.postedBy && (
-                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4">
-                                    <div className="flex items-start gap-3 sm:gap-4">
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+                                    <div className="flex items-center gap-4">
                                         <img
                                             src={getImageUrl(job.postedBy.photo)}
                                             alt={job.postedBy.name || 'Client'}
-                                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-white shadow-md flex-shrink-0"
+                                            className="w-14 h-14 rounded-xl object-cover border-2 border-white shadow-md"
                                             onError={e => { e.target.src = '/admin.png'; }}
                                         />
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-bold text-gray-900 text-base sm:text-lg truncate block">{job.postedBy.name || 'Unknown Client'}</span>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <UserCircle size="16" className="text-blue-600" />
+                                                <span className="font-bold text-gray-800">{job.postedBy.name || 'Unknown Client'}</span>
+                                                <Verified size="14" className="text-blue-500" />
+                                            </div>
                                             {job.postedBy.mobile && (
-                                                <a href={`tel:${job.postedBy.mobile}`} className="text-sm text-blue-600 font-semibold mt-1 inline-flex items-center gap-1 break-all">
-                                                    <Phone size={12} /> {job.postedBy.mobile}
+                                                <a href={`tel:${job.postedBy.mobile}`} className="text-sm text-blue-600 font-medium inline-flex items-center gap-1">
+                                                    <Phone size="12" /> {job.postedBy.mobile}
                                                 </a>
                                             )}
                                         </div>
@@ -339,62 +357,69 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                 </div>
                             )}
 
-                            <div className={`gap-4 ${job.photos?.length > 0 ? 'lg:flex lg:items-start' : ''}`}>
-                                <div className={job.photos?.length > 0 ? 'lg:flex-1' : ''}>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <Briefcase size={12} /> About the Job
-                                    </p>
-                                    <div className="bg-gray-50 rounded-2xl p-4">
-                                        <p className="text-sm text-gray-700 leading-relaxed break-words">{job.description || job.title}</p>
-                                    </div>
+                            {/* Job Description */}
+                            <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <FileText size="16" className="text-orange-500" />
+                                    <h3 className="font-bold text-gray-800">Job Description</h3>
                                 </div>
-
-                                {job.photos?.length > 0 && (
-                                    <div className="mt-3 lg:mt-0 lg:w-56 xl:w-64">
-                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Work Area Photos</p>
-                                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-                                            {job.photos.slice(0, 6).map((p, i) => {
-                                                const url = getImageUrl(p);
-                                                return (
-                                                    <button
-                                                        key={i}
-                                                        type="button"
-                                                        onClick={() => setPreviewPhoto(url)}
-                                                        className="group block w-full text-left"
-                                                    >
-                                                        <img
-                                                            src={url}
-                                                            alt={`Work area ${i + 1}`}
-                                                            className="w-full aspect-square object-cover rounded-xl border border-gray-200 group-hover:border-orange-300 transition-colors"
-                                                        />
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
+                                <div className="bg-gray-50 rounded-xl p-4">
+                                    <p className="text-sm text-gray-700 leading-relaxed">{job.description || job.title}</p>
+                                </div>
                             </div>
 
+                            {/* Photos */}
+                            {job.photos?.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Eye size="16" className="text-orange-500" />
+                                        <h3 className="font-bold text-gray-800">Work Site Photos</h3>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {job.photos.slice(0, 6).map((p, i) => {
+                                            const url = getImageUrl(p);
+                                            return (
+                                                <button
+                                                    key={i}
+                                                    type="button"
+                                                    onClick={() => setPreviewPhoto(url)}
+                                                    className="group relative aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-orange-300 transition-all"
+                                                >
+                                                    <img
+                                                        src={url}
+                                                        alt={`Site ${i + 1}`}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Available Positions */}
                             {job.openSlotSummary && Object.keys(job.openSlotSummary).length > 0 && (
                                 <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <Users size={12} /> Positions Available
-                                    </p>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Users size="16" className="text-orange-500" />
+                                        <h3 className="font-bold text-gray-800">Positions Available</h3>
+                                    </div>
                                     <div className="space-y-2">
                                         {Object.entries(job.openSlotSummary).map(([skill, count]) => {
                                             const isMatch = workerSkills.includes(normSkill(skill));
                                             return (
-                                                <div key={skill} className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
-                                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <span className="font-bold text-orange-700 capitalize text-sm">{skill}</span>
+                                                <div key={skill} className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-3 border border-orange-100">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-orange-700 capitalize">{skill}</span>
                                                             {isMatch && (
-                                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                                                                    <Star size={10} /> Your skill
+                                                                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                                                                    <Star size="10" /> Your Skill
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-full font-bold">
+                                                        <span className="text-sm bg-orange-500 text-white px-3 py-1 rounded-full font-bold">
                                                             {count} slot{count > 1 ? 's' : ''}
                                                         </span>
                                                     </div>
@@ -405,96 +430,105 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                                 </div>
                             )}
 
+                            {/* Payment */}
                             <div>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <IndianRupee size={12} /> Payment Terms
-                                </p>
-                                <div className="bg-gray-50 rounded-2xl p-3 space-y-1.5">
-                                    <p className="text-sm text-gray-700 break-words">
-                                        <span className="font-semibold">Method:</span> {formatPaymentMethod(job.paymentMethod)}
-                                    </p>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Wallet size="16" className="text-orange-500" />
+                                    <h3 className="font-bold text-gray-800">Payment Details</h3>
+                                </div>
+                                <div className="bg-gray-50 rounded-xl p-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-600">Payment Method</span>
+                                        <span className="text-sm font-semibold text-gray-800">{formatPaymentMethod(job.paymentMethod)}</span>
+                                    </div>
                                 </div>
                             </div>
 
+                            {/* Schedule */}
                             {(job.scheduledDate || job.scheduledTime) && (
                                 <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <Calendar size={12} /> Schedule
-                                    </p>
-                                    <div className="bg-gray-50 rounded-2xl p-3 space-y-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <CalendarDays size="16" className="text-orange-500" />
+                                        <h3 className="font-bold text-gray-800">Schedule</h3>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                                         {job.scheduledDate && (
-                                            <p className="text-sm text-gray-700 flex items-center gap-2 break-words">
-                                                <Calendar size={14} className="flex-shrink-0" />
-                                                {new Date(job.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                                            </p>
+                                            <div className="flex items-center gap-3 text-sm text-gray-700">
+                                                <Calendar size="14" className="text-gray-400" />
+                                                <span>{new Date(job.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                            </div>
                                         )}
-                                        {job.scheduledTime && <p className="text-sm text-gray-700 break-words">🕐 {job.scheduledTime}</p>}
-                                        {job.shift && <p className="text-sm text-gray-600 break-words">{job.shift}</p>}
+                                        {job.scheduledTime && (
+                                            <div className="flex items-center gap-3 text-sm text-gray-700">
+                                                <Clock size="14" className="text-gray-400" />
+                                                <span>{job.scheduledTime}</span>
+                                            </div>
+                                        )}
+                                        {job.shift && (
+                                            <div className="flex items-center gap-3 text-sm text-gray-600">
+                                                <Clock3 size="14" className="text-gray-400" />
+                                                <span>{job.shift}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
 
+                            {/* Location */}
                             {job.location?.city && (
                                 <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <MapPin size={12} /> Location
-                                    </p>
-                                    <div className="bg-gray-50 rounded-2xl p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Home size="16" className="text-orange-500" />
+                                        <h3 className="font-bold text-gray-800">Work Location</h3>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                                         {job.location?.fullAddress && (
-                                            <p className="text-sm text-gray-700 break-words mb-1.5">{job.location.fullAddress}</p>
+                                            <p className="text-sm text-gray-700">{job.location.fullAddress}</p>
                                         )}
-                                        <p className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
-                                            <MapPin size={14} />
-                                            {[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}
-                                        </p>
+                                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                                            <MapPin size="14" className="text-gray-400" />
+                                            <span>{[job.location.locality, job.location.city, job.location.pincode].filter(Boolean).join(', ')}</span>
+                                        </div>
                                         {job.location?.buildingName && (
-                                            <p className="text-sm text-gray-700 break-words mt-1">
-                                                <span className="font-semibold">Building/Home:</span> {job.location.buildingName}
-                                            </p>
+                                            <p className="text-sm text-gray-600"><span className="font-semibold">Building:</span> {job.location.buildingName}</p>
                                         )}
                                         {job.location?.unitNumber && (
-                                            <p className="text-sm text-gray-700 break-words mt-1">
-                                                <span className="font-semibold">Flat/Home No.:</span> {job.location.unitNumber}
-                                            </p>
+                                            <p className="text-sm text-gray-600"><span className="font-semibold">Unit/Flat:</span> {job.location.unitNumber}</p>
                                         )}
-                                        {job.location?.floorNumber && (
-                                            <p className="text-sm text-gray-700 break-words mt-1">
-                                                <span className="font-semibold">Floor:</span> {job.location.floorNumber}
-                                            </p>
-                                        )}
-                                        <p className={`text-xs font-semibold mt-2 ${getCommuteToneClass(job?.commute)}`}>
-                                            {formatCommuteText(job?.commute)}
-                                            {job?.commute?.isLocationStale ? ' • stale location' : ''}
+                                        <p className={`text-xs font-semibold mt-2 flex items-center gap-1 ${getCommuteToneClass(job?.commute)}`}>
+                                            <Route size="12" /> {formatCommuteText(job?.commute)}
+                                            {job?.commute?.isLocationStale ? ' • Location may be stale' : ''}
                                         </p>
+                                        {Number.isFinite(Number(job.location?.lat)) && Number.isFinite(Number(job.location?.lng)) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
+                                                className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-xl font-semibold text-sm hover:bg-blue-100 transition-all"
+                                            >
+                                                <Navigation size="14" /> Get Directions
+                                            </button>
+                                        )}
                                     </div>
-                                    {Number.isFinite(Number(job.location?.lat)) && Number.isFinite(Number(job.location?.lng)) && (
-                                        <button
-                                            type="button"
-                                            onClick={() => openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng })}
-                                            className="mt-2 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-semibold text-sm hover:bg-blue-100 transition-all"
-                                        >
-                                            <Navigation size={14} /> View Location In Google Maps
-                                        </button>
-                                    )}
                                 </div>
                             )}
 
+                            {/* Client Answers */}
                             {job.qaAnswers?.filter(q => q.answer).length > 0 && (
                                 <div>
-                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                        <MessageCircle size={12} /> Client's Answers
-                                    </p>
-                                    <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <MessageCircle size="16" className="text-orange-500" />
+                                        <h3 className="font-bold text-gray-800">Client Requirements</h3>
+                                    </div>
+                                    <div className="space-y-2">
                                         {job.qaAnswers.filter(q => q.answer).slice(0, 5).map((qa, i) => (
-                                            <div key={i} className="p-3 sm:p-4 border-b border-amber-100 last:border-0">
-                                                <p className="text-xs font-bold text-amber-700 mb-1 break-words">Q: {qa.question}</p>
-                                                <p className="text-sm text-gray-800 break-words">A: {qa.answer}</p>
+                                            <div key={i} className="bg-amber-50 rounded-xl p-3 border border-amber-100">
+                                                <p className="text-xs font-bold text-amber-700 mb-1">Q: {qa.question}</p>
+                                                <p className="text-sm text-gray-700">A: {qa.answer}</p>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
-
                         </div>
                     </>
                 )}
@@ -506,27 +540,27 @@ function BookingDetailModal({ jobId, workerSkills, onClose }) {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
+                        className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
                         onClick={() => setPreviewPhoto('')}
                     >
                         <motion.div
-                            initial={{ scale: 0.94, opacity: 0 }}
+                            initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.94, opacity: 0 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
                             className="relative max-w-5xl w-full"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <button
                                 type="button"
                                 onClick={() => setPreviewPhoto('')}
-                                className="absolute -top-3 -right-3 bg-white text-gray-700 rounded-full px-3 py-1.5 text-xs font-bold shadow"
+                                className="absolute -top-12 right-0 bg-white/20 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/30 transition-colors"
                             >
-                                Close
+                                Close ✕
                             </button>
                             <img
                                 src={previewPhoto}
-                                alt="Work area preview"
-                                className="w-full max-h-[85vh] object-contain rounded-xl border border-white/20"
+                                alt="Work site preview"
+                                className="w-full max-h-[85vh] object-contain rounded-xl"
                             />
                         </motion.div>
                     </motion.div>
@@ -551,14 +585,14 @@ class ErrorBoundary extends React.Component {
     render() {
         if (this.state.hasError) {
             return (
-                <div className="max-w-3xl mx-auto p-4">
-                    <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
-                        <AlertCircle size={40} className="text-red-500 mx-auto mb-3" />
-                        <h2 className="text-base font-bold text-red-700 mb-2">Something went wrong</h2>
-                        <p className="text-sm text-red-600 mb-4">{this.state.error?.message || 'Unable to load bookings'}</p>
+                <div className="max-w-3xl mx-auto p-5">
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
+                        <AlertCircle size="48" className="text-red-500 mx-auto mb-4" />
+                        <h2 className="text-lg font-bold text-red-700 mb-2">Something went wrong</h2>
+                        <p className="text-sm text-red-600 mb-5">{this.state.error?.message || 'Unable to load bookings'}</p>
                         <button 
                             onClick={() => window.location.reload()} 
-                            className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors"
+                            className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl text-sm font-semibold hover:shadow-lg transition-all"
                         >
                             Refresh Page
                         </button>
@@ -570,7 +604,7 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-// ── Job Card (Mobile Optimized) ──────────────────────────────────────────────────
+// ── Job Card (Premium Design) ──────────────────────────────────────────────────
 function JobCard({ job, workerId, onCancel, onCancelPending, onViewDetails, activeSection, cancellingPending }) {
     const navigate = useNavigate();
     const { t } = useTranslation();
@@ -629,174 +663,209 @@ function JobCard({ job, workerId, onCancel, onCancelPending, onViewDetails, acti
         ? (cancelledByWorker ? 'cancelled_by_worker' : (cancelledByClient ? 'cancelled_by_client' : 'cancelled'))
         : job?.status;
     const jobPhoto = job?.photos?.[0] ? getImageUrl(job.photos[0]) : '';
-
     const cancelInfo = getCancelInfo(job);
+    
+    // Format date for display
+    const formattedDate = job?.scheduledDate 
+        ? new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+        : 'Date TBD';
+    
+    const formattedPay = job?.payment?.toLocaleString('en-IN') || '0';
 
     if (!job) return null;
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            whileHover={{ y: -2 }}
-            className="bg-white rounded-2xl border-2 border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden h-full flex flex-col"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            whileHover={{ y: -4 }}
+            transition={{ duration: 0.2 }}
+            className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
         >
-            {jobPhoto && (
-                <div className="relative h-32 border-b border-gray-100 overflow-hidden">
-                    <img
-                        src={jobPhoto}
-                        alt={job?.title || 'Job'}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            e.target.style.display = 'none';
-                        }}
-                    />
-                </div>
-            )}
-
-            <div className="flex items-start gap-3 p-4">
-                <div className="relative flex-shrink-0">
-                    <img
-                        src={getImageUrl(job?.postedBy?.photo)}
-                        alt=""
-                        className="w-10 h-10 rounded-xl object-cover border-2 border-orange-200 shadow-sm"
-                        onError={e => { e.target.src = '/admin.png'; }}
-                    />
-                    {['scheduled', 'running'].includes(job?.status) && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
-                            <CheckCircle size={8} className="text-white" />
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                        <h3 className="font-bold text-gray-900 text-sm leading-tight line-clamp-2 flex-1">{job?.title || 'Untitled Job'}</h3>
-                        <div className="flex-shrink-0">
-                            <SBadge status={displayStatus} />
-                        </div>
-                    </div>
-                    <p className="text-xs text-gray-500 flex items-center gap-1 mb-1.5">
-                        <Users size={10} /> <span className="truncate">{job?.postedBy?.name || 'Unknown Client'}</span>
-                    </p>
-
-                    {/* My assigned slots - mobile scrollable */}
-                    {mySlots.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-1.5">
-                            {mySlots.map((s, i) => (
-                                <span key={i} className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
-                                    s?.status === 'task_completed' ? 'bg-emerald-100 text-emerald-700' :
-                                    s?.status === 'filled' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                                }`}>
-                                    <Briefcase size={10} /> {s?.skill || 'General'} {s?.status === 'task_completed' && '✓'}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Application tags */}
-                    {showApplicationState && (pendingApps.length > 0 || rejectedApps.length > 0 || cancelledByYouApps.length > 0) && (
-                        <div className="flex flex-wrap gap-1.5 mb-1.5">
-                            {pendingApps.map((a, i) => (
-                                <span key={i} className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                                    <Clock size={10} /> Applied
-                                </span>
-                            ))}
-                            {rejectedApps.length > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                                    <XCircle size={10} /> Rejected
-                                </span>
-                            )}
-                            {cancelledByYouApps.length > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                                    <X size={10} /> Cancelled by You
-                                </span>
-                            )}
-                            {rejectedApps.length > 0 && rejectedApps[0]?.feedback && (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                                    Reason: {String(rejectedApps[0].feedback)}
-                                </span>
-                            )}
-                        </div>
-                    )}
-
-                    {myQuotedEntries.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-1.5">
-                            {myQuotedEntries.map((entry) => (
-                                <span key={`quote-${entry.key}`} className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <IndianRupee size={10} /> Quoted: {Number(entry.amount).toLocaleString('en-IN')}{entry?.skill ? ` · ${entry.skill}` : ''}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-
-                    {myPaidEntries.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-1.5">
-                            <span className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                                <IndianRupee size={10} /> Paid: {Number(myPaidTotal || 0).toLocaleString('en-IN')}
-                            </span>
-                            {myPaidEntries.map((entry) => (
-                                <span key={`paid-${entry.key}`} className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                    <IndianRupee size={10} /> {Number(entry.amount).toLocaleString('en-IN')}{entry?.skill ? ` · ${entry.skill}` : ''}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                        <span className="flex items-center gap-1 font-bold text-green-600">
-                            <IndianRupee size={11} /> {job?.payment?.toLocaleString() || '0'}
-                        </span>
-                        {job?.scheduledDate && (
-                            <span className="flex items-center gap-1">
-                                <Calendar size={10} />
-                                {new Date(job.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                            </span>
-                        )}
-                        {job?.scheduledTime && <span className="flex items-center gap-1"><Clock size={10} /> {job.scheduledTime}</span>}
-                        {job?.location?.city && <span className="flex items-center gap-1"><MapPin size={10} /> {job.location.city}</span>}
-                    </div>
-
-                    <p className={`mt-2 text-xs font-semibold ${getCommuteToneClass(job?.commute)}`}>
-                        {formatCommuteText(job?.commute)}
-                        {job?.commute?.isLocationStale ? ' • stale location' : ''}
-                    </p>
-
-                    <div className="grid grid-cols-3 gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (Number.isFinite(Number(job?.location?.lat)) && Number.isFinite(Number(job?.location?.lng))) {
-                                    openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng });
-                                }
+            {/* Card Header with Image */}
+            <div className="relative">
+                {jobPhoto ? (
+                    <>
+                        <img
+                            src={jobPhoto}
+                            alt={job?.title || 'Job'}
+                            className="w-full h-36 object-cover"
+                            onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.parentElement?.querySelector('.no-image')?.classList.remove('hidden');
                             }}
-                            className="text-xs px-2 py-2 border-2 border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-bold disabled:opacity-60"
-                            disabled={!(Number.isFinite(Number(job?.location?.lat)) && Number.isFinite(Number(job?.location?.lng)))}
-                        >
-                            Maps
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onViewDetails(job._id)}
-                            className="text-xs px-2 py-2 border-2 border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 font-bold"
-                        >
-                            Details
-                        </button>
-                        <div className="text-xs px-2 py-2 rounded-lg font-bold bg-gray-100 text-gray-500 text-center">Status</div>
+                        />
+                        <div className="no-image hidden absolute inset-0 bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center">
+                            <Briefcase size="32" className="text-orange-300" />
+                        </div>
+                    </>
+                ) : (
+                    <div className="w-full h-36 bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center">
+                        <Briefcase size="36" className="text-orange-300" />
                     </div>
+                )}
+                
+                {/* Status Badge Overlay */}
+                <div className="absolute top-3 left-3">
+                    <SBadge status={displayStatus} size="sm" />
+                </div>
+                
+                {/* Payment Badge */}
+                <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm rounded-full px-2.5 py-1 shadow-md">
+                    <span className="text-sm font-bold text-orange-600 flex items-center gap-1">
+                        <IndianRupee size="12" /> {formattedPay}
+                    </span>
                 </div>
             </div>
 
-            <div className="border-t border-gray-100 p-3 space-y-2">
+            {/* Card Content */}
+            <div className="p-4">
+                {/* Job Title & Client */}
+                <div className="mb-3">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className="font-bold text-gray-800 text-base leading-tight line-clamp-2 flex-1">
+                            {job?.title || 'Untitled Job'}
+                        </h3>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <UserCircle size="12" className="text-gray-400" />
+                        <span className="truncate">{job?.postedBy?.name || 'Unknown Client'}</span>
+                    </div>
+                </div>
+
+                {/* Quick Info Row */}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
+                    <span className="flex items-center gap-1">
+                        <Calendar size="10" className="text-orange-400" />
+                        {formattedDate}
+                    </span>
+                    {job?.scheduledTime && (
+                        <span className="flex items-center gap-1">
+                            <Clock size="10" className="text-orange-400" />
+                            {job.scheduledTime}
+                        </span>
+                    )}
+                    {job?.location?.city && (
+                        <span className="flex items-center gap-1">
+                            <MapPin size="10" className="text-orange-400" />
+                            {job.location.city}
+                        </span>
+                    )}
+                </div>
+
+                {/* Skills / Tags */}
+                {mySlots.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                        {mySlots.map((s, i) => (
+                            <span key={i} className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                s?.status === 'task_completed' ? 'bg-emerald-100 text-emerald-700' :
+                                s?.status === 'filled' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                                <Briefcase size="10" /> {s?.skill || 'General'}
+                                {s?.status === 'task_completed' && <CheckCircle size="10" />}
+                            </span>
+                        ))}
+                    </div>
+                )}
+
+                {/* Application Status Tags */}
+                {showApplicationState && (pendingApps.length > 0 || rejectedApps.length > 0 || cancelledByYouApps.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                        {pendingApps.map((a, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                <Clock size="10" /> Pending Review
+                            </span>
+                        ))}
+                        {rejectedApps.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                                <XCircle size="10" /> Not Selected
+                            </span>
+                        )}
+                        {cancelledByYouApps.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                <X size="10" /> Withdrawn
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {/* Quote & Payment Info */}
+                {myQuotedEntries.length > 0 && (
+                    <div className="mb-3">
+                        {myQuotedEntries.map((entry) => (
+                            <span key={`quote-${entry.key}`} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 mr-1.5">
+                                <IndianRupee size="10" /> Quoted: ₹{Number(entry.amount).toLocaleString('en-IN')}
+                                {entry?.skill && <span className="text-emerald-600">· {entry.skill}</span>}
+                            </span>
+                        ))}
+                    </div>
+                )}
+
+                {myPaidEntries.length > 0 && (
+                    <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-blue-700 flex items-center gap-1">
+                                <Wallet size="12" /> Total Paid
+                            </span>
+                            <span className="text-sm font-bold text-blue-800">₹{Number(myPaidTotal || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Commute Info */}
+                <div className={`text-xs font-medium mb-3 flex items-center gap-1 ${getCommuteToneClass(job?.commute)}`}>
+                    <Route size="12" />
+                    <span className="truncate">{formatCommuteText(job?.commute)}</span>
+                    {job?.commute?.isLocationStale && <span className="text-gray-400 text-[10px]">• stale</span>}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (Number.isFinite(Number(job?.location?.lat)) && Number.isFinite(Number(job?.location?.lng))) {
+                                openGoogleMapsDirections({ lat: job.location.lat, lng: job.location.lng });
+                            } else {
+                                toast.error('Location coordinates not available');
+                            }
+                        }}
+                        disabled={!(Number.isFinite(Number(job?.location?.lat)) && Number.isFinite(Number(job?.location?.lng)))}
+                        className="flex items-center justify-center gap-1.5 text-xs px-2 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Navigation size="12" /> Map
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onViewDetails(job._id)}
+                        className="flex items-center justify-center gap-1.5 text-xs px-2 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 font-semibold transition-all"
+                    >
+                        <Eye size="12" /> Details
+                    </button>
+                    <button
+                        type="button"
+                        className="flex items-center justify-center gap-1.5 text-xs px-2 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold cursor-default"
+                    >
+                        <Briefcase size="12" /> Status
+                    </button>
+                </div>
+            </div>
+
+            {/* Bottom Action Bar */}
+            <div className="border-t border-gray-100 p-3 bg-gray-50/50">
                 {showApplicationState && pendingApps.length > 0 && (
                     <button
                         type="button"
                         onClick={() => onCancelPending(job)}
                         disabled={!!cancellingPending}
-                        className="w-full py-2 border-2 border-red-200 bg-white text-red-600 rounded-xl font-bold text-xs hover:bg-red-50 disabled:opacity-60"
+                        className="w-full py-2.5 border border-red-200 bg-white text-red-600 rounded-xl font-semibold text-sm hover:bg-red-50 disabled:opacity-60 transition-all"
                     >
-                        {cancellingPending ? 'Cancelling Application...' : 'Cancel Application'}
+                        {cancellingPending ? (
+                            <Loader2 size="14" className="animate-spin mx-auto" />
+                        ) : (
+                            'Withdraw Application'
+                        )}
                     </button>
                 )}
 
@@ -804,9 +873,9 @@ function JobCard({ job, workerId, onCancel, onCancelPending, onViewDetails, acti
                     <button
                         type="button"
                         onClick={() => onCancel({ job, mySlot: myPrimary })}
-                        className="w-full py-2 border-2 border-red-200 bg-white text-red-500 rounded-xl font-bold text-xs hover:bg-red-50"
+                        className="w-full py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold text-sm hover:shadow-md transition-all active:scale-95"
                     >
-                        {t('job_bookings.cancel_assignment', 'Cancel Assignment')}
+                        Cancel Assignment
                     </button>
                 )}
             </div>
@@ -814,7 +883,7 @@ function JobCard({ job, workerId, onCancel, onCancelPending, onViewDetails, acti
     );
 }
 
-// ── Main Component (Mobile Optimized) ─────────────────────────────────────────────
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function JobBookings() {
     const navigate = useNavigate();
     const { t } = useTranslation();
@@ -823,7 +892,7 @@ export default function JobBookings() {
     const [loading, setLoading] = useState(true);
     const [cancelData, setCancelData] = useState(null);
     const [detailId, setDetailId] = useState(null);
-    const [activeSection, setActiveSection] = useState('in_progress');
+    const [activeSection, setActiveSection] = useState('running');
     const [error, setError] = useState(null);
     const [cancellingPendingByJob, setCancellingPendingByJob] = useState({});
 
@@ -870,7 +939,7 @@ export default function JobBookings() {
             if (cancelledByWorkerAfterAssignment) return 'cancelled';
             if (job.status === 'completed') return 'completed';
             if (mySlots.length > 0 && mySlots.every(s => s?.status === 'task_completed')) return 'completed';
-            if (job.status === 'running') return 'in_progress';
+            if (job.status === 'running') return 'running';
             if (mySlots.some(s => ['filled', 'running'].includes(s?.status))) return 'in_progress';
             if (job.status === 'scheduled' && (mySlots.length > 0 || inAssignedTo)) return 'in_progress';
             if (!isAssignedToMe && myApps.some(a => a?.status === 'pending')) return 'open';
@@ -889,34 +958,23 @@ export default function JobBookings() {
         return jobs.reduce((acc, job) => {
             try {
                 const section = getBookingSection(job);
-                // Separate 'running' jobs
-                if (job.status === 'running') {
-                    if (!acc.running) acc.running = [];
-                    acc.running.push(job);
-                } else if (section === 'completed') {
-                    // Exclude running jobs from completed
-                    if (!acc.completed) acc.completed = [];
-                    acc.completed.push(job);
-                } else {
-                    if (!acc[section]) acc[section] = [];
-                    acc[section].push(job);
-                }
+                if (!acc[section]) acc[section] = [];
+                acc[section].push(job);
             } catch {
                 if (!acc.others) acc.others = [];
                 acc.others.push(job);
             }
             return acc;
-        }, { open: [], running: [], in_progress: [], completed: [], cancelled: [], others: [] });
+        }, { running: [], in_progress: [], open: [], completed: [], cancelled: [], others: [] });
     }, [jobs, getBookingSection]);
 
-    // Section metadata with translations
+    // Section metadata with enhanced icons
     const sectionMeta = [
-        { key: 'running',     title: t('job_bookings.sections.running', 'Running'),     icon: Truck,        color: 'yellow', empty: t('job_bookings.empty.running', 'No running jobs') },
-        { key: 'in_progress', title: t('job_bookings.sections.in_progress', 'In Progress'), icon: Zap,          color: 'orange', empty: t('job_bookings.empty.in_progress', 'No jobs in progress') },
-        { key: 'open',        title: 'Applied and Rejected',        icon: Award,         color: 'green',  empty: 'No applied or rejected jobs' },
-        { key: 'completed',   title: t('job_bookings.sections.completed', 'Completed'),   icon: CheckCircle,  color: 'emerald',empty: t('job_bookings.empty.completed', 'No completed jobs') },
-        { key: 'cancelled',   title: t('job_bookings.sections.cancelled', 'Cancelled'),   icon: XCircle,      color: 'red',    empty: t('job_bookings.empty.cancelled', 'No cancelled jobs') },
-        { key: 'others',      title: t('job_bookings.sections.others', 'Others'),      icon: AlertCircle,  color: 'gray',   empty: t('job_bookings.empty.others', 'No other jobs') },
+        { key: 'running', title: 'Active Jobs', icon: Truck, color: 'amber', count: groupedJobs.running?.length || 0, gradient: 'from-amber-500 to-orange-500' },
+        { key: 'in_progress', title: 'Upcoming', icon: Calendar, color: 'blue', count: groupedJobs.in_progress?.length || 0, gradient: 'from-blue-500 to-indigo-500' },
+        { key: 'open', title: 'Applications', icon: FileText, color: 'emerald', count: groupedJobs.open?.length || 0, gradient: 'from-emerald-500 to-teal-500' },
+        { key: 'completed', title: 'Completed', icon: CheckCircle, color: 'green', count: groupedJobs.completed?.length || 0, gradient: 'from-green-500 to-emerald-500' },
+        { key: 'cancelled', title: 'Cancelled', icon: XCircle, color: 'red', count: groupedJobs.cancelled?.length || 0, gradient: 'from-red-500 to-rose-500' },
     ];
 
     const handleCancelPendingApplication = useCallback(async (job) => {
@@ -924,10 +982,10 @@ export default function JobBookings() {
         try {
             setCancellingPendingByJob((prev) => ({ ...prev, [job._id]: true }));
             const { data } = await cancelPendingJobApplication(job._id);
-            toast.success(data?.message || 'Application cancelled.');
+            toast.success(data?.message || 'Application withdrawn successfully.');
             await loadBookings();
         } catch (err) {
-            toast.error(err?.response?.data?.message || 'Failed to cancel application.');
+            toast.error(err?.response?.data?.message || 'Failed to withdraw application.');
         } finally {
             setCancellingPendingByJob((prev) => ({ ...prev, [job._id]: false }));
         }
@@ -937,32 +995,44 @@ export default function JobBookings() {
         await loadBookings(); 
     }, [loadBookings]);
 
-    // Mobile touch scroll for section tabs
     const scrollContainerRef = useRef(null);
+
+    // Calculate KPI metrics
+    const totalEarnings = useMemo(() => {
+        return jobs.reduce((total, job) => {
+            const allSlots = job.mySlots || job.workerSlots || [];
+            const mySlots = allSlots.filter(s => {
+                const assignedId = s?.assignedWorker?._id?.toString() || s?.assignedWorker?.toString() || '';
+                return assignedId === workerId;
+            });
+            const paidAmount = mySlots.reduce((sum, slot) => sum + Number(slot?.finalPaidPrice || 0), 0);
+            return total + paidAmount;
+        }, 0);
+    }, [jobs, workerId]);
+
+    const activeJobsCount = (groupedJobs.running?.length || 0) + (groupedJobs.in_progress?.length || 0);
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
-                <motion.div 
-                    animate={{ rotate: 360 }} 
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }} 
-                    className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full"
-                />
-                <p className="mt-4 text-gray-500 font-semibold text-sm">{t('job_bookings.loading', 'Loading your bookings...')}</p>
+            <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 flex items-center justify-center">
+                <div className="text-center">
+                    <Loader2 size="48" className="animate-spin text-orange-500 mx-auto mb-4" />
+                    <p className="text-gray-500 font-medium">Loading your bookings...</p>
+                </div>
             </div>
         );
     }
 
     if (error && jobs.length === 0) {
         return (
-            <div className="max-w-5xl mx-auto p-4" style={{ fontFamily: 'Inter, sans-serif', fontSize: '4.13rem' }}>
-                <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
-                    <AlertCircle size={40} className="text-red-500 mx-auto mb-3" />
-                    <h2 className="text-base font-bold text-red-700 mb-2">Error Loading Bookings</h2>
-                    <p className="text-sm text-red-600 mb-4">{error}</p>
+            <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 flex items-center justify-center p-5">
+                <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center max-w-md shadow-xl">
+                    <AlertCircle size="48" className="text-red-500 mx-auto mb-4" />
+                    <h2 className="text-lg font-bold text-gray-800 mb-2">Unable to Load Bookings</h2>
+                    <p className="text-sm text-gray-500 mb-5">{error}</p>
                     <button 
                         onClick={loadBookings} 
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors"
+                        className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
                     >
                         Try Again
                     </button>
@@ -973,76 +1043,84 @@ export default function JobBookings() {
 
     return (
         <ErrorBoundary>
-            <div className="min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 pb-20">
-                <div className="max-w-5xl mx-auto px-4 pt-4 md:pt-8 space-y-4" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
-
-                    {/* Header - Mobile optimized */}
+            <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-16">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                    
+                    {/* Hero Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-4 text-white shadow-xl"
+                        className="mb-6"
                     >
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm flex-shrink-0">
-                                <Briefcase size={20} className="text-white" />
-                            </div>
-                            <div className="flex-1">
-                                <h1 className="text-xl font-black">{t('job_bookings.title', 'My Bookings')}</h1>
-                                <p className="text-white/90 text-xs mt-0.5">{t('job_bookings.subtitle', 'Track and manage your job assignments')}</p>
+                        <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                        <Briefcase size="24" className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h1 className="text-2xl font-black">My Work Dashboard</h1>
+                                        <p className="text-white/90 text-sm mt-0.5">Track and manage your job assignments</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="bg-white/15 rounded-xl px-4 py-2 text-center">
+                                        <p className="text-2xl font-bold">{activeJobsCount}</p>
+                                        <p className="text-xs text-white/80">Active Jobs</p>
+                                    </div>
+                                    <div className="bg-white/15 rounded-xl px-4 py-2 text-center">
+                                        <p className="text-2xl font-bold">₹{totalEarnings.toLocaleString('en-IN')}</p>
+                                        <p className="text-xs text-white/80">Total Earned</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        {jobs.length > 0 && (
-                            <div className="flex gap-2 mt-2">
-                                <span className="flex items-center gap-1 bg-white/20 rounded-full px-2.5 py-1 text-xs">
-                                    <Briefcase size={10} /> {jobs.length} {t('job_bookings.total_jobs', 'Total Jobs')}
-                                </span>
-                                <span className="flex items-center gap-1 bg-white/20 rounded-full px-2.5 py-1 text-xs">
-                                    <Truck size={10} /> {groupedJobs.in_progress?.length || 0} {t('job_bookings.in_progress', 'In Progress')}
-                                </span>
-                            </div>
-                        )}
                     </motion.div>
 
                     {jobs.length === 0 ? (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
+                            initial={{ opacity: 0, scale: 0.96 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="text-center py-12 bg-white rounded-2xl shadow-xl border border-gray-100"
+                            className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center"
                         >
-                            <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity }} className="text-5xl mb-3">📋</motion.div>
-                            <p className="font-bold text-gray-800 text-lg mb-1">{t('job_bookings.no_bookings', 'No Bookings Yet')}</p>
-                            <p className="text-gray-400 text-xs px-4">{t('job_bookings.apply_for_jobs', 'Apply for jobs to get started')}</p>
+                            <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <Briefcase size="36" className="text-orange-400" />
+                            </div>
+                            <h3 className="font-bold text-gray-800 text-xl mb-2">No Bookings Yet</h3>
+                            <p className="text-gray-400 text-sm mb-5">Apply for jobs to get started with earning</p>
                             <button
                                 onClick={() => navigate('/worker/jobs')}
-                                className="mt-4 inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all touch-manipulation"
+                                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
                             >
-                                <Zap size={14} /> {t('job_bookings.browse_jobs', 'Browse Jobs')}
+                                <Zap size="16" /> Browse Available Jobs
                             </button>
                         </motion.div>
                     ) : (
-                        <div className="space-y-3">
-                            {/* Section Tabs - Horizontal scroll for mobile */}
-                            <div className="overflow-x-auto no-scrollbar -mx-4 px-4" ref={scrollContainerRef}>
-                                <div className="flex items-center gap-1.5 min-w-max pb-1">
+                        <>
+                            {/* Section Tabs */}
+                            <div className="overflow-x-auto no-scrollbar mb-6 -mx-4 px-4" ref={scrollContainerRef}>
+                                <div className="flex items-center gap-2 min-w-max pb-1">
                                     {sectionMeta.map(section => {
-                                        const count = (groupedJobs[section.key] || []).length;
                                         const active = activeSection === section.key;
                                         const Icon = section.icon;
+                                        const count = section.count;
                                         return (
                                             <motion.button
                                                 key={section.key}
                                                 whileTap={{ scale: 0.96 }}
                                                 onClick={() => setActiveSection(section.key)}
-                                                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap touch-manipulation ${
+                                                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
                                                     active
-                                                        ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
-                                                        : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-orange-300'
+                                                        ? `bg-gradient-to-r ${section.gradient} text-white shadow-md`
+                                                        : 'bg-white text-gray-600 border border-gray-200 hover:border-orange-200 hover:text-orange-600'
                                                 }`}
                                             >
-                                                <Icon size={12} />
+                                                <Icon size="16" />
                                                 {section.title}
                                                 {count > 0 && (
-                                                    <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                    <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                                                        active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                                                    }`}>
                                                         {count}
                                                     </span>
                                                 )}
@@ -1052,27 +1130,56 @@ export default function JobBookings() {
                                 </div>
                             </div>
 
-                            {/* Job List */}
+                            {/* KPI Summary Row - Dynamic */}
+                            {activeSection === 'running' && groupedJobs.running?.length > 0 && (
+                                <div className="mb-5 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-100">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Truck size="18" className="text-amber-600" />
+                                        <h3 className="font-bold text-amber-800">Active Assignments</h3>
+                                    </div>
+                                    <p className="text-sm text-amber-700">You have {groupedJobs.running.length} job{groupedJobs.running.length > 1 ? 's' : ''} in progress. Stay on track to complete on time.</p>
+                                </div>
+                            )}
+
+                            {/* Job Cards Grid */}
                             <AnimatePresence mode="wait">
                                 {(() => {
-                                    const section = sectionMeta.find(s => s.key === activeSection) || sectionMeta[0];
-                                    const list = groupedJobs[section.key] || [];
+                                    const activeSectionData = sectionMeta.find(s => s.key === activeSection);
+                                    const list = groupedJobs[activeSection] || [];
 
                                     if (list.length === 0) {
                                         return (
-                                            <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                                className="bg-white rounded-2xl border-2 border-gray-100 p-6 text-center shadow-sm"
+                                            <motion.div 
+                                                key="empty" 
+                                                initial={{ opacity: 0 }} 
+                                                animate={{ opacity: 1 }} 
+                                                exit={{ opacity: 0 }}
+                                                className="bg-white rounded-2xl border border-gray-100 p-10 text-center shadow-sm"
                                             >
-                                                <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                                                    <section.icon size={20} className="text-gray-400" />
+                                                <div className="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                                                    {activeSectionData?.icon && <activeSectionData.icon size="28" className="text-gray-400" />}
                                                 </div>
-                                                <p className="text-gray-500 text-sm font-medium">{section.empty}</p>
+                                                <p className="text-gray-500 font-medium">No {activeSectionData?.title?.toLowerCase()} jobs found</p>
+                                                {activeSection === 'open' && (
+                                                    <button
+                                                        onClick={() => navigate('/worker/jobs')}
+                                                        className="mt-4 inline-flex items-center gap-1.5 text-sm text-orange-500 font-semibold hover:text-orange-600"
+                                                    >
+                                                        Browse available jobs →
+                                                    </button>
+                                                )}
                                             </motion.div>
                                         );
                                     }
 
                                     return (
-                                        <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                        <motion.div 
+                                            key="list" 
+                                            initial={{ opacity: 0 }} 
+                                            animate={{ opacity: 1 }} 
+                                            exit={{ opacity: 0 }} 
+                                            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+                                        >
                                             {list.map(job => (
                                                 <JobCard
                                                     key={job._id}
@@ -1089,10 +1196,11 @@ export default function JobBookings() {
                                     );
                                 })()}
                             </AnimatePresence>
-                        </div>
+                        </>
                     )}
                 </div>
 
+                {/* Modals */}
                 <AnimatePresence>
                     {cancelData && (
                         <CancelModal

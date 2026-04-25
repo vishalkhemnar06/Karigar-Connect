@@ -1,4 +1,4 @@
-// src/pages/worker/Community.jsx — Enhanced with Modern UI + Mobile Optimized (Centered Modal)
+// src/pages/worker/Community.jsx — Premium Community Design with Modern UI
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
@@ -8,7 +8,8 @@ import {
     Image as ImageIcon, Video, Plus, Loader2, MoreVertical,
     ChevronDown, RefreshCw, Users, Shield, ZoomIn, Play, Maximize2,
     Sparkles, Award, TrendingUp, Camera, Music, Smile, 
-    Gift, Star, Crown, Flame, Share2, Bookmark, Flag
+    Gift, Star, Crown, Flame, Share2, Bookmark, Flag,
+    UserCircle, Verified, AlertCircle, CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -35,8 +36,8 @@ const Avatar = ({ user, size = 10, isAdmin = false }) => {
 
   if (isAdmin) {
     return (
-      <div className={`${sizeClass} rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center flex-shrink-0 border-2 border-orange-200 shadow-md`}>
-        <Shield size={size === 10 ? 18 : 14} className="text-white" />
+      <div className={`${sizeClass} rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center flex-shrink-0 border-2 border-orange-200 shadow-md`}>
+        <Shield size={size === 10 ? 16 : 12} className="text-white" />
       </div>
     );
   }
@@ -50,7 +51,7 @@ const Avatar = ({ user, size = 10, isAdmin = false }) => {
     <img
       src={imageSrc}
       alt={user?.name}
-      className={`${sizeClass} rounded-2xl object-cover border-2 border-orange-100 flex-shrink-0 shadow-sm`}
+      className={`${sizeClass} rounded-xl object-cover border-2 border-orange-100 flex-shrink-0 shadow-sm`}
       onError={(e) => {
         e.target.src = `https://ui-avatars.com/api/?name=W&background=f97316&color=fff&bold=true`;
       }}
@@ -58,9 +59,7 @@ const Avatar = ({ user, size = 10, isAdmin = false }) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LIGHTBOX — Enhanced fullscreen overlay (Mobile Optimized)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Lightbox Component ─────────────────────────────────────────────────────
 const Lightbox = ({ mediaUrl, mediaType, onClose }) => {
     const videoRef = useRef(null);
     const [isLandscape, setIsLandscape] = useState(false);
@@ -81,15 +80,6 @@ const Lightbox = ({ mediaUrl, mediaType, onClose }) => {
         }
     }, [mediaType]);
 
-    useEffect(() => {
-        const checkOrientation = () => {
-            setIsLandscape(window.innerWidth > window.innerHeight);
-        };
-        checkOrientation();
-        window.addEventListener('resize', checkOrientation);
-        return () => window.removeEventListener('resize', checkOrientation);
-    }, []);
-
     return (
         <motion.div
             initial={{ opacity: 0 }}
@@ -105,18 +95,10 @@ const Lightbox = ({ mediaUrl, mediaType, onClose }) => {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={onClose}
-                className="absolute top-4 right-4 z-[201] p-2.5 bg-white/10 hover:bg-white/25 rounded-full transition-all border border-white/15 backdrop-blur-sm touch-manipulation"
-            >
+                className="absolute top-4 right-4 z-[201] p-2.5 bg-white/10 hover:bg-white/25 rounded-full transition-all border border-white/15 backdrop-blur-sm"
+              >
                 <X size={20} className="text-white" />
             </motion.button>
-
-            <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/35 text-[10px] select-none pointer-events-none whitespace-nowrap"
-            >
-                Tap outside or press ESC to close
-            </motion.p>
 
             <div
                 className="relative flex items-center justify-center w-full h-full p-4"
@@ -146,9 +128,7 @@ const Lightbox = ({ mediaUrl, mediaType, onClose }) => {
     );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MEDIA THUMBNAIL — Enhanced with better overlay (Mobile Optimized)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Media Display Component ────────────────────────────────────────────────
 const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox, compact }) => {
     if (!mediaUrl) return null;
 
@@ -156,7 +136,7 @@ const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox, compact }) => {
         return (
             <motion.div
                 whileTap={{ scale: 0.98 }}
-                className={`rounded-xl overflow-hidden border border-gray-100 bg-gray-900 relative cursor-pointer group ${compact ? 'w-28 h-28 mb-0 mx-0' : 'mx-4 mb-3 w-full'}`}
+                className={`rounded-xl overflow-hidden border border-gray-100 bg-gray-900 relative cursor-pointer group ${compact ? 'w-28 h-28' : 'w-full'}`}
                 style={compact ? { minWidth: 80, minHeight: 80, maxWidth: 112, maxHeight: 112 } : {}}
                 onClick={() => onOpenLightbox(mediaUrl, 'video')}
             >
@@ -174,10 +154,6 @@ const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox, compact }) => {
                         <Play size={18} className="text-orange-500 ml-0.5" fill="currentColor" />
                     </motion.div>
                 </div>
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
-                    <Maximize2 size={8} />
-                    Tap to play
-                </div>
             </motion.div>
         );
     }
@@ -185,15 +161,15 @@ const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox, compact }) => {
     return (
         <motion.div
             whileTap={{ scale: 0.98 }}
-            className={`rounded-xl overflow-hidden border border-gray-100 cursor-pointer group relative ${compact ? 'w-28 h-28 mb-0 mx-0' : 'mx-4 mb-3 w-full'}`}
+            className={`rounded-xl overflow-hidden border border-gray-100 cursor-pointer group relative ${compact ? 'w-28 h-28' : 'w-full'}`}
             style={compact ? { minWidth: 80, minHeight: 80, maxWidth: 112, maxHeight: 112 } : {}}
             onClick={() => onOpenLightbox(mediaUrl, 'image')}
         >
             <img
                 src={mediaUrl}
                 alt="post media"
-                className={`object-contain transition-transform duration-500 group-hover:scale-105 ${compact ? 'w-full h-full' : ''}`}
-                style={compact ? { background: '#222', width: '100%', height: '100%', display: 'block', margin: 0 } : { maxHeight: '500px', background: '#222', width: '100%', display: 'block', margin: '0 auto' }}
+                className={`object-cover transition-transform duration-500 group-hover:scale-105 ${compact ? 'w-full h-full' : 'w-full max-h-80'}`}
+                style={compact ? { background: '#222' } : { maxHeight: '400px', background: '#f5f5f5' }}
                 onError={e => { e.target.style.display = 'none'; }}
                 loading="lazy"
             />
@@ -210,7 +186,7 @@ const MediaDisplay = ({ mediaUrl, mediaType, onOpenLightbox, compact }) => {
     );
 };
 
-// ── Enhanced Create / Edit Post Modal (Centered on all devices) ──────────────────────────────────────────
+// ── Create/Edit Post Modal ─────────────────────────────────────────────────
 const PostModal = ({ post, onClose, onSaved, currentUser }) => {
     const [content, setContent]         = useState(post?.content || '');
     const [mediaFile, setMediaFile]     = useState(null);
@@ -254,7 +230,6 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
         setCharCount(content.length);
     }, [content]);
 
-    // Auto-focus textarea
     useEffect(() => {
         if (textareaRef.current) {
             setTimeout(() => textareaRef.current?.focus(), 100);
@@ -277,24 +252,33 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
                 className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <Avatar user={currentUser} size={10} />
-                        <div className="min-w-0 flex-1">
-                            <p className="font-bold text-gray-900 text-sm truncate">{currentUser?.name}</p>
-                            <p className="text-[10px] text-orange-500 font-mono truncate">{currentUser?.karigarId}</p>
+                <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-4 flex items-center justify-between flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                            <Edit2 size={14} className="text-white" />
                         </div>
+                        <h3 className="text-white font-bold text-base">
+                            {post ? 'Edit Post' : 'Create Post'}
+                        </h3>
                     </div>
                     <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all flex-shrink-0"
+                        className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center text-white transition-all"
                     >
-                        <X size={18} />
+                        <X size={16} />
                     </motion.button>
                 </div>
 
                 <div className="p-5 space-y-4 flex-1 overflow-y-auto">
+                    <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                        <Avatar user={currentUser} size={10} />
+                        <div>
+                            <p className="font-bold text-gray-800 text-sm">{currentUser?.name}</p>
+                            <p className="text-[10px] text-orange-500 font-mono">{currentUser?.karigarId}</p>
+                        </div>
+                    </div>
+
                     <textarea
                         ref={textareaRef}
                         value={content}
@@ -302,8 +286,9 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
                         placeholder="Share something with the community..."
                         rows={4}
                         maxLength={2000}
-                        className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all resize-none"
+                        className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none transition-all resize-none"
                     />
+                    
                     <div className="flex justify-between items-center">
                         <div className="flex items-center gap-1.5">
                             <Smile size={12} className="text-gray-400" />
@@ -322,7 +307,7 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.9 }}
-                                className="relative rounded-xl overflow-hidden border border-gray-100"
+                                className="relative rounded-xl overflow-hidden border border-gray-100 bg-gray-50"
                             >
                                 {previewType === 'video'
                                     ? <video src={preview} className="w-full max-h-40" controls playsInline />
@@ -330,7 +315,7 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
                                 }
                                 <button
                                     onClick={() => { setMediaFile(null); setPreview(null); setPreviewType(null); }}
-                                    className="absolute top-2 right-2 p-1.5 bg-black/60 text-white rounded-full hover:bg-black/80 transition-all touch-manipulation"
+                                    className="absolute top-2 right-2 p-1.5 bg-black/60 text-white rounded-full hover:bg-black/80 transition-all"
                                 >
                                     <X size={10} />
                                 </button>
@@ -341,14 +326,14 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
 
                 <div className="p-5 border-t border-gray-100 flex-shrink-0">
                     <div className="flex items-center justify-between gap-3">
-                        <div className="flex gap-1">
+                        <div className="flex gap-2">
                             <motion.button
                                 whileTap={{ scale: 0.95 }}
                                 onClick={() => fileRef.current?.click()}
-                                className="flex items-center gap-1.5 text-orange-500 text-sm font-medium px-3 py-2 rounded-xl hover:bg-orange-50 transition-all touch-manipulation"
+                                className="flex items-center gap-1.5 text-orange-500 text-sm font-medium px-3 py-2 rounded-xl hover:bg-orange-50 transition-all"
                             >
                                 <Camera size={14} /> 
-                                <span className="hidden xs:inline">Media</span>
+                                <span className="hidden sm:inline">Add Media</span>
                             </motion.button>
                         </div>
                         <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMedia} />
@@ -356,10 +341,10 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
                             whileTap={{ scale: 0.95 }}
                             onClick={handleSubmit}
                             disabled={saving || !content.trim()}
-                            className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-orange-200 hover:shadow-orange-300 transition-all disabled:opacity-50 touch-manipulation"
+                            className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50"
                         >
                             {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                            {post ? 'Update' : 'Share'}
+                            {post ? 'Update Post' : 'Share Post'}
                         </motion.button>
                     </div>
                 </div>
@@ -368,7 +353,7 @@ const PostModal = ({ post, onClose, onSaved, currentUser }) => {
     );
 };
 
-// ── Enhanced Delete Confirm (Mobile Optimized) ────────────────────────────────────────────────────
+// ── Delete Confirmation Modal ──────────────────────────────────────────────
 const DeleteModal = ({ onConfirm, onClose }) => (
     <motion.div
         initial={{ opacity: 0 }}
@@ -381,30 +366,26 @@ const DeleteModal = ({ onConfirm, onClose }) => (
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 text-center mx-4"
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center"
             onClick={e => e.stopPropagation()}
         >
-            <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3"
-            >
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Trash2 size={24} className="text-red-500" />
-            </motion.div>
-            <h3 className="font-black text-gray-900 text-lg mb-1">Delete Post?</h3>
+            </div>
+            <h3 className="font-bold text-gray-800 text-lg mb-1">Delete Post?</h3>
             <p className="text-gray-500 text-xs mb-5">This action cannot be undone. All likes and comments will be removed.</p>
             <div className="flex gap-3">
                 <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={onClose}
-                    className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl font-bold text-gray-600 text-sm hover:bg-gray-50 transition-all touch-manipulation"
+                    className="flex-1 py-2.5 border border-gray-200 rounded-xl font-semibold text-gray-600 text-sm hover:bg-gray-50 transition-all"
                 >
                     Cancel
                 </motion.button>
                 <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={onConfirm}
-                    className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold text-sm hover:shadow-lg transition-all touch-manipulation"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold text-sm hover:shadow-md transition-all"
                 >
                     Delete
                 </motion.button>
@@ -413,7 +394,7 @@ const DeleteModal = ({ onConfirm, onClose }) => (
     </motion.div>
 );
 
-// ── Enhanced Post Card (Mobile Optimized) ─────────────────────────────────────────────────────────
+// ── Post Card Component ────────────────────────────────────────────────────
 const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, onDeleteComment, onOpenLightbox }) => {
     const [showComments, setShowComments]    = useState(false);
     const [commentText, setCommentText]      = useState('');
@@ -461,27 +442,34 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
             whileHover={{ y: -2 }}
-            className={`bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden ${
+            className={`bg-white rounded-xl border shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden ${
                 isAdminPost ? 'border-orange-200 shadow-orange-100' : 'border-gray-100'
             }`}
         >
+            {/* Admin Banner */}
             {isAdminPost && (
-                <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 flex items-center gap-1.5">
+                <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 flex items-center gap-2">
                     <Shield size={12} className="text-white" />
                     <span className="text-white text-[10px] font-bold tracking-wide">Official Announcement · KarigarConnect Admin</span>
                 </div>
             )}
 
-            {/* Header - Mobile optimized */}
+            {/* Post Header */}
             <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                     <Avatar user={post.author} size={10} isAdmin={isAdminPost} />
-                    <div className="min-w-0 flex-1">
-                        <p className="font-bold text-gray-900 text-sm truncate">
-                            {isAdminPost ? 'KarigarConnect Admin' : (post.author?.name || 'Unknown')}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-gray-800 text-sm truncate">
+                                {isAdminPost ? 'KarigarConnect Admin' : (post.author?.name || 'Unknown Worker')}
+                            </p>
+                            {!isAdminPost && post.author?.verificationStatus === 'approved' && (
+                                <Verified size={12} className="text-emerald-500 flex-shrink-0" />
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             {!isAdminPost && (
                                 <>
                                     <span className="text-[10px] text-orange-500 font-mono font-semibold truncate max-w-[100px]">
@@ -503,7 +491,7 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                         <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => setShowMenu(v => !v)}
-                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all touch-manipulation"
+                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
                         >
                             <MoreVertical size={14} />
                         </motion.button>
@@ -534,13 +522,15 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                 )}
             </div>
 
-            {/* Two-column layout: left message, right image */}
-            <div className="flex flex-row items-stretch gap-4 px-4 pb-2">
-                <div className="flex-1 flex items-center">
-                    <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
+            {/* Post Content with Image Layout */}
+            <div className={`px-4 pb-2 ${post.mediaUrl ? 'flex flex-row gap-4 items-start' : ''}`}>
+                <div className={`flex-1 ${post.mediaUrl ? '' : ''}`}>
+                    <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap break-words">
+                        {post.content}
+                    </p>
                 </div>
                 {post.mediaUrl && (
-                    <div className="flex-shrink-0 flex items-center justify-center">
+                    <div className="flex-shrink-0">
                         <MediaDisplay
                             mediaUrl={post.mediaUrl}
                             mediaType={post.mediaType}
@@ -551,30 +541,30 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                 )}
             </div>
 
-            {/* Stats */}
+            {/* Stats Bar */}
             {(likeCount > 0 || post.comments?.length > 0) && (
-                <div className="px-4 pb-1 flex items-center gap-3 text-[11px] text-gray-400">
+                <div className="px-4 pt-2 pb-1 flex items-center gap-4 text-[11px] text-gray-400 border-t border-gray-50 mt-2">
                     {likeCount > 0 && (
-                        <span className="flex items-center gap-1">
-                            <Heart size={9} className="text-red-500 fill-red-500" />
-                            {likeCount} like{likeCount !== 1 ? 's' : ''}
+                        <span className="flex items-center gap-1.5">
+                            <Heart size={10} className="text-red-500 fill-red-500" />
+                            {likeCount} {likeCount === 1 ? 'like' : 'likes'}
                         </span>
                     )}
                     {!isAdminPost && post.comments?.length > 0 && (
-                        <span className="flex items-center gap-1">
-                            <MessageCircle size={9} />
-                            {post.comments.length} comment{post.comments.length !== 1 ? 's' : ''}
+                        <span className="flex items-center gap-1.5">
+                            <MessageCircle size={10} />
+                            {post.comments.length} {post.comments.length === 1 ? 'comment' : 'comments'}
                         </span>
                     )}
                 </div>
             )}
 
-            {/* Actions - Larger tap targets */}
-            <div className="px-4 pb-3 border-t border-gray-50 pt-2 flex items-center gap-1">
+            {/* Action Buttons */}
+            <div className="px-4 pb-3 pt-2 flex items-center gap-1 border-t border-gray-50">
                 <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={handleLikeClick}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all touch-manipulation ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                         liked ? 'bg-red-50 text-red-500' : 'text-gray-500 hover:bg-gray-100'
                     }`}
                 >
@@ -586,12 +576,12 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                     <motion.button
                         whileTap={{ scale: 0.95 }}
                         onClick={toggleComments}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-500 hover:bg-gray-100 transition-all touch-manipulation"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 transition-all"
                     >
                         <MessageCircle size={14} />
                         Comment
                         {post.comments?.length > 0 && (
-                            <span className="bg-orange-100 text-orange-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-0.5">
+                            <span className="bg-orange-100 text-orange-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-0.5">
                                 {post.comments.length}
                             </span>
                         )}
@@ -600,21 +590,21 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
 
                 <motion.button
                     whileTap={{ scale: 0.95 }}
-                    className="ml-auto flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-600 transition-all touch-manipulation"
+                    className="ml-auto flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-600 transition-all"
                 >
                     <Share2 size={12} />
-                    <span className="hidden xs:inline">Share</span>
+                    <span className="hidden sm:inline">Share</span>
                 </motion.button>
             </div>
 
-            {/* Comments Section - Enhanced & Mobile Optimized */}
+            {/* Comments Section */}
             <AnimatePresence>
                 {!isAdminPost && showComments && (
                     <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="border-t border-gray-50 px-4 pb-4 pt-3 space-y-3"
+                        className="border-t border-gray-100 px-4 py-3 space-y-3 bg-gray-50/50"
                     >
                         {post.comments?.length > 0 && (
                             <div className="space-y-2.5 mb-3 max-h-64 overflow-y-auto custom-scrollbar">
@@ -627,22 +617,27 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                                         className="flex items-start gap-2"
                                     >
                                         <Avatar user={c.author} size={8} />
-                                        <div className="flex-1 bg-gradient-to-r from-gray-50 to-white rounded-xl px-3 py-2 shadow-sm">
+                                        <div className="flex-1 bg-white rounded-lg px-3 py-2 shadow-sm border border-gray-100">
                                             <div className="flex items-center justify-between gap-2 mb-0.5">
-                                                <p className="text-xs font-bold text-gray-800 truncate flex-1">{c.author?.name}</p>
+                                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                                    <p className="text-xs font-bold text-gray-800 truncate">{c.author?.name}</p>
+                                                    {c.author?.verificationStatus === 'approved' && (
+                                                        <Verified size={10} className="text-emerald-500 flex-shrink-0" />
+                                                    )}
+                                                </div>
                                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                                     <span className="text-[9px] text-gray-400">{timeAgo(c.createdAt)}</span>
                                                     {String(c.author?._id) === String(currentUserId) && (
                                                         <button
                                                             onClick={() => onDeleteComment(post._id, c._id)}
-                                                            className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation p-0.5"
+                                                            className="text-gray-300 hover:text-red-400 transition-colors p-0.5"
                                                         >
                                                             <X size={9} />
                                                         </button>
                                                     )}
                                                 </div>
                                             </div>
-                                            <p className="text-xs text-gray-700 leading-relaxed break-words">{c.text}</p>
+                                            <p className="text-xs text-gray-600 leading-relaxed break-words">{c.text}</p>
                                         </div>
                                     </motion.div>
                                 ))}
@@ -657,13 +652,13 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
                                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleComment()}
                                 placeholder="Write a comment..."
                                 maxLength={500}
-                                className="flex-1 border-2 border-gray-100 rounded-xl px-3 py-2 text-sm focus:border-orange-400 focus:ring-4 focus:ring-orange-50 outline-none transition-all"
+                                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none transition-all bg-white"
                             />
                             <motion.button
                                 whileTap={{ scale: 0.95 }}
                                 onClick={handleComment}
                                 disabled={!commentText.trim() || submittingComment}
-                                className="p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex-shrink-0 touch-manipulation"
+                                className="p-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-lg hover:shadow-md transition-all disabled:opacity-50 flex-shrink-0"
                             >
                                 {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                             </motion.button>
@@ -675,7 +670,7 @@ const PostCard = ({ post, currentUserId, onEdit, onDelete, onLike, onComment, on
     );
 };
 
-// ── Main Community Page (Mobile Optimized) ─────────────────────────────────────────────────────────
+// ── Main Community Component ───────────────────────────────────────────────
 export default function Community() {
     const [posts, setPosts]             = useState([]);
     const [loading, setLoading]         = useState(true);
@@ -686,6 +681,7 @@ export default function Community() {
     const [deleteId, setDeleteId]       = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
     const [lightbox, setLightbox]       = useState(null);
+    const [refreshing, setRefreshing]   = useState(false);
 
     useEffect(() => {
         try {
@@ -694,8 +690,10 @@ export default function Community() {
         } catch { /* ignore */ }
     }, []);
 
-    const fetchPosts = useCallback(async (p = 1) => {
-        setLoading(true);
+    const fetchPosts = useCallback(async (p = 1, isRefresh = false) => {
+        if (isRefresh) setRefreshing(true);
+        else setLoading(true);
+        
         try {
             const { data } = await api.getCommunityPosts(p);
             if (p === 1) setPosts(data.posts || []);
@@ -706,10 +704,15 @@ export default function Community() {
             toast.error('Failed to load posts.');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     }, []);
 
     useEffect(() => { fetchPosts(1); }, [fetchPosts]);
+
+    const handleRefresh = () => {
+        fetchPosts(1, true);
+    };
 
     const handlePostSaved = (savedPost, isEdit) => {
         if (isEdit) setPosts(prev => prev.map(p => p._id === savedPost._id ? savedPost : p));
@@ -755,13 +758,14 @@ export default function Community() {
                 if (p._id !== postId) return p;
                 return { ...p, comments: p.comments.filter(c => c._id !== commentId) };
             }));
+            toast.success('Comment deleted.');
         } catch { toast.error('Failed to delete comment.'); }
     };
 
     const currentUserId = currentUser?._id || currentUser?.id;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50/40 via-white to-orange-50/20 pb-20">
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-16">
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 3px;
@@ -773,16 +777,6 @@ export default function Community() {
                 .custom-scrollbar::-webkit-scrollbar-thumb {
                     background: #f97316;
                     border-radius: 10px;
-                }
-                @media (max-width: 640px) {
-                    .custom-scrollbar::-webkit-scrollbar {
-                        width: 2px;
-                    }
-                }
-                .xs\\:inline {
-                    @media (min-width: 480px) {
-                        display: inline;
-                    }
                 }
             `}</style>
 
@@ -811,54 +805,61 @@ export default function Community() {
                 {deleteId && <DeleteModal onConfirm={handleDelete} onClose={() => setDeleteId(null)} />}
             </AnimatePresence>
 
-            <div className="max-w-5xl mx-auto px-4 pt-4 md:pt-8" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
-                {/* Enhanced Header - Mobile Optimized */}
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                
+                {/* Hero Header */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-between mb-5"
+                    className="mb-6"
                 >
-                    <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-200">
-                            <Users size={18} className="text-white" />
+                    <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                    <Users size="24" className="text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black">Community Hub</h1>
+                                    <p className="text-white/90 text-sm mt-0.5">Share, connect & grow with fellow karigars</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="bg-white/15 rounded-xl px-3 py-1.5 text-center">
+                                    <p className="text-xl font-bold">{posts.length}</p>
+                                    <p className="text-[10px] text-white/80">Posts</p>
+                                </div>
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleRefresh}
+                                    className="bg-white/20 rounded-xl px-3 py-1.5 flex items-center gap-1.5 text-sm font-semibold hover:bg-white/30 transition-all"
+                                >
+                                    <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                                    <span className="hidden sm:inline">Refresh</span>
+                                </motion.button>
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => setShowCreate(true)}
+                                    className="bg-white rounded-xl px-4 py-1.5 flex items-center gap-1.5 text-orange-600 font-bold text-sm hover:bg-orange-50 transition-all shadow-md"
+                                >
+                                    <Plus size={14} /> Post
+                                </motion.button>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                                Community
-                            </h1>
-                            <p className="text-[10px] text-gray-500">Share & connect with fellow karigars</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <motion.button
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => fetchPosts(1)}
-                            className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-all touch-manipulation"
-                        >
-                            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                        </motion.button>
-                        <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setShowCreate(true)}
-                            className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white px-3 py-2 rounded-xl font-bold text-xs shadow-lg shadow-orange-200 hover:shadow-orange-300 transition-all touch-manipulation"
-                        >
-                            <Plus size={12} /> 
-                            <span>Create</span>
-                        </motion.button>
                     </div>
                 </motion.div>
 
-                {/* Enhanced Create Prompt - Mobile Optimized */}
+                {/* Create Post Prompt */}
                 <motion.button
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setShowCreate(true)}
-                    className="w-full flex items-center gap-3 bg-white rounded-2xl border-2 border-gray-100 shadow-md p-3 mb-5 hover:border-orange-200 hover:shadow-xl transition-all text-left group touch-manipulation"
+                    className="w-full flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-md p-3 mb-5 hover:border-orange-200 hover:shadow-lg transition-all text-left group"
                 >
                     <Avatar user={currentUser} size={10} />
                     <span className="flex-1 text-xs text-gray-400 group-hover:text-gray-500 transition-all truncate">
-                        What's on your mind, {currentUser?.name?.split(' ')[0]}?
+                        What's on your mind, {currentUser?.name?.split(' ')[0] || 'Karigar'}?
                     </span>
                     <div className="flex items-center gap-1.5">
                         <div className="p-1.5 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-all">
@@ -875,35 +876,27 @@ export default function Community() {
 
                 {/* Posts Feed */}
                 {loading && posts.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16">
-                        <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                            className="w-10 h-10 border-3 border-orange-500 border-t-transparent rounded-full"
-                        />
-                        <p className="mt-3 text-gray-500 font-semibold text-sm">Loading community posts...</p>
+                    <div className="flex flex-col items-center justify-center py-20">
+                        <Loader2 size="48" className="animate-spin text-orange-500 mx-auto mb-4" />
+                        <p className="text-gray-500 font-medium">Loading community posts...</p>
                     </div>
                 ) : posts.length === 0 ? (
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
+                        initial={{ opacity: 0, scale: 0.96 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100"
+                        className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center"
                     >
-                        <motion.div
-                            animate={{ y: [0, -8, 0] }}
-                            transition={{ duration: 2, repeat: Infinity }}
-                        >
-                            <Users size={48} className="mx-auto mb-3 text-gray-300" />
-                        </motion.div>
-                        <p className="font-bold text-gray-700 text-lg mb-1">No posts yet</p>
-                        <p className="text-gray-400 text-xs mb-5 px-4">Be the first to share something with the community!</p>
-                        <motion.button
-                            whileTap={{ scale: 0.95 }}
+                        <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <Users size="36" className="text-orange-400" />
+                        </div>
+                        <h3 className="font-bold text-gray-800 text-xl mb-2">No Posts Yet</h3>
+                        <p className="text-gray-400 text-sm mb-5">Be the first to share something with the community!</p>
+                        <button
                             onClick={() => setShowCreate(true)}
-                            className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-bold text-sm shadow-lg touch-manipulation"
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
                         >
-                            <Sparkles size={14} /> Create First Post
-                        </motion.button>
+                            <Sparkles size="16" /> Create First Post
+                        </button>
                     </motion.div>
                 ) : (
                     <div className="space-y-4">
@@ -930,10 +923,10 @@ export default function Community() {
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => fetchPosts(page + 1)}
                                 disabled={loading}
-                                className="w-full py-3 border-2 border-orange-200 bg-white text-orange-600 rounded-xl font-bold text-sm hover:bg-orange-50 transition-all flex items-center justify-center gap-2 shadow-md touch-manipulation"
+                                className="w-full py-3 bg-white border border-orange-200 text-orange-600 rounded-xl font-semibold text-sm hover:bg-orange-50 transition-all flex items-center justify-center gap-2 shadow-sm"
                             >
                                 {loading ? <Loader2 size={14} className="animate-spin" /> : <ChevronDown size={14} />}
-                                Load more posts
+                                Load More Posts
                             </motion.button>
                         )}
                     </div>

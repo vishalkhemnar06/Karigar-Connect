@@ -1,45 +1,14 @@
 // server/routes/shopRoutes.js
-// FIXED:
-//   - Multer destination now uses path.join(__dirname, '..', 'uploads')
-//     so files land in server/uploads/ (same folder Express serves statically)
-//   - Stored file path uses forward slashes only (no Windows backslash bug):
-//     req.file.path is normalised before saving to DB in shopAuthController
-//   - multer filename uses Date.now() + original name (spaces replaced)
 
 const express = require('express');
 const router  = express.Router();
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
 
 const shopAuth = require('../controllers/shopAuthController');
 const shopCtrl = require('../controllers/shopController');
 const { protectShop } = require('../middleware/shopAuthMiddleware');
+const { createUploader } = require('../utils/cloudinary');
 
-// ── Multer — saves directly to uploads/ root ──────────────────────────────────
-// Files will be accessible at:  GET /uploads/<filename>
-const uploadsDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-const storage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename:    (_req, file, cb) => {
-        const safe = file.originalname.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
-        cb(null, `${Date.now()}-${safe}`);
-    },
-});
-
-const fileFilter = (_req, file, cb) => {
-    const allowed = /jpeg|jpg|png|webp|pdf/i;
-    if (allowed.test(path.extname(file.originalname))) return cb(null, true);
-    cb(new Error('Only jpeg, jpg, png, webp and pdf files are allowed.'));
-};
-
-const upload = multer({
-    storage,
-    fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-});
+const upload = createUploader('karigarconnect/shop-media', ['image', 'application/pdf']);
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 router.post('/auth/send-mobile-otp',   shopAuth.sendMobileOtp);

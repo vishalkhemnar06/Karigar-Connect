@@ -1,6 +1,5 @@
 // src/pages/worker/History.jsx
-// MOBILE-FRIENDLY & ENHANCED VERSION
-// Features: Responsive design, touch-friendly, modern cards, animations, better UX
+// PREMIUM VERSION - Modern design with glassmorphism, animations, and enhanced UX
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { getWorkerBookings, getMyFeedback, getImageUrl } from '../../api';
@@ -12,25 +11,26 @@ import {
     ChevronDown, Clock, CheckCircle2, XCircle, RefreshCw,
     Sparkles, Trophy, Heart, ThumbsUp, Smile, Frown,
     AlertCircle, ChevronRight, LayoutGrid, List,
-    ArrowUp, ArrowDown, Eye
+    ArrowUp, ArrowDown, Eye, Verified, Shield,
+    Building2, Wallet, Gift, Crown, Diamond, Zap
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const STATUS_CFG = {
-    completed: { label: 'Completed', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
+    completed: { label: 'Completed', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: CheckCircle2 },
     cancelled: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
-    cancelled_by_client: { label: 'Cancelled', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
-    cancelled_by_worker: { label: 'Cancelled by Worker', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
+    cancelled_by_client: { label: 'Cancelled by Client', bg: 'bg-red-100', text: 'text-red-600', icon: XCircle },
+    cancelled_by_worker: { label: 'Cancelled by You', bg: 'bg-orange-100', text: 'text-orange-600', icon: XCircle },
 };
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
 
-// ── Loading Skeleton with shimmer effect ──────────────────────────────────────
+// ── Loading Skeleton ──────────────────────────────────────────────────────────
 function Skeleton() {
     return (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map(i => (
-                <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 animate-pulse">
+                <div key={i} className="bg-white rounded-xl border border-gray-100 p-5 animate-pulse">
                     <div className="flex justify-between mb-3">
                         <div className="space-y-2 flex-1">
                             <div className="h-5 w-3/4 bg-gray-200 rounded-full" />
@@ -52,7 +52,7 @@ function Skeleton() {
     );
 }
 
-// ── Star Rating Component with animation ─────────────────────────────────────
+// ── Star Rating Component ─────────────────────────────────────────────────────
 function StarRow({ rating, size = 14, animated = false }) {
     const stars = [1, 2, 3, 4, 5];
     return (
@@ -62,11 +62,11 @@ function StarRow({ rating, size = 14, animated = false }) {
                     key={s}
                     initial={animated ? { scale: 0, rotate: -180 } : false}
                     animate={animated ? { scale: 1, rotate: 0 } : {}}
-                    transition={{ delay: idx * 0.05, type: 'spring' }}
+                    transition={{ delay: idx * 0.05, type: 'spring', stiffness: 200 }}
                 >
                     <Star
                         size={size}
-                        className={s <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200 fill-gray-200'}
+                        className={s <= rating ? 'text-yellow-400 fill-yellow-400 drop-shadow-sm' : 'text-gray-200 fill-gray-200'}
                     />
                 </motion.div>
             ))}
@@ -74,8 +74,8 @@ function StarRow({ rating, size = 14, animated = false }) {
     );
 }
 
-// ── Analytics Card with hover effects ────────────────────────────────────────
-function AnalyticsBar({ bookings, feedback }) {
+// ── Analytics Dashboard ────────────────────────────────────────────────────────
+function AnalyticsDashboard({ bookings, feedback }) {
     const totalEarnings = bookings
         .filter(j => j.status === 'completed')
         .reduce((s, j) => s + (j.payment || 0), 0);
@@ -84,41 +84,43 @@ function AnalyticsBar({ bookings, feedback }) {
         ? (feedback.reduce((s, f) => s + (f.stars || 0), 0) / feedback.length).toFixed(1)
         : '—';
     const totalPoints = feedback.reduce((s, f) => s + (f.points || 0), 0);
+    const fiveStarCount = feedback.filter(f => f.stars === 5).length;
 
     const stats = [
-        { icon: Briefcase, label: 'Jobs Done', value: completedCount, color: 'text-orange-600', bg: 'bg-orange-50', gradient: 'from-orange-500 to-orange-600' },
-        { icon: TrendingUp, label: 'Total Earned', value: `₹${fmt(totalEarnings)}`, color: 'text-green-600', bg: 'bg-green-50', gradient: 'from-green-500 to-emerald-600' },
-        { icon: Star, label: 'Avg Rating', value: avgRating, color: 'text-yellow-600', bg: 'bg-yellow-50', gradient: 'from-yellow-500 to-amber-500' },
-        { icon: Award, label: 'Points', value: `+${fmt(totalPoints)}`, color: 'text-blue-600', bg: 'bg-blue-50', gradient: 'from-blue-500 to-cyan-600' },
+        { icon: Briefcase, label: 'Jobs Completed', value: completedCount, suffix: 'jobs', gradient: 'from-orange-500 to-amber-500', color: 'text-orange-600' },
+        { icon: Wallet, label: 'Total Earnings', value: `₹${fmt(totalEarnings)}`, suffix: 'earned', gradient: 'from-emerald-500 to-teal-500', color: 'text-emerald-600' },
+        { icon: Star, label: 'Avg Rating', value: avgRating, suffix: '/5 stars', gradient: 'from-yellow-500 to-amber-500', color: 'text-yellow-600' },
+        { icon: Diamond, label: 'Points Earned', value: `+${fmt(totalPoints)}`, suffix: 'total points', gradient: 'from-purple-500 to-pink-500', color: 'text-purple-600' },
     ];
 
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            {stats.map(({ icon: Icon, label, value, gradient }, idx) => (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {stats.map(({ icon: Icon, label, value, suffix, gradient }, idx) => (
                 <motion.div
                     key={label}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.1 }}
-                    whileHover={{ y: -2, scale: 1.02 }}
-                    className={`bg-gradient-to-br ${gradient} rounded-2xl p-3 sm:p-4 text-white shadow-lg hover:shadow-xl transition-all`}
+                    whileHover={{ y: -4, scale: 1.02 }}
+                    className={`bg-gradient-to-br ${gradient} rounded-xl p-4 text-white shadow-lg hover:shadow-xl transition-all`}
                 >
-                    <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                            <p className="text-[10px] sm:text-xs opacity-90 font-medium">{label}</p>
-                            <p className="text-sm sm:text-base lg:text-lg font-black mt-1 truncate">{value}</p>
-                        </div>
-                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                             <Icon size={16} className="text-white" />
                         </div>
+                        <div className="text-right">
+                            <p className="text-2xl font-black">{value}</p>
+                            <p className="text-[10px] opacity-80">{suffix}</p>
+                        </div>
                     </div>
+                    <p className="text-xs font-semibold opacity-90">{label}</p>
                 </motion.div>
             ))}
         </div>
     );
 }
 
-// ── Enhanced Job Card with animations ─────────────────────────────────────────
+// ── Job Card Component ────────────────────────────────────────────────────────
 function JobCard({ job, index }) {
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
     const cancelledByWorker = String(job?.cancelledWorkerId || '') === String(currentUser?._id || '');
@@ -133,7 +135,6 @@ function JobCard({ job, index }) {
                        .filter(s => s.assignedWorker?.toString() === currentUser?._id?.toString())
                        .map(s => s.skill) || [];
     const jobPhoto = job?.photos?.[0] ? getImageUrl(job.photos[0]) : '';
-    const cityLine = [job?.location?.locality, job?.location?.city].filter(Boolean).join(', ');
     const slotPaid = (Array.isArray(job?.mySlots) ? job.mySlots : []).reduce((sum, slot) => sum + Math.max(0, Number(slot?.finalPaidPrice || 0)), 0);
     const paidAmount = Math.max(
         Number(job?.pricingMeta?.finalPaidPrice || 0),
@@ -141,7 +142,6 @@ function JobCard({ job, index }) {
         Number(slotPaid || 0),
         Number(job?.payment || 0),
     );
-    const paymentMethod = isRejectedDirectHire ? '' : String(job?.directHire?.paymentMode || job?.paymentMethod || '').replace('_', ' ');
 
     const [expanded, setExpanded] = useState(false);
 
@@ -150,51 +150,52 @@ function JobCard({ job, index }) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
-            whileHover={{ y: -2 }}
-            className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden h-full flex flex-col"
+            whileHover={{ y: -4 }}
+            className="bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group"
         >
+            {/* Status Bar */}
+            <div className={`h-1 ${job.status === 'completed' ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-red-400 to-rose-500'}`} />
+            
+            {/* Image Header */}
             {jobPhoto && (
-                <div className="relative h-32 border-b border-gray-100 overflow-hidden">
+                <div className="relative h-32 overflow-hidden">
                     <img
                         src={jobPhoto}
                         alt={job?.title || 'Job'}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            e.target.style.display = 'none';
-                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        onError={(e) => { e.target.style.display = 'none'; }}
                     />
+                    <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-lg ${cfg.bg} ${cfg.text}`}>
+                        <Icon size={10} /> {cfg.label}
+                    </div>
                 </div>
             )}
 
-            <div className={`h-1 ${job.status === 'completed' ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gradient-to-r from-red-400 to-rose-500'}`} />
-            
-            <div className="p-4 sm:p-5 flex-1 flex flex-col">
-                {/* Top row */}
-                <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-gray-900 text-sm sm:text-base leading-snug line-clamp-2">
-                            {job.title}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            <img
-                                src={getImageUrl(job?.postedBy?.photo)}
-                                alt=""
-                                className="w-5 h-5 rounded-full object-cover border border-orange-200"
-                                onError={(e) => { e.target.src = '/admin.png'; }}
-                            />
-                            <p className="text-xs sm:text-sm text-gray-500 line-clamp-1">{job?.postedBy?.name || 'Client'}</p>
-                        </div>
+            <div className="p-5">
+                {/* Title & Client */}
+                <div className="mb-3">
+                    <h3 className="font-bold text-gray-800 text-base leading-tight line-clamp-2 mb-1">
+                        {job.title}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        <img
+                            src={getImageUrl(job?.postedBy?.photo)}
+                            alt=""
+                            className="w-5 h-5 rounded-full object-cover border border-orange-200"
+                            onError={(e) => { e.target.src = '/admin.png'; }}
+                        />
+                        <p className="text-xs text-gray-500">{job?.postedBy?.name || 'Client'}</p>
+                        {job?.postedBy?.verificationStatus === 'approved' && (
+                            <Verified size={12} className="text-emerald-500" />
+                        )}
                     </div>
-                    <span className={`flex-shrink-0 inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.text}`}>
-                        <Icon size={10} /> {cfg.label}
-                    </span>
                 </div>
 
                 {/* Skills */}
                 {skills.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-3">
                         {skills.slice(0, 3).map((sk, i) => (
-                            <span key={i} className="text-[10px] sm:text-[11px] bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full capitalize">
+                            <span key={i} className="text-[10px] bg-gradient-to-r from-orange-50 to-amber-50 text-orange-700 font-semibold px-2 py-0.5 rounded-full capitalize border border-orange-100">
                                 {sk}
                             </span>
                         ))}
@@ -206,110 +207,89 @@ function JobCard({ job, index }) {
                     </div>
                 )}
 
-                {/* Meta row */}
-                <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs sm:text-sm text-gray-500">
+                {/* Meta Info Grid */}
+                <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-gray-500">
                     {!isRejectedDirectHire && paidAmount > 0 && (
-                        <span className="flex items-center gap-1 font-bold text-green-600">
-                            <IndianRupee size={12} /> Paid {fmt(paidAmount)}
-                        </span>
-                    )}
-                    {!isRejectedDirectHire && paymentMethod && (
-                        <span className="flex items-center gap-1 text-blue-700 font-semibold capitalize">
-                            Method: {paymentMethod}
-                        </span>
+                        <div className="flex items-center gap-1">
+                            <Wallet size={12} className="text-emerald-500" />
+                            <span className="font-semibold text-emerald-600">₹{fmt(paidAmount)}</span>
+                        </div>
                     )}
                     {job.location?.city && (
-                        <span className="flex items-center gap-1">
-                            <MapPin size={11} /> {job.location.city}
-                        </span>
-                    )}
-                    {job.postedBy?.name && (
-                        <span className="flex items-center gap-1">
-                            <User size={11} /> {job.postedBy.name}
-                        </span>
+                        <div className="flex items-center gap-1">
+                            <MapPin size={12} className="text-orange-400" />
+                            <span className="truncate">{job.location.city}</span>
+                        </div>
                     )}
                     {(job.scheduledDate || job.updatedAt) && (
-                        <span className="flex items-center gap-1">
-                            <Calendar size={11} />
-                            {new Date(job.scheduledDate || job.updatedAt).toLocaleDateString('en-IN', {
-                                day: 'numeric', month: 'short', year: 'numeric',
-                            })}
-                        </span>
+                        <div className="flex items-center gap-1">
+                            <Calendar size={12} className="text-orange-400" />
+                            <span>{new Date(job.scheduledDate || job.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                        </div>
                     )}
                     {job.scheduledTime && (
-                        <span className="flex items-center gap-1">
-                            <Clock size={11} /> {job.scheduledTime}
-                        </span>
-                    )}
-                    {cityLine && (
-                        <span className="flex items-center gap-1 truncate">
-                            <MapPin size={11} /> {cityLine}
-                        </span>
+                        <div className="flex items-center gap-1">
+                            <Clock size={12} className="text-orange-400" />
+                            <span>{job.scheduledTime}</span>
+                        </div>
                     )}
                 </div>
 
-                <div className="mt-auto pt-3 border-t border-gray-100 grid grid-cols-3 gap-2">
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
                     <button
                         type="button"
                         onClick={() => {
                             if (job?.location?.lat && job?.location?.lng) {
                                 window.open(`https://www.google.com/maps?q=${job.location.lat},${job.location.lng}`, '_blank', 'noopener,noreferrer');
+                            } else {
+                                toast.error('Location not available');
                             }
                         }}
-                        className="text-xs px-2 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-bold"
+                        className="text-xs px-2 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-semibold transition-all"
                     >
-                        Maps
+                        🗺️ Map
                     </button>
                     <button
                         type="button"
                         onClick={() => setExpanded(!expanded)}
-                        className="text-xs px-2 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 font-bold"
+                        className="text-xs px-2 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 font-semibold transition-all flex items-center justify-center gap-1"
                     >
-                        Details
+                        <Eye size={12} /> Details
                     </button>
-                    <div className="text-xs px-2 py-2 rounded-lg font-bold bg-gray-100 text-gray-500 text-center">History</div>
+                    <div className="text-xs px-2 py-2 rounded-lg font-semibold bg-gray-100 text-gray-500 text-center flex items-center justify-center gap-1">
+                        <Clock size={12} /> Archive
+                    </div>
                 </div>
 
+                {/* Expanded Details */}
                 <AnimatePresence>
                     {expanded && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2"
+                            className="mt-3 bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-3 space-y-2"
                         >
                             <p className="text-xs text-gray-700 leading-relaxed">{job?.description || 'No description available.'}</p>
                             <p className="text-xs text-gray-600">
-                                <span className="font-semibold">Location:</span>{' '}
+                                <span className="font-semibold">📍 Location:</span>{' '}
                                 {[job?.location?.locality, job?.location?.city, job?.location?.pincode].filter(Boolean).join(', ') || 'N/A'}
                             </p>
-                            {!isRejectedDirectHire && (
-                                <>
-                                    <p className="text-xs text-gray-600">
-                                        <span className="font-semibold">Paid Amount:</span> {paidAmount > 0 ? `₹${fmt(paidAmount)}` : 'N/A'}
-                                    </p>
-                                    <p className="text-xs text-gray-600 capitalize">
-                                        <span className="font-semibold">Payment Method:</span> {paymentMethod || 'N/A'}
-                                    </p>
-                                </>
-                            )}
                             {['cancelled', 'cancelled_by_client'].includes(job.status) && job.cancellationReason && (
-                                <p className="text-xs text-red-600">
-                                    <span className="font-semibold">Reason:</span> {job.cancellationReason}
+                                <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">
+                                    <span className="font-semibold">⚠️ Cancellation Reason:</span> {job.cancellationReason}
                                 </p>
                             )}
                         </motion.div>
                     )}
                 </AnimatePresence>
-
-                {/* Expandable section for cancellation reason */}
-                {false && null}
             </div>
         </motion.div>
     );
 }
 
-// ── Enhanced Feedback Card with animations ────────────────────────────────────
+// ── Feedback Card Component ───────────────────────────────────────────────────
 function FeedbackCard({ item, index }) {
     const [expanded, setExpanded] = useState(false);
     const hasLongMessage = item.message?.length > 100;
@@ -319,17 +299,14 @@ function FeedbackCard({ item, index }) {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.05 }}
-            whileHover={{ y: -2 }}
-            className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden"
+            whileHover={{ x: 4 }}
+            className="bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-lg transition-all overflow-hidden"
         >
-            <div className="p-4 sm:p-5">
-                <div className="flex items-start gap-3 sm:gap-4">
-                    {/* Client avatar with pulse animation for new */}
-                    <motion.div
-                        whileHover={{ scale: 1.05 }}
-                        className="flex-shrink-0 relative"
-                    >
-                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden bg-gradient-to-r from-orange-100 to-amber-100 border-2 border-orange-200 flex items-center justify-center">
+            <div className="p-5">
+                <div className="flex items-start gap-4">
+                    {/* Avatar */}
+                    <motion.div whileHover={{ scale: 1.05 }} className="flex-shrink-0 relative">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-orange-100 to-amber-100 border-2 border-orange-200 flex items-center justify-center shadow-md">
                             {item.client?.photo ? (
                                 <img
                                     src={getImageUrl(item.client.photo)}
@@ -338,70 +315,80 @@ function FeedbackCard({ item, index }) {
                                     onError={e => { e.target.src = '/admin.png'; }}
                                 />
                             ) : (
-                                <User size={16} className="text-orange-500" />
+                                <User size={18} className="text-orange-500" />
                             )}
                         </div>
-                        {item.points > 0 && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full border-2 border-white flex items-center justify-center">
-                                <Sparkles size={8} className="text-white" />
+                        {item.stars === 5 && (
+                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full border-2 border-white flex items-center justify-center shadow-md">
+                                <Crown size={8} className="text-white" />
                             </div>
                         )}
                     </motion.div>
 
                     <div className="flex-1 min-w-0">
-                        {/* Client + job */}
+                        {/* Header */}
                         <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                            <div className="flex-1 min-w-0">
-                                <p className="font-bold text-gray-900 text-sm sm:text-base truncate">
-                                    {item.client?.name || 'Client'}
-                                </p>
-                                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
-                                    {item.jobId?.title || 'Job'}
-                                </p>
+                            <div className="flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <p className="font-bold text-gray-800 text-base">{item.client?.name || 'Client'}</p>
+                                    {item.client?.verificationStatus === 'approved' && (
+                                        <Verified size={14} className="text-emerald-500" />
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-gray-500 mt-0.5 truncate">{item.jobId?.title || 'Job'}</p>
                             </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                <StarRow rating={item.stars} size={12} animated={index < 3} />
+                            <div className="flex flex-col items-end gap-1">
+                                <StarRow rating={item.stars} size={14} animated={index < 3} />
                                 <motion.span
                                     initial={{ scale: 0 }}
                                     animate={{ scale: 1 }}
                                     transition={{ delay: index * 0.1, type: 'spring' }}
-                                    className="text-[10px] sm:text-xs font-black text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full"
+                                    className="text-[10px] font-bold bg-gradient-to-r from-orange-500 to-amber-500 bg-clip-text text-transparent px-2 py-0.5 rounded-full border border-orange-200 bg-orange-50"
                                 >
                                     +{item.points} pts
                                 </motion.span>
                             </div>
                         </div>
 
-                        {/* Skill tag */}
+                        {/* Skill Badge */}
                         {item.skill && (
-                            <span className="inline-flex text-[9px] sm:text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full capitalize mb-2">
-                                {item.skill}
+                            <span className="inline-flex text-[10px] bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 font-bold px-2 py-0.5 rounded-full capitalize mb-2 border border-blue-100">
+                                {getSkillIcon(item.skill)} {item.skill}
                             </span>
                         )}
 
-                        {/* Message with expand/collapse */}
+                        {/* Message */}
                         {item.message?.trim() ? (
-                            <div>
-                                <p className={`text-xs sm:text-sm text-gray-700 italic bg-gray-50 rounded-xl px-3 py-2 border border-gray-100 ${!expanded && hasLongMessage ? 'line-clamp-2' : ''}`}>
-                                    "{item.message}"
-                                </p>
+                            <div className="mt-2">
+                                <div className={`relative ${!expanded && hasLongMessage ? 'max-h-16 overflow-hidden' : ''}`}>
+                                    <p className={`text-sm text-gray-600 italic bg-gradient-to-r from-gray-50 to-white rounded-lg px-3 py-2 border border-gray-100 leading-relaxed ${expanded ? '' : 'line-clamp-2'}`}>
+                                        "{item.message}"
+                                    </p>
+                                    {!expanded && hasLongMessage && (
+                                        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent" />
+                                    )}
+                                </div>
                                 {hasLongMessage && (
                                     <button
                                         onClick={() => setExpanded(!expanded)}
-                                        className="mt-1 text-[10px] text-orange-500 font-semibold hover:underline"
+                                        className="mt-1 text-[10px] text-orange-500 font-semibold hover:underline flex items-center gap-0.5"
                                     >
                                         {expanded ? 'Show less' : 'Read more'}
+                                        <ChevronRight size={10} className={`transform transition-transform ${expanded ? 'rotate-90' : ''}`} />
                                     </button>
                                 )}
                             </div>
                         ) : (
-                            <p className="text-xs text-gray-400 italic">No written feedback.</p>
+                            <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+                                <MessageCircle size={12} />
+                                <span className="italic">No written feedback provided</span>
+                            </div>
                         )}
 
-                        <p className="text-[10px] sm:text-xs text-gray-400 mt-2">
-                            {new Date(item.createdAt).toLocaleDateString('en-IN', {
-                                day: 'numeric', month: 'long', year: 'numeric',
-                            })}
+                        {/* Date */}
+                        <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+                            <Calendar size={10} />
+                            {new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </p>
                     </div>
                 </div>
@@ -410,29 +397,46 @@ function FeedbackCard({ item, index }) {
     );
 }
 
+// Helper for skill icons
+function getSkillIcon(skill) {
+    const icons = {
+        'plumbing': '🔧', 'electrical': '⚡', 'carpentry': '🪚',
+        'cleaning': '🧹', 'painting': '🎨', 'gardening': '🌱',
+        'moving': '📦', 'repair': '🔨', 'default': '⭐'
+    };
+    return icons[skill?.toLowerCase()] || icons.default;
+}
+
+// Helper for MessageCircle icon
+const MessageCircle = ({ size, className }) => (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+);
+
 // ── Empty State Component ─────────────────────────────────────────────────────
-function EmptyState({ onClear, icon: Icon, message, suggestion }) {
+function EmptyState({ onClear, icon: Icon, message, suggestion, actionText }) {
     return (
         <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl border border-gray-100 p-8 sm:p-12 text-center"
+            className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center"
         >
             <motion.div
                 animate={{ y: [0, -10, 0] }}
                 transition={{ duration: 2, repeat: Infinity }}
-                className="text-5xl sm:text-6xl mb-4"
+                className="w-20 h-20 bg-gradient-to-br from-orange-100 to-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4"
             >
-                <Icon size={48} className="mx-auto text-gray-300" />
+                <Icon size={36} className="text-orange-400" />
             </motion.div>
-            <p className="font-bold text-gray-800 text-base sm:text-lg mb-2">{message}</p>
-            <p className="text-gray-400 text-xs sm:text-sm">{suggestion}</p>
+            <p className="font-bold text-gray-800 text-lg mb-2">{message}</p>
+            <p className="text-gray-400 text-sm">{suggestion}</p>
             {onClear && (
                 <button
                     onClick={onClear}
-                    className="mt-4 text-orange-500 text-xs sm:text-sm font-bold hover:underline inline-flex items-center gap-1"
+                    className="mt-5 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-semibold text-sm hover:shadow-lg transition-all inline-flex items-center gap-2"
                 >
-                    Clear filters <RefreshCw size={12} />
+                    <RefreshCw size={14} /> {actionText || 'Clear Filters'}
                 </button>
             )}
         </motion.div>
@@ -469,7 +473,6 @@ export default function History() {
 
     useEffect(() => { load(); }, []);
 
-    // Close sort dropdown on click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (sortRef.current && !sortRef.current.contains(event.target)) {
@@ -480,7 +483,6 @@ export default function History() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Filtered & sorted jobs
     const filteredJobs = useMemo(() => {
         let list = [...bookings];
         if (statusFilter !== 'all') {
@@ -509,7 +511,6 @@ export default function History() {
         return list;
     }, [bookings, statusFilter, search, sortBy]);
 
-    // Filtered feedback
     const filteredFeedback = useMemo(() => {
         if (!search.trim()) return feedback;
         const q = search.toLowerCase();
@@ -522,68 +523,77 @@ export default function History() {
     }, [feedback, search]);
 
     const SORT_OPTIONS = [
-        { v: 'date-desc', l: 'Newest first', icon: ArrowDown },
-        { v: 'date-asc', l: 'Oldest first', icon: ArrowUp },
-        { v: 'pay-desc', l: 'Highest pay', icon: TrendingUp },
-        { v: 'pay-asc', l: 'Lowest pay', icon: TrendingUp },
+        { v: 'date-desc', l: 'Newest First', icon: ArrowDown },
+        { v: 'date-asc', l: 'Oldest First', icon: ArrowUp },
+        { v: 'pay-desc', l: 'Highest Pay', icon: TrendingUp },
+        { v: 'pay-asc', l: 'Lowest Pay', icon: TrendingUp },
     ];
 
     const clearFilters = () => {
         setSearch('');
         setStatusFilter('all');
         setSortBy('date-desc');
+        toast.success('Filters cleared');
     };
 
     const hasActiveFilters = search || statusFilter !== 'all' || sortBy !== 'date-desc';
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-24" style={{ fontFamily: 'Inter, sans-serif', fontSize: '1.13rem' }}>
-                {/* Page header with animation */}
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-16">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                
+                {/* Hero Header */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-start justify-between mb-4"
+                    data-guide-id="worker-page-history"
+                    className="mb-8"
                 >
-                    <div>
-                        <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
-                            Work History
-                        </h1>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                            Track your completed jobs and client feedback
-                        </p>
+                    <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                    <Trophy size="24" className="text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black">Work History</h1>
+                                    <p className="text-white/90 text-sm mt-0.5">Track your completed jobs and client feedback</p>
+                                </div>
+                            </div>
+                            <motion.button
+                                whileHover={{ scale: 1.05, rotate: 180 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={load}
+                                className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-xl text-sm font-semibold hover:bg-white/30 transition-all"
+                            >
+                                <RefreshCw size="14" className={loading ? 'animate-spin' : ''} />
+                                Refresh
+                            </motion.button>
+                        </div>
                     </div>
-                    <motion.button
-                        whileHover={{ scale: 1.05, rotate: 180 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={load}
-                        className="p-2 rounded-xl border border-gray-200 bg-white text-gray-400 hover:text-orange-500 hover:border-orange-200 transition-all shadow-sm"
-                        title="Refresh"
-                    >
-                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                    </motion.button>
                 </motion.div>
 
-                {/* Analytics Bar */}
-                {!loading && <AnalyticsBar bookings={bookings} feedback={feedback} />}
+                {/* Analytics Dashboard */}
+                {!loading && (bookings.length > 0 || feedback.length > 0) && (
+                    <AnalyticsDashboard bookings={bookings} feedback={feedback} />
+                )}
 
-                {/* Enhanced Tabs */}
-                <div className="flex gap-1 mb-5 bg-white p-1 rounded-2xl shadow-sm border border-gray-100">
+                {/* Tabs */}
+                <div className="flex gap-2 mb-6 bg-white p-1.5 rounded-xl shadow-sm border border-gray-100">
                     {[
-                        { key: 'jobs', label: 'Jobs', count: bookings.length, icon: Briefcase, color: 'orange' },
-                        { key: 'ratings', label: 'Ratings', count: feedback.length, icon: Star, color: 'yellow' },
+                        { key: 'jobs', label: 'Job History', count: bookings.length, icon: Briefcase, color: 'orange' },
+                        { key: 'ratings', label: 'Client Ratings', count: feedback.length, icon: Star, color: 'yellow' },
                     ].map(t => (
                         <button
                             key={t.key}
                             onClick={() => setTab(t.key)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
                                 tab === t.key
                                     ? `bg-gradient-to-r from-${t.color}-500 to-amber-500 text-white shadow-md`
                                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                             }`}
                         >
-                            <t.icon size={14} />
-                            <span className="hidden xs:inline">{t.label}</span>
+                            <t.icon size="14" />
                             <span>{t.label}</span>
                             {t.count > 0 && (
                                 <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
@@ -596,43 +606,39 @@ export default function History() {
                     ))}
                 </div>
 
-                {/* Search + Filters Section */}
-                <div className="space-y-3 mb-4">
+                {/* Search & Filters */}
+                <div className="mb-6 space-y-3">
                     <div className="relative">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search size="16" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
                             value={search}
                             onChange={e => setSearch(e.target.value)}
-                            placeholder={tab === 'jobs' ? "Search jobs, clients, cities..." : "Search ratings, clients, skills..."}
-                            className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all bg-white"
+                            placeholder={tab === 'jobs' ? "Search jobs, clients, locations..." : "Search ratings, clients, skills..."}
+                            className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 bg-white transition-all"
                         />
                     </div>
 
                     {tab === 'jobs' && (
-                        <div className="flex gap-2">
-                            {/* Status Filter */}
-                            <div className="flex-1">
-                                <select
-                                    value={statusFilter}
-                                    onChange={e => setStatusFilter(e.target.value)}
-                                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 focus:outline-none focus:border-orange-400 bg-white"
-                                >
-                                    <option value="all">All Status</option>
-                                    <option value="completed">✓ Completed</option>
-                                    <option value="cancelled">✗ Cancelled</option>
-                                </select>
-                            </div>
+                        <div className="flex gap-3">
+                            <select
+                                value={statusFilter}
+                                onChange={e => setStatusFilter(e.target.value)}
+                                className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 focus:outline-none focus:border-orange-400 bg-white"
+                            >
+                                <option value="all">All Status</option>
+                                <option value="completed">✓ Completed</option>
+                                <option value="cancelled">✗ Cancelled</option>
+                            </select>
 
-                            {/* Sort Dropdown */}
                             <div className="relative" ref={sortRef}>
                                 <button
                                     onClick={() => setShowSort(!showSort)}
-                                    className="flex items-center gap-1.5 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 hover:border-orange-300 transition-colors bg-white"
+                                    className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:border-orange-300 transition-colors bg-white"
                                 >
-                                    <Filter size={14} />
-                                    <span className="hidden xs:inline">Sort</span>
-                                    <ChevronDown size={12} className={`transition-transform ${showSort ? 'rotate-180' : ''}`} />
+                                    <Filter size="14" />
+                                    <span className="hidden sm:inline">Sort</span>
+                                    <ChevronDown size="12" className={`transition-transform ${showSort ? 'rotate-180' : ''}`} />
                                 </button>
                                 <AnimatePresence>
                                     {showSort && (
@@ -640,7 +646,7 @@ export default function History() {
                                             initial={{ opacity: 0, y: -10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: -10 }}
-                                            className="absolute right-0 top-full mt-1 bg-white border-2 border-gray-100 rounded-xl shadow-xl z-20 overflow-hidden min-w-[160px]"
+                                            className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-20 overflow-hidden min-w-[160px]"
                                         >
                                             {SORT_OPTIONS.map(o => {
                                                 const Icon = o.icon;
@@ -655,9 +661,9 @@ export default function History() {
                                                                 : 'text-gray-600 hover:bg-gray-50'
                                                         }`}
                                                     >
-                                                        <Icon size={12} className={isActive ? 'text-orange-500' : 'text-gray-400'} />
+                                                        <Icon size="12" className={isActive ? 'text-orange-500' : 'text-gray-400'} />
                                                         {o.l}
-                                                        {isActive && <CheckCircle2 size={12} className="ml-auto text-orange-500" />}
+                                                        {isActive && <CheckCircle2 size="12" className="ml-auto text-orange-500" />}
                                                     </button>
                                                 );
                                             })}
@@ -668,9 +674,9 @@ export default function History() {
                         </div>
                     )}
 
-                    {/* Active Filters Display */}
+                    {/* Active Filters */}
                     {hasActiveFilters && (
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
                             <span className="text-[10px] text-gray-500">Active filters:</span>
                             {search && (
                                 <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-1 rounded-full">
@@ -700,45 +706,35 @@ export default function History() {
                     )}
                 </div>
 
-                {/* Content with animations */}
+                {/* Content */}
                 <AnimatePresence mode="wait">
                     {loading ? (
-                        <motion.div
-                            key="loading"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                        >
+                        <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <Skeleton />
                         </motion.div>
                     ) : tab === 'jobs' ? (
-                        <motion.div
-                            key="jobs"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="space-y-3 sm:space-y-4"
-                        >
+                        <motion.div key="jobs" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                             {filteredJobs.length === 0 ? (
                                 <EmptyState
-                                    type="jobs"
                                     icon={search || statusFilter !== 'all' ? Search : Briefcase}
-                                    message={search || statusFilter !== 'all' ? "No matching jobs found" : "No past jobs yet"}
+                                    message={search || statusFilter !== 'all' ? "No matching jobs found" : "No jobs yet"}
                                     suggestion={search || statusFilter !== 'all' ? "Try adjusting your filters" : "Your completed and cancelled jobs will appear here"}
                                     onClear={search || statusFilter !== 'all' ? clearFilters : null}
+                                    actionText="Clear Filters"
                                 />
                             ) : (
                                 <>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <p className="text-[10px] sm:text-xs text-gray-400 font-semibold">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                                            <Briefcase size="12" />
                                             {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''} found
                                         </p>
                                         <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                            <Clock size={10} />
+                                            <Clock size="10" />
                                             <span>Updated recently</span>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                         {filteredJobs.map((job, idx) => (
                                             <JobCard key={job._id} job={job} index={idx} />
                                         ))}
@@ -747,35 +743,32 @@ export default function History() {
                             )}
                         </motion.div>
                     ) : (
-                        <motion.div
-                            key="ratings"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="space-y-3 sm:space-y-4"
-                        >
+                        <motion.div key="ratings" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                             {filteredFeedback.length === 0 ? (
                                 <EmptyState
-                                    type="ratings"
                                     icon={search ? Search : Star}
                                     message={search ? "No matching ratings found" : "No ratings yet"}
                                     suggestion={search ? "Try a different search term" : "Client ratings will appear here after you complete jobs"}
                                     onClear={search ? () => setSearch('') : null}
+                                    actionText="Clear Search"
                                 />
                             ) : (
                                 <>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <p className="text-[10px] sm:text-xs text-gray-400 font-semibold">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                                            <Star size="12" />
                                             {filteredFeedback.length} rating{filteredFeedback.length !== 1 ? 's' : ''}
                                         </p>
                                         <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                            <ThumbsUp size={10} />
+                                            <ThumbsUp size="10" />
                                             <span>From happy clients</span>
                                         </div>
                                     </div>
-                                    {filteredFeedback.map((item, idx) => (
-                                        <FeedbackCard key={item._id} item={item} index={idx} />
-                                    ))}
+                                    <div className="space-y-4">
+                                        {filteredFeedback.map((item, idx) => (
+                                            <FeedbackCard key={item._id} item={item} index={idx} />
+                                        ))}
+                                    </div>
                                 </>
                             )}
                         </motion.div>

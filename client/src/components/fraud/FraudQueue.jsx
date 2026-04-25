@@ -3,23 +3,24 @@
 
 import { useState, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import { motion, AnimatePresence } from 'framer-motion';
 import { selectAlert } from '../../store/slices/fraudSlice';
 import { RiskBadge } from './RiskBadge';
-
+import { Search, Filter, ChevronDown, ChevronUp, Eye, User, Calendar, Clock, Shield } from 'lucide-react';
 const ROLE_BADGE = {
-    worker: { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-    client: { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+    worker: { bg: 'bg-blue-100', color: 'text-blue-700', border: 'border-blue-200', icon: '🔨' },
+    client: { bg: 'bg-emerald-100', color: 'text-emerald-700', border: 'border-emerald-200', icon: '👤' },
 };
 
 export function FraudQueue() {
     const dispatch = useDispatch();
     const { alerts, loading } = useSelector(s => s.fraud);
-
-    const [search,     setSearch]     = useState('');
+    const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [riskFilter, setRiskFilter] = useState('all');
-    const [sortKey,    setSortKey]    = useState('fraud_probability');
-    const [sortDir,    setSortDir]    = useState('desc');
+    const [sortKey, setSortKey] = useState('fraud_probability');
+    const [sortDir, setSortDir] = useState('desc');
+    const [showFilters, setShowFilters] = useState(false);
 
     const filtered = useMemo(() => {
         let list = [...alerts];
@@ -44,149 +45,216 @@ export function FraudQueue() {
         return list;
     }, [alerts, search, roleFilter, riskFilter, sortKey, sortDir]);
 
-    const toggleSort = k => {
+    const toggleSort = (k) => {
         if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
         else { setSortKey(k); setSortDir('desc'); }
     };
 
     const SortArrow = ({ col }) => sortKey !== col
-        ? <span style={{ opacity: 0.3, marginLeft: 3 }}>↕</span>
-        : <span style={{ marginLeft: 3 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
+        ? <ChevronDown size="12" className="opacity-30" />
+        : sortDir === 'asc' ? <ChevronUp size="12" /> : <ChevronDown size="12" />;
+
+    const hasActiveFilters = search || roleFilter !== 'all' || riskFilter !== 'all';
 
     if (loading) return <Skeleton />;
 
     return (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-
+        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
             {/* Toolbar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #f3f4f6', flexWrap: 'wrap' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-                        style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }}>
-                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                    </svg>
-                    <input
-                        placeholder="Search name, ID, phone…"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        style={{
-                            width: '100%', padding: '8px 10px 8px 32px',
-                            border: '1px solid #e5e7eb', borderRadius: 8,
-                            fontSize: 13, outline: 'none', background: '#f9fafb',
-                            color: '#111827', boxSizing: 'border-box',
-                        }}
-                    />
+            <div className="p-4 border-b border-gray-100">
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                        <Search size="14" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            placeholder="Search by name, ID, or phone..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
+                        />
+                    </div>
+                    <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                            showFilters || hasActiveFilters ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
+                        }`}
+                    >
+                        <Filter size="14" /> Filter
+                        {(roleFilter !== 'all' || riskFilter !== 'all') && (
+                            <span className="ml-0.5 w-4 h-4 bg-white/20 rounded-full text-white text-[10px] flex items-center justify-center">
+                                {(roleFilter !== 'all' ? 1 : 0) + (riskFilter !== 'all' ? 1 : 0)}
+                            </span>
+                        )}
+                    </button>
                 </div>
-                {[
-                    { val: roleFilter, set: setRoleFilter, opts: [['all','All Roles'],['worker','Workers'],['client','Clients']] },
-                    { val: riskFilter, set: setRiskFilter, opts: [['all','All Risk'],['HIGH','High Risk'],['MEDIUM','Medium Risk'],['LOW','Low Risk']] },
-                ].map((sel, i) => (
-                    <select key={i} value={sel.val} onChange={e => sel.set(e.target.value)}
-                        style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px', fontSize: 13, background: '#f9fafb', color: '#374151', outline: 'none', cursor: 'pointer' }}>
-                        {sel.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                ))}
-                <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-                    {filtered.length} / {alerts.length} profiles
-                </span>
+
+                <AnimatePresence>
+                    {showFilters && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-3 pt-3 border-t border-gray-100"
+                        >
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <select
+                                    value={roleFilter}
+                                    onChange={e => setRoleFilter(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none"
+                                >
+                                    <option value="all">All Roles</option>
+                                    <option value="worker">Workers</option>
+                                    <option value="client">Clients</option>
+                                </select>
+                                <select
+                                    value={riskFilter}
+                                    onChange={e => setRiskFilter(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none"
+                                >
+                                    <option value="all">All Risk Levels</option>
+                                    <option value="HIGH">High Risk</option>
+                                    <option value="MEDIUM">Medium Risk</option>
+                                    <option value="LOW">Low Risk</option>
+                                </select>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {hasActiveFilters && (
+                    <div className="flex flex-wrap items-center gap-2 mt-3 pt-2 border-t border-gray-100">
+                        <span className="text-[9px] text-gray-500 font-semibold">Active filters:</span>
+                        {search && (
+                            <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                Search: {search}
+                                <button onClick={() => setSearch('')} className="hover:text-orange-900">✕</button>
+                            </span>
+                        )}
+                        {roleFilter !== 'all' && (
+                            <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                Role: {roleFilter}
+                                <button onClick={() => setRoleFilter('all')} className="hover:text-orange-900">✕</button>
+                            </span>
+                        )}
+                        {riskFilter !== 'all' && (
+                            <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                Risk: {riskFilter}
+                                <button onClick={() => setRiskFilter('all')} className="hover:text-orange-900">✕</button>
+                            </span>
+                        )}
+                        <button onClick={() => { setSearch(''); setRoleFilter('all'); setRiskFilter('all'); }} className="text-[9px] text-orange-500 font-semibold hover:underline">
+                            Clear all
+                        </button>
+                    </div>
+                )}
             </div>
+
+            {/* Results Count */}
+            {filtered.length > 0 && (
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 flex justify-between">
+                    <span>{filtered.length} of {alerts.length} profiles</span>
+                    <span>Showing sorted by {sortKey}</span>
+                </div>
+            )}
 
             {/* Table */}
             {filtered.length === 0 ? (
-                <div style={{ padding: '60px 24px', textAlign: 'center', color: '#9ca3af' }}>
-                    <div style={{ fontSize: 32, marginBottom: 10 }}>🛡️</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                <div className="py-16 text-center">
+                    <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                        <Shield size="32" className="text-gray-300" />
+                    </div>
+                    <p className="text-gray-500 font-semibold">
                         {search || roleFilter !== 'all' || riskFilter !== 'all'
                             ? 'No results match your filters'
                             : 'No fraud alerts in queue'}
-                    </div>
-                    <div style={{ fontSize: 13 }}>
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1">
                         {search || roleFilter !== 'all' || riskFilter !== 'all'
                             ? 'Try adjusting the search or filters.'
                             : 'Run a full scan or wait for the daily batch at 2:00 AM.'}
-                    </div>
+                    </p>
                 </div>
             ) : (
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <div className="overflow-x-auto">
+                    <table className="w-full">
                         <thead>
-                            <tr style={{ background: '#f9fafb' }}>
-                                {[
-                                    { k: 'name',              l: 'User' },
-                                    { k: 'user_role',         l: 'Role' },
-                                    { k: 'risk_level',        l: 'Risk' },
-                                    { k: 'fraud_probability', l: 'Probability' },
-                                    { k: 'top_reason',        l: 'Top Reason', ns: true },
-                                    { k: 'alertedAt',         l: 'Flagged At' },
-                                    { k: 'action',            l: '', ns: true },
-                                ].map(col => (
-                                    <th key={col.k} onClick={() => !col.ns && toggleSort(col.k)}
-                                        style={{
-                                            padding: '10px 14px', textAlign: 'left',
-                                            fontSize: 11, fontWeight: 700, color: '#6b7280',
-                                            letterSpacing: '0.05em', textTransform: 'uppercase',
-                                            cursor: col.ns ? 'default' : 'pointer', userSelect: 'none',
-                                            whiteSpace: 'nowrap', borderBottom: '1px solid #e5e7eb',
-                                        }}>
-                                        {col.l}{!col.ns && <SortArrow col={col.k} />}
-                                    </th>
-                                ))}
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                                <th onClick={() => toggleSort('name')} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-orange-600">
+                                    User <SortArrow col="name" />
+                                </th>
+                                <th onClick={() => toggleSort('user_role')} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-orange-600">
+                                    Role <SortArrow col="user_role" />
+                                </th>
+                                <th onClick={() => toggleSort('risk_level')} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-orange-600">
+                                    Risk <SortArrow col="risk_level" />
+                                </th>
+                                <th onClick={() => toggleSort('fraud_probability')} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-orange-600">
+                                    Probability <SortArrow col="fraud_probability" />
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Top Reason</th>
+                                <th onClick={() => toggleSort('alertedAt')} className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-orange-600">
+                                    Flagged <SortArrow col="alertedAt" />
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filtered.map((alert, idx) => {
-                                const prob      = Math.round((alert.fraud_probability || 0) * 100);
-                                const probColor = prob >= 80 ? '#dc2626' : prob >= 60 ? '#d97706' : '#ca8a04';
-                                const rc        = ROLE_BADGE[alert.user_role] || {};
+                                const prob = Math.round((alert.fraud_probability || 0) * 100);
+                                const probColor = prob >= 80 ? 'text-red-600' : prob >= 60 ? 'text-orange-600' : 'text-yellow-600';
+                                const rc = ROLE_BADGE[alert.user_role] || ROLE_BADGE.worker;
                                 const flaggedAt = alert.alertedAt
-                                    ? new Date(alert.alertedAt).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+                                    ? new Date(alert.alertedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
                                     : '—';
                                 const even = idx % 2 === 0;
 
                                 return (
-                                    <tr key={alert.user_id}
+                                    <motion.tr
+                                        key={alert.user_id}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: idx * 0.02 }}
                                         onClick={() => dispatch(selectAlert(alert))}
-                                        style={{ background: even ? '#fff' : '#fafafa', cursor: 'pointer', transition: 'background 0.15s' }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
-                                        onMouseLeave={e => e.currentTarget.style.background = even ? '#fff' : '#fafafa'}
+                                        className={`cursor-pointer transition-all hover:bg-orange-50 ${even ? 'bg-white' : 'bg-gray-50/50'}`}
                                     >
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                                            <div style={{ fontWeight: 600, color: '#111827', marginBottom: 2 }}>{alert.name || '—'}</div>
-                                            <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                                        <td className="px-4 py-3 border-b border-gray-100">
+                                            <div className="font-semibold text-gray-800 text-sm">{alert.name || '—'}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5">
                                                 {alert.karigar_id || alert.user_id?.slice(-8)}
                                                 {alert.mobile && ` · ${alert.mobile}`}
                                             </div>
                                         </td>
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                                            <span style={{ fontSize: 11, fontWeight: 600, background: rc.bg, color: rc.color, border: `1px solid ${rc.border}`, borderRadius: 5, padding: '3px 8px', textTransform: 'capitalize' }}>
-                                                {alert.user_role}
+                                        <td className="px-4 py-3 border-b border-gray-100">
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${rc.bg} ${rc.color} border ${rc.border}`}>
+                                                {rc.icon} {alert.user_role}
                                             </span>
                                         </td>
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6' }}>
+                                        <td className="px-4 py-3 border-b border-gray-100">
                                             <RiskBadge level={alert.risk_level} />
                                         </td>
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <div style={{ width: 48, height: 6, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                                                    <div style={{ height: '100%', width: `${prob}%`, background: probColor, borderRadius: 3 }} />
+                                        <td className="px-4 py-3 border-b border-gray-100">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div className={`h-full rounded-full ${
+                                                        prob >= 80 ? 'bg-red-500' : prob >= 60 ? 'bg-orange-500' : 'bg-yellow-500'
+                                                    }`} style={{ width: `${prob}%` }} />
                                                 </div>
-                                                <span style={{ fontWeight: 700, color: probColor, fontSize: 13, fontFamily: 'Inter, sans-serif' }}>{prob}%</span>
+                                                <span className={`text-xs font-bold ${probColor}`}>{prob}%</span>
                                             </div>
                                         </td>
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', maxWidth: 220 }}>
-                                            <span style={{ fontSize: 12, color: '#4b5563', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                        <td className="px-4 py-3 border-b border-gray-100 max-w-[200px]">
+                                            <span className="text-xs text-gray-600 line-clamp-1">
                                                 {alert.top_reasons?.[0]?.label || '—'}
                                             </span>
                                         </td>
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                        <td className="px-4 py-3 border-b border-gray-100 text-xs text-gray-500 whitespace-nowrap">
                                             {flaggedAt}
                                         </td>
-                                        <td style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                                            <button onClick={() => dispatch(selectAlert(alert))} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '5px 10px', fontSize: 12, color: '#374151', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                                                Review →
+                                        <td className="px-4 py-3 border-b border-gray-100 text-right">
+                                            <button className="px-3 py-1.5 text-xs font-semibold text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-50 transition-all">
+                                                Review <Eye size="10" className="inline ml-1" />
                                             </button>
                                         </td>
-                                    </tr>
+                                    </motion.tr>
                                 );
                             })}
                         </tbody>
@@ -199,10 +267,12 @@ export function FraudQueue() {
 
 function Skeleton() {
     return (
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[1,2,3,4].map(i => (
-                <div key={i} style={{ height: 52, borderRadius: 8, background: 'linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
-            ))}
+        <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
+            <div className="space-y-3">
+                {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="h-16 rounded-lg bg-gradient-to-r from-gray-200 to-gray-100 animate-pulse" />
+                ))}
+            </div>
         </div>
     );
 }

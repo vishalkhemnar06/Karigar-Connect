@@ -2,6 +2,7 @@ const Job = require('../models/jobModel');
 const User = require('../models/userModel');
 const Rating = require('../models/ratingModel');
 const Complaint = require('../models/complaintModel');
+const BaseRate = require('../models/baseRateModel');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const path = require('path');
@@ -9,8 +10,10 @@ const { createNotification } = require('../utils/notificationHelper');
 const { canWorkerCancelJob } = require('../utils/scheduleHelper');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { sendPasswordChangeOtpSms, sendCustomSms } = require('../utils/smsHelper');
+const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const { upsertWorkerById, removeWorkerById, submitFeedback } = require('../services/semanticMatchingService');
+const { MAX_WORKER_SKILLS, normalizeWorkerSkillSelections } = require('../constants/workerSkills');
 const { findActiveWorkerTask, getActiveTaskBlockMessage } = require('../utils/workerTaskGate');
 const { cancelPendingApplicationByWorker } = require('../services/jobApplicationService');
 const { cloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
@@ -27,6 +30,42 @@ const {
 const CANCEL_PENALTY = 30;
 
 const normalizeSkillKey = (value) => String(value || '').trim().toLowerCase();
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+const averageIfPositive = (minValue, maxValue) => {
+    const min = Number(minValue);
+    const max = Number(maxValue);
+    if (Number.isFinite(min) && Number.isFinite(max) && min > 0 && max > 0) {
+        return Math.round((min + max) / 2);
+    }
+    if (Number.isFinite(max) && max > 0) return Math.round(max);
+    if (Number.isFinite(min) && min > 0) return Math.round(min);
+    return 0;
+};
+
+const buildWorkerCitySkillRate = (rateDoc, fallbackSkillName = '') => {
+    const hourRate = averageIfPositive(rateDoc?.localHourlyMin, rateDoc?.localHourlyMax)
+        || averageIfPositive(rateDoc?.platformHourlyMin, rateDoc?.platformHourlyMax);
+    const dayRate = averageIfPositive(rateDoc?.localDayMin, rateDoc?.localDayMax)
+        || averageIfPositive(rateDoc?.platformDayMin, rateDoc?.platformDayMax);
+
+    const platformCostMin = Number(rateDoc?.platformCostMin);
+    const platformCostMax = Number(rateDoc?.platformCostMax);
+    const visitRate = averageIfPositive(platformCostMin, platformCostMax);
+
+    return {
+        city: rateDoc?.city || '',
+        cityKey: normalizeText(rateDoc?.cityKey || rateDoc?.city),
+        skill: rateDoc?.skill || fallbackSkillName,
+        skillKey: normalizeText(rateDoc?.skillKey || rateDoc?.skill || fallbackSkillName),
+        hourRate,
+        dayRate,
+        visitRate,
+        currency: rateDoc?.currency || 'INR',
+        source: rateDoc?.source || '',
+        updatedAt: rateDoc?.updatedAt || null,
+    };
+};
 
 const parseQuotedApplications = (input) => {
     if (!input) return [];
@@ -234,6 +273,15 @@ exports.sendPasswordChangeOtp = async (req, res) => {
         if (!worker) return res.status(404).json({ message: 'User not found.' });
         if (!worker.mobile) return res.status(400).json({ message: 'No mobile number linked to your account.' });
 
+        const cooldownKey = `worker:password-change-otp:${req.user.id}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -245,7 +293,12 @@ exports.sendPasswordChangeOtp = async (req, res) => {
         // Use validateBeforeSave: false because we only want to update these specific fields
         await worker.save({ validateBeforeSave: false });
 
-        await sendPasswordChangeOtpSms(worker.mobile, otp, worker.name);
+        const smsResult = await sendPasswordChangeOtpSms(worker.mobile, otp, worker.name);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
 
         const masked = `xxxxxx${worker.mobile.slice(-4)}`;
         return res.json({
@@ -854,12 +907,102 @@ exports.getWorkerAnalytics = async (req, res) => {
     try {
         const wid = req.user.id;
         const workerObjectId = new mongoose.Types.ObjectId(wid);
-        const [c, r, p, ca] = await Promise.all([
+        const now = new Date();
+        const weekStart = new Date(now);
+        weekStart.setHours(0, 0, 0, 0);
+        weekStart.setDate(weekStart.getDate() - 6);
+
+        const [c, r, p, ca, worker, weeklyCompletionsRaw] = await Promise.all([
             Job.countDocuments({ assignedTo: wid, status: 'completed' }),
             Job.countDocuments({ assignedTo: wid, status: 'running' }),
             Job.countDocuments({ applicants: { $elemMatch: { workerId: wid, status: 'pending' } } }),
             Job.countDocuments({ cancelledWorkerId: wid }),
+            User.findById(wid).select('skills address.city city').lean(),
+            Job.aggregate([
+                {
+                    $match: {
+                        assignedTo: workerObjectId,
+                        status: 'completed',
+                        updatedAt: { $gte: weekStart },
+                    },
+                },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: {
+                                format: '%Y-%m-%d',
+                                date: '$updatedAt',
+                                timezone: 'Asia/Kolkata',
+                            },
+                        },
+                        value: { $sum: 1 },
+                    },
+                },
+            ]),
         ]);
+
+        const weeklyMap = new Map((weeklyCompletionsRaw || []).map((row) => [String(row?._id || ''), Number(row?.value || 0)]));
+        const weeklyCompleted = [];
+        for (let i = 0; i < 7; i += 1) {
+            const date = new Date(weekStart);
+            date.setDate(weekStart.getDate() + i);
+            const isoDate = date.toISOString().slice(0, 10);
+            weeklyCompleted.push({
+                date: isoDate,
+                label: date.toLocaleDateString('en-US', { weekday: 'short' }),
+                value: weeklyMap.get(isoDate) || 0,
+            });
+        }
+
+        const workerCity = String(worker?.address?.city || worker?.city || '').trim();
+        const workerCityKey = normalizeText(workerCity);
+        const uniqueSkillEntries = new Map();
+        (Array.isArray(worker?.skills) ? worker.skills : []).forEach((skill) => {
+            const skillName = String(skill?.name || skill?.skill || skill || '').trim();
+            if (!skillName) return;
+            const key = normalizeText(skillName);
+            if (!key || uniqueSkillEntries.has(key)) return;
+            uniqueSkillEntries.set(key, skillName);
+        });
+
+        let citySkillRates = [];
+        if (workerCityKey && uniqueSkillEntries.size > 0) {
+            const skillKeys = [...uniqueSkillEntries.keys()];
+            const rateRows = await BaseRate.find({
+                isActive: true,
+                cityKey: workerCityKey,
+                skillKey: { $in: skillKeys },
+            })
+                .sort({ skillKey: 1, effectiveFrom: -1, updatedAt: -1 })
+                .lean();
+
+            const latestBySkill = new Map();
+            for (const row of rateRows) {
+                const skillKey = normalizeText(row?.skillKey || row?.skill);
+                if (!skillKey || latestBySkill.has(skillKey)) continue;
+                latestBySkill.set(skillKey, row);
+            }
+
+            citySkillRates = skillKeys.map((skillKey) => {
+                const rateRow = latestBySkill.get(skillKey);
+                if (!rateRow) {
+                    return {
+                        city: workerCity,
+                        cityKey: workerCityKey,
+                        skill: uniqueSkillEntries.get(skillKey) || '',
+                        skillKey,
+                        hourRate: 0,
+                        dayRate: 0,
+                        visitRate: 0,
+                        currency: 'INR',
+                        source: '',
+                        updatedAt: null,
+                    };
+                }
+                return buildWorkerCitySkillRate(rateRow, uniqueSkillEntries.get(skillKey));
+            });
+        }
+
         const [ratingStats] = await Rating.aggregate([
             { $match: { worker: workerObjectId } },
             {
@@ -875,6 +1018,9 @@ exports.getWorkerAnalytics = async (req, res) => {
         return res.json({
             completed: c, running: r, pending: p, cancelled: ca,
             avgStars: Math.round(avg * 10) / 10, totalRatings,
+            weeklyCompleted,
+            workerCity,
+            citySkillRates,
         });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
@@ -952,7 +1098,7 @@ exports.updateWorkerProfile = async (req, res) => {
             return res.status(403).json({ message: 'ID proof type and ID number are locked after registration and cannot be updated.' });
         }
 
-        ['email', 'phoneType', 'overallExperience', 'education', 'gender', 'eShramNumber', 'travelMethod'].forEach(f => {
+        ['email', 'phoneType', 'education', 'gender', 'eShramNumber', 'travelMethod'].forEach(f => {
             if (req.body[f] !== undefined) w[f] = req.body[f];
         });
         if (req.body.dob !== undefined) {
@@ -976,7 +1122,19 @@ exports.updateWorkerProfile = async (req, res) => {
             w.address.longitude = Number.isFinite(lon) ? lon : undefined;
         }
         if (req.body.skills) {
-            try { w.skills = JSON.parse(req.body.skills).filter(s => s?.name?.trim()); } catch {}
+            try {
+                const parsedSkills = JSON.parse(req.body.skills);
+                const normalizedSkills = normalizeWorkerSkillSelections(parsedSkills, req.body.primarySkill);
+                if (normalizedSkills.length === 0) {
+                    return res.status(400).json({ message: 'At least one valid skill is required.' });
+                }
+                if (normalizedSkills.length > MAX_WORKER_SKILLS) {
+                    return res.status(400).json({ message: `Maximum ${MAX_WORKER_SKILLS} skills are allowed.` });
+                }
+                w.skills = normalizedSkills;
+            } catch {
+                return res.status(400).json({ message: 'Invalid skills payload.' });
+            }
         }
         if (req.body.references) {
             try {
@@ -1110,8 +1268,8 @@ exports.deleteAccount = async (req, res) => {
 exports.getPublicWorkerProfile = async (req, res) => {
     try {
         const w = await findWorkerByIdOrKarigarId(req.params.id, {
-            select: '-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry',
-            populate: { path: 'reviewLock.lockedBy', select: 'name mobile karigarId' },
+            select: '-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry -mobile -email',
+            populate: { path: 'reviewLock.lockedBy', select: 'name karigarId' },
         });
         if (!w) return res.status(404).json({ message: 'Not found.' });
         const dailyProfile = await getWorkerDailyProfileSnapshot(w);
@@ -1126,7 +1284,24 @@ exports.getPublicWorkerProfile = async (req, res) => {
         const avgStars = ratings.length
             ? Math.round(ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length * 10) / 10 : 0;
         const workPhotos = completedJobDocs.flatMap(j => j.completionPhotos || []).slice(0, 12);
-        return res.json({ ...w.toObject(), completedJobs, ratings, rank: rankCount + 1, avgStars, workPhotos, dailyProfile });
+        const worker = w.toObject();
+        const publicAddress = worker.address ? {
+            city: worker.address.city || '',
+            locality: worker.address.locality || '',
+            state: worker.address.state || '',
+        } : null;
+        return res.json({
+            ...worker,
+            address: publicAddress,
+            mobile: undefined,
+            email: undefined,
+            completedJobs,
+            ratings,
+            rank: rankCount + 1,
+            avgStars,
+            workPhotos,
+            dailyProfile,
+        });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };
 

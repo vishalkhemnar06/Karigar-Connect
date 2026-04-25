@@ -138,6 +138,7 @@ export const getWorkerPurchaseHistory = () => API.get('/api/worker/purchase-hist
 // ── WORKER — PUBLIC SHOP BROWSING ─────────────────────────────────────────────
 export const getApprovedShops      = ()         => API.get('/api/shop/public/all');
 export const getShopPublicProducts = (shopId)   => API.get(`/api/shop/public/${shopId}/products`);
+export const getCityRateSummary    = (cityKey)   => API.get('/api/ai/rate-summary', { params: { cityKey } });
 
 // ── WORKER ────────────────────────────────────────────────────────────────────
 export const getAvailableJobs               = ()              => API.get('/api/worker/jobs');
@@ -197,6 +198,7 @@ export const searchClientForComplaint = (q)      => API.get('/api/worker/complai
 
 // ── CLIENT ────────────────────────────────────────────────────────────────────
 export const getClientProfile           = ()      => API.get('/api/client/profile');
+export const getClientMarketplaceDiscount = ()    => API.get('/api/client/marketplace/discount');
 export const getClientDocumentPreviewUrl = (url)  => API.get('/api/client/profile/document-preview-url', { params: { url } });
 export const verifyAssignedWorkerFace   = (fd)    => API.post('/api/client/face/verify-assigned-worker', fd, mp);
 export const updateClientProfile        = (fd)    => API.put('/api/client/profile/update',          fd, mp);
@@ -294,6 +296,21 @@ export const getRateTableCities  = ()   => API.get('/api/ai/rate-table-cities');
 export const startAIAssistant    = (fd) => API.post('/api/ai/assistant',                fd, mp);
 export const getAIAdvisorReport  = (fd) => API.post('/api/ai/advisor',                  fd, mp);
 export const aiGeneratePreviews  = (fd) => API.post('/api/ai/generate-preview-images',  fd, mp);
+
+// ── CLIENT CHATBOT (ISOLATED) ───────────────────────────────────────────────
+export const getClientChatbotSuggestions = (lang = 'en') => API.get('/api/chatbot/client/suggestions', { params: { lang } });
+export const queryClientChatbot = (body) => API.post('/api/chatbot/client/query', body);
+export const requestClientChatbotSupport = (body) => API.post('/api/chatbot/support/request', body);
+export const getClientChatbotSupportCurrent = () => API.get('/api/chatbot/support/current');
+export const sendClientChatbotSupportMessage = (body) => API.post('/api/chatbot/support/message', body);
+export const closeClientChatbotSupportRequest = (body = {}) => API.post('/api/chatbot/support/close', body);
+export const getAdminChatbotSupportRequests = (params = {}) => API.get('/api/chatbot/support/admin', { params });
+export const getAdminChatbotSupportRequestById = (id) => API.get(`/api/chatbot/support/admin/${id}`);
+export const acceptAdminChatbotSupportRequest = (id) => API.post(`/api/chatbot/support/admin/${id}/accept`);
+export const rejectAdminChatbotSupportRequest = (id) => API.post(`/api/chatbot/support/admin/${id}/reject`);
+export const sendAdminChatbotSupportMessage = (id, message) => API.post(`/api/chatbot/support/admin/${id}/message`, { message });
+export const closeAdminChatbotSupportRequest = (id, body = {}) => API.post(`/api/chatbot/support/admin/${id}/close`, body);
+export const deleteAdminChatbotSupportRequest = (id) => API.delete(`/api/chatbot/support/admin/${id}`);
 
 // ── GROUPS ────────────────────────────────────────────────────────────────────
 export const createGroupAPI = (d)        => API.post('/api/groups',              d);

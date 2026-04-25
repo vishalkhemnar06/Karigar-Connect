@@ -11,14 +11,18 @@ const User     = require('../models/userModel');
 const faceClient = require('../utils/faceServiceClient');
 const { sendOtpSms } = require('../utils/smsHelper');
 const { sendOtpEmail } = require('../utils/emailHelper');
+const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 const { upsertWorkerById } = require('../services/semanticMatchingService');
+const { MAX_WORKER_SKILLS, normalizeWorkerSkillSelections } = require('../constants/workerSkills');
 
 // ── OTP store (in-memory; production: use Redis) ──────────────────────────────
 const otpStore = new Map(); // key: mobile/email → { otp, expiry }
+const otpAttemptStore = new Map(); // key: mobile/email → { attempts, lockedUntil }
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const OTP_MAX_VERIFY_ATTEMPTS = 5;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const generateUserId = () =>
@@ -52,7 +56,10 @@ const validateWorkerIdNumber = (idType = '', rawNumber = '') => {
 };
 
 const hashWorkerIdNumber = (normalizedIdNumber) => {
-    const secret = process.env.ID_PROOF_HASH_SECRET || process.env.JWT_SECRET || 'karigarconnect-id-proof-fallback-secret';
+    const secret = process.env.ID_PROOF_HASH_SECRET || process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error('Missing ID proof hash secret. Set ID_PROOF_HASH_SECRET or JWT_SECRET.');
+    }
     return crypto.createHmac('sha256', secret).update(String(normalizedIdNumber)).digest('hex');
 };
 
@@ -87,18 +94,42 @@ exports.sendOtp = async (req, res) => {
         const identifier = mobile || email;
         if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
 
+        const cooldownKey = `auth:send-otp:${String(identifier).trim().toLowerCase()}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + OTP_TTL_MS;
         otpStore.set(identifier, { otp, expiry });
+        otpAttemptStore.delete(identifier);
+
+        let smsDelivered = false;
+        let emailDelivered = false;
 
         if (mobile) {
-            await sendOtpSms(mobile, otp);
+            const smsResult = await sendOtpSms(mobile, otp);
+            smsDelivered = smsResult?.success !== false;
         }
         if (email) {
-            await sendOtpEmail(email, otp);
+            try {
+                await sendOtpEmail(email, otp);
+                emailDelivered = true;
+            } catch (emailErr) {
+                console.warn(`[OTP] Email send failed for ${email}: ${emailErr.message}`);
+            }
         }
 
-        console.log(`[OTP] ${identifier} → ${otp}`);
+        if (!smsDelivered && !emailDelivered) {
+            otpStore.delete(identifier);
+            return res.status(500).json({ message: 'Failed to send OTP.' });
+        }
+
+        markOtpCooldown(cooldownKey);
 
         return res.json({ message: 'OTP sent successfully.' });
     } catch { return res.status(500).json({ message: 'Failed to send OTP.' }); }
@@ -109,12 +140,29 @@ exports.verifyOtp = async (req, res) => {
         const { identifier, otp } = req.body;
         if (!identifier || !otp) return res.status(400).json({ message: 'identifier and otp required.' });
 
+        const attemptState = otpAttemptStore.get(identifier) || { attempts: 0, lockedUntil: 0 };
+        if (attemptState.lockedUntil && Date.now() < attemptState.lockedUntil) {
+            return res.status(429).json({ message: 'Too many OTP attempts. Request a new OTP and try again.' });
+        }
+
         const record = otpStore.get(identifier);
         if (!record)                     return res.status(400).json({ message: 'OTP not sent or expired.' });
         if (Date.now() > record.expiry)  return res.status(400).json({ message: 'OTP expired. Please request a new one.' });
-        if (record.otp !== otp.trim())   return res.status(400).json({ message: 'Invalid OTP.' });
+        if (record.otp !== otp.trim()) {
+            const attempts = attemptState.attempts + 1;
+            const lockedUntil = attempts >= OTP_MAX_VERIFY_ATTEMPTS ? Date.now() + OTP_TTL_MS : 0;
+            otpAttemptStore.set(identifier, { attempts, lockedUntil });
+
+            if (attempts >= OTP_MAX_VERIFY_ATTEMPTS) {
+                otpStore.delete(identifier);
+                return res.status(429).json({ message: 'Too many invalid attempts. Request a new OTP.' });
+            }
+
+            return res.status(400).json({ message: 'Invalid OTP.' });
+        }
 
         otpStore.delete(identifier);
+        otpAttemptStore.delete(identifier);
         return res.json({ message: 'OTP verified successfully.' });
     } catch { return res.status(500).json({ message: 'Failed to verify OTP.' }); }
 };
@@ -246,9 +294,9 @@ exports.registerWorker = async (req, res) => {
     try {
         const {
             name, dob, mobile, email, password, confirmPassword,
-            city, pincode, locality, fullAddress, village, latitude, longitude, overallExperience, experience,
+            city, pincode, locality, fullAddress, village, latitude, longitude, experience,
             idNumber, gender, eShramNumber, idDocumentType,
-            emergencyContactName, emergencyContactMobile, phoneType, travelMethod, ageConsent, skills, references,
+            emergencyContactName, emergencyContactMobile, phoneType, travelMethod, ageConsent, skills, references, primarySkill,
             expectedMinPay, expectedMaxPay, preferredJobCategories,
         } = req.body;
 
@@ -315,6 +363,14 @@ exports.registerWorker = async (req, res) => {
 
         let parsedSkills = [];
         try { parsedSkills = JSON.parse(skills || '[]'); } catch {}
+        const normalizedSkills = normalizeWorkerSkillSelections(parsedSkills, primarySkill);
+
+        if (normalizedSkills.length === 0) {
+            return res.status(400).json({ message: 'At least one valid skill is required.' });
+        }
+        if ((Array.isArray(parsedSkills) ? parsedSkills.length : 0) > MAX_WORKER_SKILLS || normalizedSkills.length > MAX_WORKER_SKILLS) {
+            return res.status(400).json({ message: `Maximum ${MAX_WORKER_SKILLS} skills are allowed.` });
+        }
 
         let parsedRefs = [];
         try { parsedRefs = JSON.parse(references || '[]'); } catch {}
@@ -347,12 +403,12 @@ exports.registerWorker = async (req, res) => {
             photo:     photoFile.path,
             gender,    eShramNumber,
             eShramCardPath: eShramFile?.path || null,
-            overallExperience, experience: Number(experience) || 0,
+            experience: Number(experience) || 0,
             expectedMinPay: Number(expectedMinPay) || 0,
             expectedMaxPay: Number(expectedMaxPay) || 0,
             travelMethod: normalizedTravelMethod,
             preferredJobCategories: Array.isArray(parsedPreferredCategories) ? parsedPreferredCategories : [],
-            skills: parsedSkills, references: parsedRefs,
+            skills: normalizedSkills, references: parsedRefs,
             skillCertificates: skillCerts, portfolioPhotos: portfolio,
             emergencyContact: { name: emergencyContactName, mobile: emergencyContactMobile },
             verificationStatus: 'pending',
@@ -519,6 +575,16 @@ exports.registerClient = async (req, res) => {
             return res.status(400).json({ message: 'Must be 18 or older to register.' });
         if (!emergencyContactMobile || !emergencyContactName)
             return res.status(400).json({ message: 'Emergency contact details are required.' });
+        if (!profession?.trim())
+            return res.status(400).json({ message: 'Profession is required.' });
+        if (!signupReason)
+            return res.status(400).json({ message: 'Signup reason is required.' });
+        if (!(previousHiringExperience === 'true' || previousHiringExperience === 'false' || typeof previousHiringExperience === 'boolean'))
+            return res.status(400).json({ message: 'Please specify previous hiring experience.' });
+        if (!preferredPaymentMethod)
+            return res.status(400).json({ message: 'Preferred payment method is required.' });
+        if (!securityQuestion?.trim() || !securityAnswer?.trim())
+            return res.status(400).json({ message: 'Security question and answer are required.' });
         if (!toBool(termsPaymentAccepted) || !toBool(termsDisputePolicyAccepted) || !toBool(termsDataPrivacyAccepted) || !toBool(termsWorkerProtectionAccepted))
             return res.status(400).json({ message: 'You must accept all terms and conditions.' });
 
@@ -539,6 +605,8 @@ exports.registerClient = async (req, res) => {
             return res.status(400).json({ message: 'Live face photo is required for identity verification.' });
         if (!idProofFile)
             return res.status(400).json({ message: 'ID proof is required for identity verification.' });
+        if (!proofOfResidenceFile)
+            return res.status(400).json({ message: 'Proof of residence is required.' });
 
         // NEW: Capture IP & device fingerprint
         const clientIp = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
@@ -634,9 +702,21 @@ exports.registerClient = async (req, res) => {
         const addressOtp = Math.floor(100000 + Math.random() * 900000).toString();
         const { sendAddressVerificationOtp } = require('../utils/smsHelper');
         const addressDisplay = `${fullAddress}, ${city}`;
+        const addressCooldownKey = `auth:address-otp:${mobile}`;
+        const addressCooldown = getOtpCooldownState(addressCooldownKey);
+        if (!addressCooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(addressCooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(addressCooldown.remainingMs / 1000),
+            });
+        }
         
         try {
-            await sendAddressVerificationOtp(mobile, addressOtp, addressDisplay);
+            const result = await sendAddressVerificationOtp(mobile, addressOtp, addressDisplay);
+            if (result?.success === false) {
+                throw new Error(result.reason || 'sms_send_failed');
+            }
+            markOtpCooldown(addressCooldownKey);
             console.log(`[AddressOTP] Sent to ${mobile} for address: ${addressDisplay}`);
         } catch (err) {
             console.warn(`[AddressOTP] Failed to send: ${err.message}`);

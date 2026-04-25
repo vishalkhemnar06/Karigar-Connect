@@ -11,7 +11,7 @@ const RateUpdateLog = require('../models/rateUpdateLogModel');
 const IvrSession = require('../models/ivrSessionModel');
 const Shop = require('../models/shopModel');
 const Coupon = require('../models/couponModel');
-const { sendStatusUpdateSms } = require('../utils/smsHelper');
+const { sendStatusUpdateSms, sendCustomSms } = require('../utils/smsHelper');
 const { upsertWorkerById, removeWorkerById } = require('../services/semanticMatchingService');
 const { cloudinary, deleteCloudinaryFolder } = require('../utils/cloudinary');
 const { runWeeklyUpdate } = require('../cron/updateRates');
@@ -516,6 +516,64 @@ exports.getAllClients = async (req, res) => {
     }
 };
 
+exports.updateClientStatus = async (req, res) => {
+    try {
+        const { clientId, status, reason = '' } = req.body;
+        if (!clientId || !status) {
+            return res.status(400).json({ message: 'clientId and status are required.' });
+        }
+
+        const client = await User.findOne({ _id: clientId, role: 'client' }).select('name mobile verificationStatus');
+        if (!client) {
+            return res.status(404).json({ message: 'Client not found.' });
+        }
+
+        const isUnblock = String(status).toLowerCase() === 'unblocked';
+        const finalStatus = isUnblock ? 'approved' : String(status).toLowerCase();
+        if (!['blocked', 'approved'].includes(finalStatus)) {
+            return res.status(400).json({ message: 'Status must be blocked or unblocked.' });
+        }
+
+        if (finalStatus === 'blocked' && client.verificationStatus === 'blocked') {
+            return res.status(409).json({ message: 'Client is already blocked.' });
+        }
+        if (finalStatus === 'approved' && client.verificationStatus !== 'blocked') {
+            return res.status(409).json({ message: 'Client can only be unblocked from a blocked state.' });
+        }
+
+        client.verificationStatus = finalStatus;
+        client.blockReason = finalStatus === 'blocked' ? (reason || 'Account blocked by admin.') : null;
+        client.blockedAt = finalStatus === 'blocked' ? new Date() : null;
+        await client.save({ validateBeforeSave: false });
+
+        if (finalStatus === 'blocked') {
+            const smsResult = await sendCustomSms(
+                client.mobile,
+                `Hi ${client.name}, your KarigarConnect client account has been blocked. Reason: ${reason || 'Account review / policy violation'}. Contact support for help.`
+            );
+            if (smsResult?.success === false) {
+                console.warn('Client block SMS was not delivered:', smsResult.reason);
+            }
+        } else {
+            const smsResult = await sendCustomSms(
+                client.mobile,
+                `Hi ${client.name}, your KarigarConnect client account has been restored. You can sign in again now.`
+            );
+            if (smsResult?.success === false) {
+                console.warn('Client unblock SMS was not delivered:', smsResult.reason);
+            }
+        }
+
+        return res.json({
+            message: `Client ${finalStatus === 'blocked' ? 'blocked' : 'unblocked'}.`,
+            client,
+        });
+    } catch (err) {
+        console.error('updateClientStatus error:', err);
+        return res.status(500).json({ message: err.message || 'Failed to update client status.' });
+    }
+};
+
 exports.getMarketplaceRates = async (req, res) => {
     try {
         const mode = normalizeText(req.query.mode || req.query.view || req.query.source || 'base');
@@ -898,7 +956,19 @@ exports.updateWorkerStatus = async (req, res) => {
             await deleteCloudinaryFolder(folderPath);
         }
 
-        if (!isUnblock && ['approved', 'rejected', 'blocked'].includes(finalStatus)) {
+        if (isUnblock) {
+            try {
+                const smsResult = await sendCustomSms(
+                    updatedWorker.mobile,
+                    `Hi ${updatedWorker.name}, your KarigarConnect worker account has been restored. You can log in again now.`
+                );
+                if (smsResult?.success === false) {
+                    console.warn('Worker unblock SMS was not delivered:', smsResult.reason);
+                }
+            } catch (smsErr) {
+                console.error('SMS failed (non-fatal):', smsErr.message);
+            }
+        } else if (['approved', 'rejected', 'blocked'].includes(finalStatus)) {
             try {
                 await sendStatusUpdateSms(updatedWorker.mobile, updatedWorker.name, finalStatus);
             } catch (smsErr) {
@@ -944,6 +1014,11 @@ exports.getAdminStats = async (req, res) => {
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const twelveMonthsStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        const monthKeys = Array.from({ length: 12 }, (_, index) => {
+            const date = new Date(now.getFullYear(), now.getMonth() - (11 - index), 1);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        });
 
         // Execute all queries in parallel
         const [
@@ -964,7 +1039,12 @@ exports.getAdminStats = async (req, res) => {
             jobStatusBreakdown,
             clientCount_approval,
             dailyWorkerRegistrations,
-            weeklyIVRTrend
+            weeklyIVRTrend,
+            topCitiesByWorkers,
+            topCitiesByCompletedJobs,
+            monthlyPostedJobs,
+            monthlyCompletedJobs,
+            topEarningSkills
         ] = await Promise.all([
             // Basic stats
             User.countDocuments({ role: 'worker' }),
@@ -1077,6 +1157,61 @@ exports.getAdminStats = async (req, res) => {
                 {
                     $sort: { _id: 1 }
                 }
+            ]),
+
+            User.aggregate([
+                { $match: { role: 'worker' } },
+                { $project: { city: { $trim: { input: { $ifNull: ['$address.city', '$city'] } } } } },
+                { $match: { city: { $ne: '' } } },
+                { $group: { _id: { $toLower: '$city' }, city: { $first: '$city' }, count: { $sum: 1 } } },
+                { $sort: { count: -1, city: 1 } },
+                { $limit: 5 }
+            ]),
+
+            Job.aggregate([
+                { $match: { status: 'completed' } },
+                { $project: { city: { $trim: { input: { $ifNull: ['$location.city', ''] } } } } },
+                { $match: { city: { $ne: '' } } },
+                { $group: { _id: { $toLower: '$city' }, city: { $first: '$city' }, count: { $sum: 1 } } },
+                { $sort: { count: -1, city: 1 } },
+                { $limit: 5 }
+            ]),
+
+            Job.aggregate([
+                { $match: { createdAt: { $gte: twelveMonthsStart } } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, count: { $sum: 1 } } },
+                { $sort: { _id: 1 } }
+            ]),
+
+            Job.aggregate([
+                { $match: { status: 'completed', updatedAt: { $gte: twelveMonthsStart } } },
+                { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$updatedAt' } }, count: { $sum: 1 } } },
+                { $sort: { _id: 1 } }
+            ]),
+
+            Job.aggregate([
+                { $match: { status: 'completed' } },
+                {
+                    $addFields: {
+                        jobValue: { $cond: [{ $gt: ['$payment', 0] }, '$payment', '$totalEstimatedCost'] },
+                        skillCount: { $cond: [{ $isArray: '$skills' }, { $size: '$skills' }, 0] }
+                    }
+                },
+                {
+                    $addFields: {
+                        sharedSkillValue: {
+                            $cond: [
+                                { $gt: ['$skillCount', 0] },
+                                { $divide: ['$jobValue', '$skillCount'] },
+                                '$jobValue'
+                            ]
+                        }
+                    }
+                },
+                { $unwind: '$skills' },
+                { $group: { _id: '$skills', earnings: { $sum: '$sharedSkillValue' }, jobs: { $sum: 1 } } },
+                { $sort: { earnings: -1, jobs: -1 } },
+                { $limit: 5 }
             ])
         ]);
 
@@ -1102,6 +1237,54 @@ exports.getAdminStats = async (req, res) => {
         jobStatusBreakdown.forEach(item => {
             jobStatusMap[item._id || 'unknown'] = item.count;
         });
+
+        const topCitiesForWorkers = topCitiesByWorkers.map((item) => ({
+            city: item.city || item._id,
+            count: item.count || 0,
+        }));
+
+        const topCitiesForCompletedJobs = topCitiesByCompletedJobs.map((item) => ({
+            city: item.city || item._id,
+            count: item.count || 0,
+        }));
+
+        const postedByMonth = new Map(monthlyPostedJobs.map((row) => [row._id, row.count]));
+        const completedByMonth = new Map(monthlyCompletedJobs.map((row) => [row._id, row.count]));
+        const monthlyJobTrend = monthKeys.map((monthKey) => {
+            const date = new Date(`${monthKey}-01T00:00:00`);
+            return {
+                _id: monthKey,
+                label: date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
+                posted: postedByMonth.get(monthKey) || 0,
+                completed: completedByMonth.get(monthKey) || 0,
+            };
+        });
+
+        const currentMonthKey = monthKeys[monthKeys.length - 1];
+        const previousMonthKey = monthKeys[monthKeys.length - 2];
+        const currentPosted = postedByMonth.get(currentMonthKey) || 0;
+        const previousPosted = postedByMonth.get(previousMonthKey) || 0;
+        const currentCompleted = completedByMonth.get(currentMonthKey) || 0;
+        const previousCompleted = completedByMonth.get(previousMonthKey) || 0;
+
+        const growthPct = (currentValue, previousValue) => {
+            if (!previousValue) return currentValue > 0 ? 100 : 0;
+            return Number((((currentValue - previousValue) / previousValue) * 100).toFixed(1));
+        };
+
+        const trendMetrics = {
+            postedThisMonth: currentPosted,
+            completedThisMonth: currentCompleted,
+            completionRate: totalJobs > 0 ? Number((((jobStatusMap.completed || 0) / totalJobs) * 100).toFixed(1)) : 0,
+            postedGrowthPct: growthPct(currentPosted, previousPosted),
+            completedGrowthPct: growthPct(currentCompleted, previousCompleted),
+        };
+
+        const topEarningSkillsFormatted = topEarningSkills.map((row) => ({
+            skill: row._id,
+            earnings: Math.round(Number(row.earnings) || 0),
+            jobs: row.jobs || 0,
+        }));
 
         const response = {
             // Worker & Client stats
@@ -1150,7 +1333,12 @@ exports.getAdminStats = async (req, res) => {
 
             // Growth trends
             dailyWorkerRegistrations: dailyWorkerRegistrations,
-            weeklyIVRTrend: weeklyIVRTrend
+            weeklyIVRTrend: weeklyIVRTrend,
+            topCitiesByWorkers: topCitiesForWorkers,
+            topCitiesByCompletedJobs: topCitiesForCompletedJobs,
+            monthlyJobTrend,
+            topEarningSkills: topEarningSkillsFormatted,
+            trendMetrics,
         };
 
         return res.json(response);

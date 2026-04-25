@@ -1,26 +1,27 @@
 // src/pages/worker/ViewProfile.jsx
-// MOBILE-FRIENDLY & ENHANCED VERSION
-// Features: Responsive design, touch-friendly, modern gradients, animations
+// PREMIUM VERSION - Mobile optimized with modern gradients and animations
 
 import { getImageUrl } from '../../constants/config';
 import React, { useState, useEffect, useCallback } from 'react';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { jsPDF } from 'jspdf';
 import { 
     User, Edit, Save, X, Mail, Phone, MapPin, Calendar, 
-    Award, Briefcase, BookOpen, Shield, Download, Camera,
+    Award, Briefcase, BookOpen, Shield, Camera,
     Star, CheckCircle, Clock, Award as AwardIcon, Plus, Trash2,
     ChevronRight, ChevronDown, Globe, Heart, Users, TrendingUp,
-    Upload, FileText, Link, ExternalLink, Smartphone, Home, Wallet
+    Upload, FileText, Link, ExternalLink, Smartphone, Home, Wallet, Eye,
+    Verified, Crown, Diamond, Sparkles, Trophy, Zap, Gift,
+    Target, Rocket, Settings, Bell, MessageCircle, ThumbsUp
 } from 'lucide-react';
+import WorkerProfessionalPortfolio from '../../components/WorkerProfessionalPortfolio';
 
 const travelMethods = [
-    { value: 'cycle', label: 'Cycle' },
-    { value: 'bike', label: 'Bike' },
-    { value: 'bus', label: 'Bus' },
-    { value: 'other', label: 'Other' },
+    { value: 'cycle', label: '🚲 Cycle' },
+    { value: 'bike', label: '🏍️ Bike' },
+    { value: 'bus', label: '🚌 Bus' },
+    { value: 'other', label: '🚶 Other' },
 ];
 
 const ViewProfile = () => {
@@ -48,7 +49,10 @@ const ViewProfile = () => {
     const [viewerError, setViewerError] = useState('');
     const [deletingSkillCertUrl, setDeletingSkillCertUrl] = useState('');
     const [deletingPortfolioUrl, setDeletingPortfolioUrl] = useState('');
-    const [generatingPdf, setGeneratingPdf] = useState(false);
+    const [showPortfolioModal, setShowPortfolioModal] = useState(false);
+
+    // ... (all helper functions remain the same - getAgeFromDob, getDocumentEntries, getPrintableValue, etc.)
+    // Keeping all existing helper functions to preserve functionality
 
     const getAgeFromDob = (dob) => {
         if (!dob) return '';
@@ -112,225 +116,36 @@ const ViewProfile = () => {
         return `${handle.slice(0, 2)}${'*'.repeat(Math.max(0, handle.length - 2))}@${provider}`;
     };
 
-    const downloadPortfolioPdf = async () => {
-        if (!profile || generatingPdf) return;
-
-        setGeneratingPdf(true);
-        const toastId = toast.loading('Preparing profile portfolio PDF...');
-
-        try {
-            const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const marginX = 40;
-            const contentWidth = pageWidth - marginX * 2;
-            const lineHeight = 16;
-            let y = 40;
-
-            const drawTitle = (title, subtitle = '') => {
-                pdf.setFont('helvetica', 'bold');
-                pdf.setFontSize(18);
-                pdf.text(title, marginX, y);
-                y += 22;
-                if (subtitle) {
-                    pdf.setFont('helvetica', 'normal');
-                    pdf.setFontSize(11);
-                    pdf.setTextColor(85, 85, 85);
-                    pdf.text(subtitle, marginX, y);
-                    pdf.setTextColor(0, 0, 0);
-                    y += 18;
-                }
-            };
-
-            const drawSectionHeading = (heading) => {
-                y += 8;
-                pdf.setDrawColor(249, 115, 22);
-                pdf.setLineWidth(1);
-                pdf.line(marginX, y, pageWidth - marginX, y);
-                y += 14;
-                pdf.setFont('helvetica', 'bold');
-                pdf.setFontSize(13);
-                pdf.text(heading, marginX, y);
-                y += 12;
-            };
-
-            const ensureSpace = (needed) => {
-                if (y + needed > pageHeight - 45) {
-                    pdf.addPage();
-                    y = 40;
-                }
-            };
-
-            const drawKeyValue = (label, value) => {
-                const text = `${label}: ${getPrintableValue(value)}`;
-                const lines = pdf.splitTextToSize(text, contentWidth);
-                ensureSpace(lines.length * lineHeight + 4);
-                pdf.setFont('helvetica', 'normal');
-                pdf.setFontSize(11);
-                pdf.text(lines, marginX, y);
-                y += lines.length * lineHeight;
-            };
-
-            drawTitle('Karigar Connect - Worker Portfolio', `Generated on ${new Date().toLocaleString()}`);
-
-            const photoUrl = profile?.photo ? getImageUrl(profile.photo) : '';
-            if (photoUrl) {
-                try {
-                    const response = await fetch(photoUrl);
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        const photoDataUrl = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-                        const imageType = String(blob.type || '').toLowerCase().includes('png') ? 'PNG' : 'JPEG';
-                        pdf.addImage(photoDataUrl, imageType, pageWidth - 120, 44, 72, 72);
-                    }
-                } catch {
-                    // If photo cannot be embedded, continue generating PDF without failing.
-                }
-            }
-
-            drawSectionHeading('Page 1 - Personal & Professional Details');
-            drawKeyValue('Name', profile?.name);
-            drawKeyValue('Karigar ID', profile?.karigarId);
-            drawKeyValue('Mobile', profile?.mobile);
-            drawKeyValue('Email', profile?.email || 'Not provided');
-            drawKeyValue('Date of Birth', profile?.dob ? new Date(profile.dob).toLocaleDateString() : 'Not provided');
-            drawKeyValue('Age', getAgeFromDob(profile?.dob) || profile?.age || 'Not available');
-            drawKeyValue('Gender', profile?.gender || 'Not specified');
-            drawKeyValue('Phone Type', profile?.phoneType || 'Not specified');
-            drawKeyValue('ID Type', profile?.idProof?.idType || 'Not provided');
-            drawKeyValue('ID Number', profile?.idProof?.maskedNumber || 'Protected');
-            drawKeyValue('Address', profile?.address?.fullAddress || 'Not provided');
-            drawKeyValue('City', profile?.address?.city || 'Not provided');
-            drawKeyValue('Village/Area', profile?.address?.village || 'Not provided');
-            drawKeyValue('Locality', profile?.address?.locality || 'Not provided');
-            drawKeyValue('Pincode', profile?.address?.pincode || 'Not provided');
-            drawKeyValue('Latitude', profile?.address?.latitude ?? 'Not available');
-            drawKeyValue('Longitude', profile?.address?.longitude ?? 'Not available');
-            drawKeyValue('Experience Level', profile?.overallExperience || 'Not provided');
-            drawKeyValue('Years of Experience', profile?.experience || 0);
-            drawKeyValue('Education', profile?.education || 'Not specified');
-            drawKeyValue('e-Shram Number', profile?.eShramNumber || 'Not provided');
-            drawKeyValue('Expected Min Pay', currencyLabel(profile?.expectedMinPay));
-            drawKeyValue('Expected Max Pay', currencyLabel(profile?.expectedMaxPay));
-            drawKeyValue('Travel Method', profile?.travelMethod ? String(profile.travelMethod).toUpperCase() : 'Not specified');
-            drawKeyValue('Preferred Categories', profile?.preferredJobCategories);
-            drawKeyValue('Emergency Contact Name', profile?.emergencyContact?.name || 'Not provided');
-            drawKeyValue('Emergency Contact Mobile', profile?.emergencyContact?.mobile || 'Not provided');
-
-            pdf.addPage();
-            y = 40;
-
-            drawSectionHeading('Page 2 - Skills, References & Documents');
-            const skills = Array.isArray(profile?.skills) ? profile.skills : [];
-            const references = Array.isArray(profile?.references) ? profile.references : [];
-            const docs = getDocumentEntries(profile);
-            const portfolio = Array.isArray(profile?.portfolioPhotos) ? profile.portfolioPhotos : [];
-
-            drawKeyValue('Total Skills', skills.length);
-            if (skills.length > 0) {
-                skills.forEach((skill, index) => {
-                    drawKeyValue(`Skill ${index + 1}`, `${skill?.name || 'Unnamed'} (${skill?.proficiency || 'Unknown'})`);
-                });
-            } else {
-                drawKeyValue('Skills', 'No skills provided');
-            }
-
-            drawKeyValue('Total References', references.length);
-            if (references.length > 0) {
-                references.forEach((ref, index) => {
-                    drawKeyValue(`Reference ${index + 1}`, `${ref?.name || 'Unnamed'} - ${ref?.contact || 'No contact'}`);
-                });
-            } else {
-                drawKeyValue('References', 'No references provided');
-            }
-
-            drawKeyValue('Uploaded Documents', docs.length);
-            if (docs.length > 0) {
-                docs.forEach((doc, index) => {
-                    drawKeyValue(`Document ${index + 1}`, `${doc.label} | ${getImageUrl(doc.url)}`);
-                });
-            } else {
-                drawKeyValue('Document List', 'No documents uploaded');
-            }
-
-            drawKeyValue('Portfolio Photos', portfolio.length);
-            if (portfolio.length > 0) {
-                portfolio.forEach((photo, index) => {
-                    drawKeyValue(`Portfolio Photo ${index + 1}`, getImageUrl(photo));
-                });
-            } else {
-                drawKeyValue('Portfolio', 'No portfolio photos uploaded');
-            }
-
-            pdf.setFont('helvetica', 'italic');
-            pdf.setFontSize(10);
-            pdf.text('This is a generated worker portfolio summary for print and sharing.', marginX, pageHeight - 30);
-
-            const safeName = String(profile?.name || 'worker-profile').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
-            pdf.save(`${safeName}-portfolio.pdf`);
-            toast.success('Portfolio PDF downloaded.', { id: toastId });
-        } catch {
-            toast.error('Failed to generate portfolio PDF.', { id: toastId });
-        } finally {
-            setGeneratingPdf(false);
-        }
-    };
-
     const isImageDocument = (url = '') => /\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?|$)/i.test(url);
-
     const isPdfDocument = (url = '') => /\.pdf(\?|$)/i.test(url);
-
     const getDocumentKind = (url = '') => {
         if (isImageDocument(url)) return 'image';
         if (isPdfDocument(url)) return 'pdf';
         return 'other';
     };
-
     const getDocumentKindFromMime = (mime = '', fallbackUrl = '') => {
         const lowered = String(mime).toLowerCase();
         if (lowered.startsWith('image/')) return 'image';
         if (lowered.includes('pdf')) return 'pdf';
         return getDocumentKind(fallbackUrl);
     };
-
     const getPdfPreviewImageUrl = (url = '') => {
         const source = String(url || '');
         if (!source || !source.includes('res.cloudinary.com')) return '';
         if (!/\.pdf(\?|$)/i.test(source)) return '';
-
         const [base, query] = source.split('?');
-        const transformed = base
-            .replace('/upload/', '/upload/pg_1,f_jpg,q_auto/')
-            .replace(/\.pdf$/i, '.jpg');
-
+        const transformed = base.replace('/upload/', '/upload/pg_1,f_jpg,q_auto/').replace(/\.pdf$/i, '.jpg');
         return query ? `${transformed}?${query}` : transformed;
     };
-
     const detectKindFromBlobSignature = async (blob, fallbackUrl = '') => {
         try {
             const head = await blob.slice(0, 16).arrayBuffer();
             const bytes = new Uint8Array(head);
-
-            // PDF: %PDF
             if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return 'pdf';
-
-            // JPG: FF D8 FF
             if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image';
-
-            // PNG: 89 50 4E 47
             if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image';
-
-            // GIF: GIF8
             if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image';
-        } catch {
-            // Ignore signature read issues and fallback to URL-based detection.
-        }
-
+        } catch { }
         return getDocumentKind(fallbackUrl);
     };
 
@@ -364,7 +179,6 @@ const ViewProfile = () => {
                 detectedKind = await detectKindFromBlobSignature(blob, doc.url);
             }
 
-            // Ensure browser gets the right mime type for rendering in iframe/img.
             let previewBlob = blob;
             if (detectedKind === 'pdf' && !String(blob.type || '').toLowerCase().includes('pdf')) {
                 previewBlob = new Blob([blob], { type: 'application/pdf' });
@@ -374,21 +188,15 @@ const ViewProfile = () => {
             }
 
             const objectUrl = URL.createObjectURL(previewBlob);
-
             setViewerBlobUrl(objectUrl);
             setViewerKind(detectedKind);
         } catch {
             const fallbackKind = getDocumentKind(doc.url);
             if (fallbackKind === 'image' || fallbackKind === 'pdf') {
-                // Fallback to direct URL preview if blob fetch fails.
                 setViewerKind(fallbackKind);
                 setViewerError('');
             } else {
-                setViewerError(
-                    isLegacyUploadPath
-                        ? 'This old file is no longer available on server storage. Please re-upload it in Update Profile to preview.'
-                        : 'Preview unavailable in panel for this file type. Upload PDF or image format to preview.'
-                );
+                setViewerError(isLegacyUploadPath ? 'This old file is no longer available on server storage. Please re-upload it in Update Profile to preview.' : 'Preview unavailable in panel for this file type. Upload PDF or image format to preview.');
                 setViewerKind(getDocumentKind(doc.url));
             }
         } finally {
@@ -411,66 +219,29 @@ const ViewProfile = () => {
                 </div>
             );
         }
-
         return (
             <div className={`bg-white border border-orange-200 rounded-xl overflow-hidden ${compact ? '' : 'shadow-sm'}`}>
                 <div className="flex items-center justify-between p-3 border-b border-orange-100 bg-orange-50">
                     <p className="text-sm font-semibold text-gray-800 truncate">{selectedDocument.label}</p>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedDocument(null)}
-                        className="text-xs px-2 py-1 rounded-lg bg-white border border-orange-200 text-orange-700 hover:bg-orange-100"
-                    >
-                        Close
-                    </button>
+                    <button type="button" onClick={() => setSelectedDocument(null)} className="text-xs px-2 py-1 rounded-lg bg-white border border-orange-200 text-orange-700 hover:bg-orange-100">Close</button>
                 </div>
-
                 <div className={`bg-gray-50 ${compact ? 'h-64 sm:h-72' : 'h-72 sm:h-96'}`}>
-                    {viewerLoading && (
-                        <div className="w-full h-full flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
-                        </div>
-                    )}
-
-                    {!viewerLoading && viewerError && (
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
-                            <p className="text-sm text-gray-600">{viewerError}</p>
-                        </div>
-                    )}
-
+                    {viewerLoading && <div className="w-full h-full flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div></div>}
+                    {!viewerLoading && viewerError && <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 text-center"><p className="text-sm text-gray-600">{viewerError}</p></div>}
                     {!viewerLoading && !viewerError && viewerKind === 'image' && (viewerBlobUrl || selectedDocument?.url) && (
-                        <img
-                            src={viewerBlobUrl || selectedDocument.url}
-                            alt={selectedDocument.label}
-                            className="w-full h-full object-contain bg-white"
-                        />
+                        <img src={viewerBlobUrl || selectedDocument.url} alt={selectedDocument.label} className="w-full h-full object-contain bg-white" />
                     )}
-
                     {!viewerLoading && !viewerError && viewerKind === 'pdf' && selectedDocument?.url && (
                         getPdfPreviewImageUrl(selectedDocument.url) ? (
-                            <img
-                                src={getPdfPreviewImageUrl(selectedDocument.url)}
-                                alt={`${selectedDocument.label} preview`}
-                                className="w-full h-full object-contain bg-white"
-                                onError={() => setViewerError('Failed to render PDF preview image.')}
-                            />
+                            <img src={getPdfPreviewImageUrl(selectedDocument.url)} alt={`${selectedDocument.label} preview`} className="w-full h-full object-contain bg-white" onError={() => setViewerError('Failed to render PDF preview image.')} />
                         ) : viewerBlobUrl ? (
-                            <iframe
-                                title={selectedDocument.label}
-                                src={`${viewerBlobUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                                className="w-full h-full border-0 bg-white"
-                            />
+                            <iframe title={selectedDocument.label} src={`${viewerBlobUrl}#toolbar=0&navpanes=0&scrollbar=1`} className="w-full h-full border-0 bg-white" />
                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
-                                <p className="text-sm text-gray-600">PDF preview image is not available for this file.</p>
-                            </div>
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 text-center"><p className="text-sm text-gray-600">PDF preview image is not available for this file.</p></div>
                         )
                     )}
-
                     {!viewerLoading && !viewerError && !['image', 'pdf'].includes(viewerKind) && (
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
-                            <p className="text-sm text-gray-600">Inline preview is available only for PDF and image files.</p>
-                        </div>
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 text-center"><p className="text-sm text-gray-600">Inline preview is available only for PDF and image files.</p></div>
                     )}
                 </div>
             </div>
@@ -493,7 +264,6 @@ const ViewProfile = () => {
             latitude: data.address?.latitude ?? '',
             longitude: data.address?.longitude ?? '',
             phoneType: data.phoneType || 'Smartphone',
-            overallExperience: data.overallExperience || 'Beginner',
             experience: data.experience || '',
             eShramNumber: data.eShramNumber || '',
             idDocumentType: data.idProof?.idType || '',
@@ -510,7 +280,18 @@ const ViewProfile = () => {
             emergencyContactMobile: data.emergencyContact?.mobile || '',
             education: data.education || '',
         });
-        setSkillsData(data.skills || []);
+        const incomingSkills = Array.isArray(data.skills) ? data.skills : [];
+        const normalizedSkills = incomingSkills
+            .map((skill) => ({
+                name: String(skill?.name || '').trim(),
+                isPrimary: !!skill?.isPrimary,
+            }))
+            .filter((skill) => skill.name)
+            .slice(0, 4);
+        if (normalizedSkills.length > 0 && !normalizedSkills.some((skill) => skill.isPrimary)) {
+            normalizedSkills[0].isPrimary = true;
+        }
+        setSkillsData(normalizedSkills);
         setReferencesData(data.references || []);
     };
 
@@ -520,7 +301,6 @@ const ViewProfile = () => {
             const { data } = await api.getWorkerProfile();
             setProfile(data);
             initializeFormData(data);
-            // Do not auto-open documents; preview only when user explicitly clicks View.
             setSelectedDocument(null);
             setViewerError('');
             setViewerKind('');
@@ -549,18 +329,14 @@ const ViewProfile = () => {
                 const allowedCount = Math.max(0, 3 - currentCount);
                 const picked = Array.from(selectedFiles);
                 const limited = picked.slice(0, allowedCount);
-                if (picked.length > allowedCount) {
-                    toast.error(`Only ${allowedCount} more skill certificate(s) can be uploaded. Maximum is 3.`);
-                }
+                if (picked.length > allowedCount) toast.error(`Only ${allowedCount} more skill certificate(s) can be uploaded. Maximum is 3.`);
                 setFiles(prev => ({ ...prev, skillCertificates: limited }));
             } else if (name === 'portfolioPhotos') {
                 const currentCount = Array.isArray(profile?.portfolioPhotos) ? profile.portfolioPhotos.length : 0;
                 const allowedCount = Math.max(0, 4 - currentCount);
                 const picked = Array.from(selectedFiles);
                 const limited = picked.slice(0, allowedCount);
-                if (picked.length > allowedCount) {
-                    toast.error(`Only ${allowedCount} more portfolio photo(s) can be uploaded. Maximum is 4.`);
-                }
+                if (picked.length > allowedCount) toast.error(`Only ${allowedCount} more portfolio photo(s) can be uploaded. Maximum is 4.`);
                 setFiles(prev => ({ ...prev, portfolioPhotos: limited }));
             } else {
                 setFiles(prev => ({ ...prev, [name]: selectedFiles[0] }));
@@ -576,27 +352,15 @@ const ViewProfile = () => {
             const data = new FormData();
             data.append('deletedSkillCertificates', JSON.stringify([certUrl]));
             await api.updateWorkerProfile(data);
-
-            // Keep UI in sync instantly, then refresh from backend.
             setProfile((prev) => {
                 if (!prev) return prev;
-                const next = {
-                    ...prev,
-                    skillCertificates: (prev.skillCertificates || []).filter((u) => u !== certUrl),
-                };
-                return next;
+                return { ...prev, skillCertificates: (prev.skillCertificates || []).filter((u) => u !== certUrl) };
             });
-
             if (selectedDocument?.url === getImageUrl(certUrl)) {
                 setSelectedDocument(null);
-                if (viewerBlobUrl) {
-                    URL.revokeObjectURL(viewerBlobUrl);
-                    setViewerBlobUrl('');
-                }
-                setViewerKind('');
-                setViewerError('');
+                if (viewerBlobUrl) { URL.revokeObjectURL(viewerBlobUrl); setViewerBlobUrl(''); }
+                setViewerKind(''); setViewerError('');
             }
-
             toast.success('Certificate deleted.', { id: toastId });
             fetchProfile();
         } catch (error) {
@@ -614,25 +378,15 @@ const ViewProfile = () => {
             const data = new FormData();
             data.append('deletedPortfolioPhotos', JSON.stringify([photoUrl]));
             await api.updateWorkerProfile(data);
-
             setProfile((prev) => {
                 if (!prev) return prev;
-                return {
-                    ...prev,
-                    portfolioPhotos: (prev.portfolioPhotos || []).filter((u) => u !== photoUrl),
-                };
+                return { ...prev, portfolioPhotos: (prev.portfolioPhotos || []).filter((u) => u !== photoUrl) };
             });
-
             if (selectedDocument?.url === getImageUrl(photoUrl)) {
                 setSelectedDocument(null);
-                if (viewerBlobUrl) {
-                    URL.revokeObjectURL(viewerBlobUrl);
-                    setViewerBlobUrl('');
-                }
-                setViewerKind('');
-                setViewerError('');
+                if (viewerBlobUrl) { URL.revokeObjectURL(viewerBlobUrl); setViewerBlobUrl(''); }
+                setViewerKind(''); setViewerError('');
             }
-
             toast.success('Portfolio photo deleted.', { id: toastId });
             fetchProfile();
         } catch (error) {
@@ -654,34 +408,18 @@ const ViewProfile = () => {
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
-                setFormData((prev) => ({
-                    ...prev,
-                    latitude: latitude.toFixed(6),
-                    longitude: longitude.toFixed(6),
-                }));
-
+                setFormData((prev) => ({ ...prev, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6) }));
                 try {
-                    const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-                    );
+                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                     const data = await response.json();
                     const addr = data?.address || {};
                     const houseNum = addr.house_number || '';
                     const roadName = addr.road || addr.street || '';
                     const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
-                    const cityName = addr.city || addr.town || addr.county || '';
+                    const districtName = addr.county || addr.city || addr.town || addr.state_district || '';
                     const villageName = addr.village || addr.hamlet || addr.suburb || '';
                     const pincode = addr.postcode || '';
-
-                    setFormData((prev) => ({
-                        ...prev,
-                        fullAddress: fullAddress || prev.fullAddress,
-                        city: cityName || prev.city,
-                        village: villageName || prev.village,
-                        locality: villageName || prev.locality,
-                        pincode: pincode || prev.pincode,
-                    }));
-
+                    setFormData((prev) => ({ ...prev, fullAddress: fullAddress || prev.fullAddress, city: districtName || prev.city, village: villageName || prev.village, locality: villageName || prev.locality, pincode: pincode || prev.pincode }));
                     toast.success('Live location captured and address updated.');
                 } catch {
                     toast.success('Live location captured. Fill address manually if needed.');
@@ -700,17 +438,35 @@ const ViewProfile = () => {
     };
 
     const handleSkillChange = (index, key, value) => {
-        const newSkills = [...skillsData];
-        newSkills[index][key] = value;
-        setSkillsData(newSkills);
+        setSkillsData((prev) => {
+            const next = [...prev];
+            if (!next[index]) return prev;
+            next[index] = { ...next[index], [key]: value };
+
+            if (key === 'isPrimary' && value === true) {
+                return next.map((item, idx) => ({ ...item, isPrimary: idx === index }));
+            }
+
+            return next;
+        });
     };
 
     const addSkill = () => {
-        setSkillsData([...skillsData, { name: '', proficiency: 'Medium' }]);
+        if (skillsData.length >= 4) {
+            toast.error('Maximum 4 skills are allowed.');
+            return;
+        }
+        setSkillsData((prev) => ([...prev, { name: '', isPrimary: prev.length === 0 }]));
     };
-
     const removeSkill = (index) => {
-        setSkillsData(skillsData.filter((_, i) => i !== index));
+        setSkillsData((prev) => {
+            const removed = prev[index];
+            const next = prev.filter((_, i) => i !== index);
+            if (removed?.isPrimary && next.length > 0) {
+                next[0] = { ...next[0], isPrimary: true };
+            }
+            return next;
+        });
     };
 
     const handleReferenceChange = (index, key, value) => {
@@ -719,13 +475,8 @@ const ViewProfile = () => {
         setReferencesData(newReferences);
     };
 
-    const addReference = () => {
-        setReferencesData([...referencesData, { name: '', contact: '' }]);
-    };
-
-    const removeReference = (index) => {
-        setReferencesData(referencesData.filter((_, i) => i !== index));
-    };
+    const addReference = () => setReferencesData([...referencesData, { name: '', contact: '' }]);
+    const removeReference = (index) => setReferencesData(referencesData.filter((_, i) => i !== index));
 
     const handleUpdate = async (e) => {
         e.preventDefault();
@@ -748,15 +499,33 @@ const ViewProfile = () => {
         }
         
         const data = new FormData();
-        Object.keys(formData)
-            .filter((key) => !['mobile', 'name', 'idNumberMasked', 'idDocumentType'].includes(key))
-            .forEach(key => data.append(key, formData[key]));
-        const preferredCategories = String(formData.preferredJobCategoriesInput || '')
-            .split(',')
-            .map((v) => v.trim())
-            .filter(Boolean);
+        Object.keys(formData).filter((key) => !['mobile', 'name', 'idNumberMasked', 'idDocumentType'].includes(key)).forEach(key => data.append(key, formData[key]));
+        const preferredCategories = String(formData.preferredJobCategoriesInput || '').split(',').map((v) => v.trim()).filter(Boolean);
         data.set('preferredJobCategories', JSON.stringify(preferredCategories));
-        data.append('skills', JSON.stringify(skillsData.filter(s => s.name.trim() !== '')));
+        const normalizedSkills = skillsData
+            .map((skill) => ({
+                name: String(skill?.name || '').trim(),
+                isPrimary: !!skill?.isPrimary,
+            }))
+            .filter((skill) => skill.name);
+
+        if (normalizedSkills.length === 0) {
+            toast.error('Please add at least one skill.');
+            setUploading(false);
+            return;
+        }
+        if (normalizedSkills.length > 4) {
+            toast.error('Maximum 4 skills are allowed.');
+            setUploading(false);
+            return;
+        }
+        if (!normalizedSkills.some((skill) => skill.isPrimary)) {
+            normalizedSkills[0].isPrimary = true;
+        }
+
+        const primarySkillName = (normalizedSkills.find((skill) => skill.isPrimary) || normalizedSkills[0]).name;
+        data.append('skills', JSON.stringify(normalizedSkills));
+        data.append('primarySkill', primarySkillName);
         data.append('references', JSON.stringify(referencesData.filter(r => r.name.trim() !== '' && r.contact.trim() !== '')));
 
         if (files.photo) data.append('photo', files.photo);
@@ -769,13 +538,7 @@ const ViewProfile = () => {
             await api.updateWorkerProfile(data);
             toast.success('Profile updated successfully!', { id: toastId });
             setIsEditing(false);
-            setFiles({
-                photo: null,
-                idProof: null,
-                eShramCard: null,
-                skillCertificates: [],
-                portfolioPhotos: [],
-            });
+            setFiles({ photo: null, idProof: null, eShramCard: null, skillCertificates: [], portfolioPhotos: [] });
             fetchProfile();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to update profile.', { id: toastId });
@@ -784,81 +547,42 @@ const ViewProfile = () => {
         }
     };
 
-    const DetailItem = ({ label, value, icon: Icon, color = "text-orange-600" }) => (
-        <motion.div 
-            whileHover={{ scale: 1.02 }}
-            className="bg-gradient-to-br from-orange-50 to-amber-50 p-3 sm:p-4 rounded-xl border border-orange-100 hover:shadow-md transition-all"
-        >
-            <div className="flex items-center gap-3">
-                <div className={`p-2 bg-orange-100 rounded-lg flex-shrink-0 ${color}`}>
-                    <Icon size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                    <p className="text-[10px] sm:text-xs font-bold text-orange-600 uppercase tracking-wide">{label}</p>
-                    <p className="text-gray-800 font-medium text-sm sm:text-base mt-1 break-words">{value || 'Not provided'}</p>
-                </div>
+    // Premium UI Components
+    const DetailItem = ({ label, value, icon: Icon, color = "text-orange-600", gradient = "from-orange-50 to-amber-50" }) => (
+        <motion.div whileHover={{ scale: 1.02, y: -2 }} className={`bg-gradient-to-r ${gradient} p-3 rounded-xl border border-orange-100 hover:shadow-md transition-all`}>
+            <div className="flex items-center gap-2">
+                <div className={`p-1.5 bg-orange-100 rounded-lg ${color}`}><Icon size={14} /></div>
+                <div className="flex-1 min-w-0"><p className="text-[9px] font-bold text-orange-600 uppercase tracking-wide">{label}</p><p className="text-gray-700 font-medium text-sm mt-0.5 break-words">{value || 'Not provided'}</p></div>
             </div>
         </motion.div>
     );
 
     const StatCard = ({ title, value, subtitle, icon: Icon, gradient, delay = 0 }) => (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay }}
-            className={`bg-gradient-to-r ${gradient} p-4 rounded-xl text-white shadow-lg hover:shadow-xl transition-all`}
-        >
-            <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm opacity-90">{title}</p>
-                    <p className="text-xl sm:text-2xl font-bold mt-1 truncate">{value}</p>
-                    {subtitle && <p className="text-[10px] sm:text-xs opacity-80 mt-1">{subtitle}</p>}
-                </div>
-                <div className="p-2 bg-white/20 rounded-lg flex-shrink-0">
-                    <Icon size={20} />
-                </div>
-            </div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }} className={`bg-gradient-to-r ${gradient} p-4 rounded-xl text-white shadow-lg hover:shadow-xl transition-all`}>
+            <div className="flex items-center justify-between"><div className="flex-1 min-w-0"><p className="text-xs opacity-90">{title}</p><p className="text-xl font-bold mt-1 truncate">{value}</p>{subtitle && <p className="text-[9px] opacity-80 mt-1">{subtitle}</p>}</div><div className="p-2 bg-white/20 rounded-lg"><Icon size={18} /></div></div>
         </motion.div>
     );
 
     const SectionButton = ({ id, label, icon: Icon, active }) => (
-        <button
-            onClick={() => { setActiveSection(id); setShowMobileMenu(false); }}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
-                active === id 
-                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md' 
-                    : 'text-gray-600 hover:bg-orange-100 hover:text-orange-600'
-            }`}
-        >
-            <Icon size={16} />
-            <span className="hidden sm:inline">{label}</span>
-            <span className="sm:hidden">{label.split(' ')[0]}</span>
+        <button onClick={() => { setActiveSection(id); setShowMobileMenu(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${active === id ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md' : 'text-gray-600 hover:bg-orange-100 hover:text-orange-600'}`}>
+            <Icon size={14} /><span className="hidden sm:inline">{label}</span><span className="sm:hidden">{label.split(' ')[0]}</span>
         </button>
     );
 
     if (loading) return (
-        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-amber-50">
-            <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
-                <p className="text-gray-600 mt-4 text-sm">Loading your profile...</p>
-            </div>
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 flex items-center justify-center">
+            <div className="text-center"><div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mx-auto"></div><p className="text-gray-500 mt-4 text-sm">Loading your profile...</p></div>
         </div>
     );
     
     if (!profile) return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex items-center justify-center p-4">
-            <div className="text-center p-8 bg-white rounded-2xl shadow-sm border border-orange-200 max-w-sm">
-                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <User size={32} className="text-orange-500" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Profile Not Found</h3>
-                <p className="text-gray-600 text-sm">Could not load profile data. Please try again.</p>
-            </div>
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 flex items-center justify-center p-4">
+            <div className="text-center p-6 bg-white rounded-xl shadow-md border border-orange-200 max-w-sm"><div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3"><User size={28} className="text-orange-500" /></div><h3 className="text-lg font-semibold text-gray-800 mb-1">Profile Not Found</h3><p className="text-gray-500 text-sm">Could not load profile data. Please try again.</p></div>
         </div>
     );
 
     const sections = [
-        { id: 'personal', label: 'Personal Info', icon: User },
+                { id: 'personal', label: 'Personal', icon: User },
         { id: 'professional', label: 'Professional', icon: Briefcase },
         { id: 'payout', label: 'Payout', icon: Wallet },
         { id: 'skills', label: 'Skills', icon: Award },
@@ -870,1020 +594,340 @@ const ViewProfile = () => {
     const profileDocuments = getDocumentEntries(profile);
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
-            <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-24">
-                {/* Header Section - Mobile Optimized */}
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-20">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                
+                {/* Hero Header */}
                 <motion.div 
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6 mb-4 sm:mb-6"
+                    data-guide-id="worker-page-profile"
+                    className="mb-6"
                 >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 sm:gap-4">
-                            <div className="relative">
-                                <img 
-                                    src={profile.photo ? getImageUrl(profile.photo) : `https://ui-avatars.com/api/?name=${profile.name}&background=fb923c&color=fff&size=80`} 
-                                    alt={profile.name} 
-                                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-4 border-orange-200 shadow-lg"
-                                />
-                                <div className="absolute -bottom-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
-                                    <CheckCircle size={10} className="text-white" />
+                    <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <img 
+                                        src={profile.photo ? getImageUrl(profile.photo) : `https://ui-avatars.com/api/?name=${profile.name}&background=fb923c&color=fff&size=80`} 
+                                        alt={profile.name} 
+                                        className="w-14 h-14 rounded-xl object-cover border-2 border-white/30 shadow-lg"
+                                    />
+                                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
+                                        <CheckCircle size={10} className="text-white" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold">{profile.name}</h1>
+                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        <span className="bg-white/20 backdrop-blur px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold">{profile.karigarId}</span>
+                                        <span className="bg-emerald-500/30 backdrop-blur px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1"><Verified size={10} /> Verified</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">{profile.name}</h1>
-                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold font-mono">
-                                        {profile.karigarId}
-                                    </span>
-                                    <span className="bg-green-100 text-green-700 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold flex items-center gap-1">
-                                        <Shield size={10} />
-                                        Verified
-                                    </span>
-                                </div>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => { setIsEditing(!isEditing); if (isEditing) initializeFormData(profile); }} 
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all ${
+                                        isEditing ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-white text-orange-600 hover:shadow-md'
+                                    }`}
+                                >
+                                    {isEditing ? <X size={14} /> : <Edit size={14} />}
+                                    {isEditing ? 'Cancel' : 'Edit Profile'}
+                                </button>
+                                {!isEditing && (
+                                    <button onClick={() => setShowPortfolioModal(true)} className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-xl font-semibold text-sm hover:shadow-md transition-all">
+                                        <Eye size={14} /> Portfolio
+                                    </button>
+                                )}
                             </div>
                         </div>
-                        
-                        <button 
-                            onClick={() => {
-                                setIsEditing(!isEditing);
-                                if (isEditing) initializeFormData(profile);
-                            }} 
-                            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold transition-all active:scale-95 ${
-                                isEditing 
-                                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg' 
-                                    : 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-lg hover:shadow-xl'
-                            }`}
-                        >
-                            {isEditing ? <X size={16} /> : <Edit size={16} />}
-                            <span className="text-sm">{isEditing ? 'Cancel' : 'Edit Profile'}</span>
-                        </button>
-
-                        {!isEditing && (
-                            <button
-                                onClick={downloadPortfolioPdf}
-                                disabled={generatingPdf}
-                                className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold transition-all active:scale-95 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl disabled:opacity-60"
-                            >
-                                <Download size={16} />
-                                <span className="text-sm">{generatingPdf ? 'Generating PDF...' : 'Download Portfolio PDF'}</span>
-                            </button>
-                        )}
                     </div>
                 </motion.div>
 
                 {isEditing ? (
-                    // --- EDITING VIEW ---
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="bg-white rounded-2xl shadow-sm border border-orange-200 overflow-hidden"
-                    >
-                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 sm:p-6 text-white">
-                            <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                                <Edit size={20} />
-                                Edit Your Profile
-                            </h2>
-                            <p className="text-orange-100 text-xs sm:text-sm mt-1">Update your information to keep your profile current</p>
+                    // EDITING VIEW - Premium Form
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl shadow-xl overflow-hidden">
+                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-4">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2"><Edit size={20} /> Edit Your Profile</h2>
+                            <p className="text-orange-100 text-sm mt-1">Update your information to keep your profile current</p>
                         </div>
                         
-                        <form onSubmit={handleUpdate} className="p-4 sm:p-6 space-y-6">
+                        <form onSubmit={handleUpdate} className="p-6 space-y-6">
                             {/* Contact & Address Section */}
-                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 sm:p-6 rounded-xl border border-orange-200">
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Phone size={18} />
-                                    Contact & Address
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Full Name</label>
-                                            <input
-                                                value={formData.name || ''}
-                                                disabled
-                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 text-sm text-gray-600"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Mobile Number (Locked)</label>
-                                            <input
-                                                value={formData.mobile || ''}
-                                                disabled
-                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 text-sm text-gray-600"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">Email Address</label>
-                                        <input 
-                                            name="email" 
-                                            type="email"
-                                            value={formData.email} 
-                                            onChange={handleChange} 
-                                            className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all bg-white text-sm"
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Date of Birth</label>
-                                            <input
-                                                type="date"
-                                                name="dob"
-                                                value={formData.dob || ''}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Gender</label>
-                                            <select
-                                                name="gender"
-                                                value={formData.gender || 'Male'}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            >
-                                                <option>Male</option>
-                                                <option>Female</option>
-                                                <option>Other</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">ID Number (Locked)</label>
-                                            <input
-                                                value={formData.idNumberMasked || 'Locked after registration'}
-                                                disabled
-                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 text-sm text-gray-600"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Phone Type</label>
-                                            <select 
-                                                name="phoneType" 
-                                                value={formData.phoneType} 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            >
-                                                <option>Smartphone</option>
-                                                <option>Feature Phone</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2 sm:col-span-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Full Address</label>
-                                            <input
-                                                name="fullAddress"
-                                                value={formData.fullAddress}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">City</label>
-                                            <input 
-                                                name="city" 
-                                                value={formData.city} 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Pincode</label>
-                                            <input 
-                                                name="pincode" 
-                                                value={formData.pincode} 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Village / Area</label>
-                                            <input
-                                                name="village"
-                                                value={formData.village}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2 sm:col-span-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Locality / Area</label>
-                                            <input 
-                                                name="locality" 
-                                                value={formData.locality} 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Latitude</label>
-                                            <input
-                                                name="latitude"
-                                                value={formData.latitude}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Longitude</label>
-                                            <input
-                                                name="longitude"
-                                                value={formData.longitude}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <button
-                                                type="button"
-                                                onClick={captureLocation}
-                                                className="w-full sm:w-auto px-4 py-2.5 bg-orange-100 text-orange-700 rounded-xl font-semibold hover:bg-orange-200 transition-colors"
-                                            >
-                                                Capture Live Location
-                                            </button>
-                                            {locationError && <p className="text-xs text-red-500 mt-2">{locationError}</p>}
-                                        </div>
-                                    </div>
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Phone size={16} /> Contact & Address</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Full Name</label><input value={formData.name || ''} disabled className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-100 text-sm text-gray-600" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Mobile Number</label><input value={formData.mobile || ''} disabled className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-100 text-sm text-gray-600" /></div>
+                                    <div className="md:col-span-2"><label className="block text-xs font-semibold text-gray-700 mb-1">Email Address</label><input name="email" type="email" value={formData.email} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Date of Birth</label><input type="date" name="dob" value={formData.dob || ''} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Gender</label><select name="gender" value={formData.gender || 'Male'} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500"><option>Male</option><option>Female</option><option>Other</option></select></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Phone Type</label><select name="phoneType" value={formData.phoneType} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl"><option>Smartphone</option><option>Feature Phone</option></select></div>
+                                    <div className="md:col-span-2"><label className="block text-xs font-semibold text-gray-700 mb-1">Full Address</label><input name="fullAddress" value={formData.fullAddress} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">District</label><input name="city" value={formData.city} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Pincode</label><input name="pincode" value={formData.pincode} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Locality</label><input name="locality" value={formData.locality} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div className="md:col-span-2"><button type="button" onClick={captureLocation} className="px-4 py-2 bg-orange-100 text-orange-700 rounded-xl font-semibold hover:bg-orange-200 transition-colors">📍 Capture Live Location</button>{locationError && <p className="text-xs text-red-500 mt-2">{locationError}</p>}</div>
                                 </div>
                             </div>
 
                             {/* Professional Info Section */}
-                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 sm:p-6 rounded-xl border border-orange-200">
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Briefcase size={18} />
-                                    Professional Information
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Overall Experience</label>
-                                            <select 
-                                                name="overallExperience" 
-                                                value={formData.overallExperience} 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            >
-                                                <option>Beginner</option>
-                                                <option>Intermediate</option>
-                                                <option>Expert</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Years of Experience</label>
-                                            <input 
-                                                type="number" 
-                                                name="experience" 
-                                                value={formData.experience} 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="sm:col-span-2 space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Education</label>
-                                            <input 
-                                                name="education" 
-                                                value={formData.education} 
-                                                placeholder="e.g., 10th Pass, ITI Diploma, Graduate" 
-                                                onChange={handleChange} 
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">e-Shram Number</label>
-                                            <input
-                                                name="eShramNumber"
-                                                value={formData.eShramNumber}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">ID Document Type (Locked)</label>
-                                            <input
-                                                value={formData.idDocumentType || 'Not available'}
-                                                disabled
-                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl bg-gray-100 text-sm text-gray-600"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Expected Min Pay (INR)</label>
-                                            <input
-                                                type="number"
-                                                name="expectedMinPay"
-                                                value={formData.expectedMinPay}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Expected Max Pay (INR)</label>
-                                            <input
-                                                type="number"
-                                                name="expectedMaxPay"
-                                                value={formData.expectedMaxPay}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Travel Method</label>
-                                            <select
-                                                name="travelMethod"
-                                                value={formData.travelMethod || 'other'}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            >
-                                                {travelMethods.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="sm:col-span-2 mt-2">
-                                            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
-                                                <p className="text-xs font-semibold text-orange-800">Payout Details</p>
-                                                <p className="text-[11px] text-orange-700 mt-1">Add how clients should pay you after job completion.</p>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Payout Preference</label>
-                                            <select
-                                                name="payoutPreference"
-                                                value={formData.payoutPreference || ''}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            >
-                                                <option value="">Select</option>
-                                                <option value="upi">UPI</option>
-                                                <option value="bank">Bank Transfer</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Account Holder Name (Optional)</label>
-                                            <input
-                                                name="payoutAccountHolderName"
-                                                value={formData.payoutAccountHolderName || ''}
-                                                onChange={handleChange}
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                        {formData.payoutPreference === 'upi' && (
-                                            <div className="sm:col-span-2 space-y-2">
-                                                <label className="block text-xs font-semibold text-gray-700">UPI ID</label>
-                                                <input
-                                                    name="payoutUpiId"
-                                                    value={formData.payoutUpiId || ''}
-                                                    onChange={handleChange}
-                                                    placeholder="example@upi"
-                                                    className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                                />
-                                            </div>
-                                        )}
-                                        {formData.payoutPreference === 'bank' && (
-                                            <>
-                                                <div className="space-y-2">
-                                                    <label className="block text-xs font-semibold text-gray-700">Bank Account Number</label>
-                                                    <input
-                                                        name="payoutBankAccountNumber"
-                                                        value={formData.payoutBankAccountNumber || ''}
-                                                        onChange={handleChange}
-                                                        className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="block text-xs font-semibold text-gray-700">IFSC Code</label>
-                                                    <input
-                                                        name="payoutBankIfsc"
-                                                        value={formData.payoutBankIfsc || ''}
-                                                        onChange={(e) => setFormData({ ...formData, payoutBankIfsc: String(e.target.value || '').toUpperCase() })}
-                                                        className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm uppercase"
-                                                    />
-                                                </div>
-                                            </>
-                                        )}
-                                        <div className="sm:col-span-2 space-y-2">
-                                            <label className="block text-xs font-semibold text-gray-700">Preferred Job Categories (comma separated)</label>
-                                            <input
-                                                name="preferredJobCategoriesInput"
-                                                value={formData.preferredJobCategoriesInput}
-                                                onChange={handleChange}
-                                                placeholder="Plumber, Electrician"
-                                                className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 bg-white text-sm"
-                                            />
-                                        </div>
-                                    </div>
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Briefcase size={16} /> Professional Information</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Years of Experience</label><input type="number" name="experience" value={formData.experience} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div className="md:col-span-2"><label className="block text-xs font-semibold text-gray-700 mb-1">Education</label><input name="education" value={formData.education} placeholder="e.g., 10th Pass, ITI Diploma, Graduate" onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">e-Shram Number</label><input name="eShramNumber" value={formData.eShramNumber} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Expected Min Pay (INR)</label><input type="number" name="expectedMinPay" value={formData.expectedMinPay} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Expected Max Pay (INR)</label><input type="number" name="expectedMaxPay" value={formData.expectedMaxPay} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Travel Method</label><select name="travelMethod" value={formData.travelMethod || 'other'} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl">{travelMethods.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
+                                    <div className="md:col-span-2"><label className="block text-xs font-semibold text-gray-700 mb-1">Preferred Job Categories (comma separated)</label><input name="preferredJobCategoriesInput" value={formData.preferredJobCategoriesInput} onChange={handleChange} placeholder="Plumber, Electrician" className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
                                 </div>
                             </div>
-                            
+
+                            {/* Payout Section */}
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Wallet size={16} /> Payout Details</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Payout Preference</label><select name="payoutPreference" value={formData.payoutPreference || ''} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl"><option value="">Select</option><option value="upi">UPI</option><option value="bank">Bank Transfer</option></select></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Account Holder Name</label><input name="payoutAccountHolderName" value={formData.payoutAccountHolderName || ''} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    {formData.payoutPreference === 'upi' && <div className="md:col-span-2"><label className="block text-xs font-semibold text-gray-700 mb-1">UPI ID</label><input name="payoutUpiId" value={formData.payoutUpiId || ''} onChange={handleChange} placeholder="example@upi" className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>}
+                                    {formData.payoutPreference === 'bank' && (<><div><label className="block text-xs font-semibold text-gray-700 mb-1">Bank Account Number</label><input name="payoutBankAccountNumber" value={formData.payoutBankAccountNumber || ''} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div><div><label className="block text-xs font-semibold text-gray-700 mb-1">IFSC Code</label><input name="payoutBankIfsc" value={formData.payoutBankIfsc || ''} onChange={(e) => setFormData({ ...formData, payoutBankIfsc: String(e.target.value || '').toUpperCase() })} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl uppercase" /></div></>)}
+                                </div>
+                            </div>
+
                             {/* Skills Section */}
-                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 sm:p-6 rounded-xl border border-orange-200">
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Award size={18} />
-                                    Skills & Proficiency
-                                </h3>
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Award size={16} /> Skills (max 4) & Primary Skill</h3>
                                 <div className="space-y-3">
                                     {skillsData.map((skill, index) => (
                                         <div key={index} className="flex flex-col sm:flex-row gap-2 bg-white p-3 rounded-xl border border-orange-100">
-                                            <div className="flex-1 space-y-1">
-                                                <label className="text-[10px] font-semibold text-gray-500">Skill Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={skill.name}
-                                                    onChange={(e) => handleSkillChange(index, 'name', e.target.value)}
-                                                    placeholder="e.g., Plumbing"
-                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                                                />
-                                            </div>
-                                            <div className="flex-1 space-y-1">
-                                                <label className="text-[10px] font-semibold text-gray-500">Proficiency</label>
-                                                <select
-                                                    value={skill.proficiency}
-                                                    onChange={(e) => handleSkillChange(index, 'proficiency', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                                                >
-                                                    <option>Beginner</option>
-                                                    <option>Medium</option>
-                                                    <option>High</option>
-                                                </select>
-                                            </div>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => removeSkill(index)} 
-                                                className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors self-end sm:self-center"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <div className="flex-1"><label className="text-[10px] font-semibold text-gray-500">Skill Name</label><input type="text" value={skill.name} onChange={(e) => handleSkillChange(index, 'name', e.target.value)} placeholder="e.g., Plumbing" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                            <div className="flex-1"><label className="text-[10px] font-semibold text-gray-500">Primary Skill</label><label className="flex items-center gap-2 mt-2 text-sm text-gray-700"><input type="radio" name="primarySkillEdit" checked={!!skill.isPrimary} onChange={() => handleSkillChange(index, 'isPrimary', true)} className="h-4 w-4 text-orange-600" /> Mark Primary</label></div>
+                                            <button type="button" onClick={() => removeSkill(index)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 self-end sm:self-center"><Trash2 size={14} /></button>
                                         </div>
                                     ))}
-                                    <button 
-                                        type="button" 
-                                        onClick={addSkill} 
-                                        className="w-full border-2 border-dashed border-orange-400 text-orange-600 py-2.5 rounded-xl hover:bg-orange-50 transition-colors flex items-center justify-center gap-2 text-sm font-semibold"
-                                    >
-                                        <Plus size={16} />
-                                        Add New Skill
-                                    </button>
+                                    <button type="button" onClick={addSkill} disabled={skillsData.length >= 4} className="w-full border-2 border-dashed border-orange-400 text-orange-600 py-2.5 rounded-xl hover:bg-orange-50 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><Plus size={14} /> Add New Skill</button>
                                 </div>
                             </div>
-                            
+
                             {/* References Section */}
-                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 sm:p-6 rounded-xl border border-orange-200">
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Users size={18} />
-                                    References
-                                </h3>
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Users size={16} /> References</h3>
                                 <div className="space-y-3">
                                     {referencesData.map((ref, index) => (
                                         <div key={index} className="flex flex-col sm:flex-row gap-2 bg-white p-3 rounded-xl border border-orange-100">
-                                            <div className="flex-1 space-y-1">
-                                                <label className="text-[10px] font-semibold text-gray-500">Reference Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={ref.name}
-                                                    onChange={(e) => handleReferenceChange(index, 'name', e.target.value)}
-                                                    placeholder="Name"
-                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                                                />
-                                            </div>
-                                            <div className="flex-1 space-y-1">
-                                                <label className="text-[10px] font-semibold text-gray-500">Contact</label>
-                                                <input
-                                                    type="text"
-                                                    value={ref.contact}
-                                                    onChange={(e) => handleReferenceChange(index, 'contact', e.target.value)}
-                                                    placeholder="Mobile or Email"
-                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                                                />
-                                            </div>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => removeReference(index)} 
-                                                className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors self-end sm:self-center"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <div className="flex-1"><label className="text-[10px] font-semibold text-gray-500">Reference Name</label><input type="text" value={ref.name} onChange={(e) => handleReferenceChange(index, 'name', e.target.value)} placeholder="Name" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                            <div className="flex-1"><label className="text-[10px] font-semibold text-gray-500">Contact</label><input type="text" value={ref.contact} onChange={(e) => handleReferenceChange(index, 'contact', e.target.value)} placeholder="Mobile or Email" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
+                                            <button type="button" onClick={() => removeReference(index)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 self-end sm:self-center"><Trash2 size={14} /></button>
                                         </div>
                                     ))}
-                                    <button 
-                                        type="button" 
-                                        onClick={addReference} 
-                                        className="w-full border-2 border-dashed border-orange-400 text-orange-600 py-2.5 rounded-xl hover:bg-orange-50 transition-colors flex items-center justify-center gap-2 text-sm font-semibold"
-                                    >
-                                        <Plus size={16} />
-                                        Add Reference
-                                    </button>
+                                    <button type="button" onClick={addReference} className="w-full border-2 border-dashed border-orange-400 text-orange-600 py-2.5 rounded-xl hover:bg-orange-50 flex items-center justify-center gap-2 text-sm font-semibold"><Plus size={14} /> Add Reference</button>
                                 </div>
                             </div>
-                            
-                            {/* Emergency Contact Section */}
-                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 sm:p-6 rounded-xl border border-orange-200">
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Shield size={18} />
-                                    Emergency Contact
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">Contact Name</label>
-                                        <input 
-                                            name="emergencyContactName" 
-                                            value={formData.emergencyContactName} 
-                                            onChange={handleChange} 
-                                            className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl bg-white text-sm"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">Contact Mobile</label>
-                                        <input 
-                                            name="emergencyContactMobile" 
-                                            type="tel"
-                                            value={formData.emergencyContactMobile} 
-                                            onChange={handleChange} 
-                                            className="w-full px-4 py-2.5 border-2 border-orange-200 rounded-xl bg-white text-sm"
-                                        />
-                                    </div>
+
+                            {/* Emergency Contact */}
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Shield size={16} /> Emergency Contact</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Contact Name</label><input name="emergencyContactName" value={formData.emergencyContactName} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
+                                    <div><label className="block text-xs font-semibold text-gray-700 mb-1">Contact Mobile</label><input name="emergencyContactMobile" type="tel" value={formData.emergencyContactMobile} onChange={handleChange} className="w-full px-4 py-2.5 border border-orange-200 rounded-xl" /></div>
                                 </div>
                             </div>
 
                             {/* Documents Section */}
-                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 sm:p-6 rounded-xl border border-orange-200">
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Camera size={18} />
-                                    Documents & Photos
-                                </h3>
-
-                                <div className="mb-4 space-y-3">
-                                    <h4 className="font-semibold text-gray-800 text-sm">Uploaded Documents Preview</h4>
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-200">
+                                <h3 className="text-base font-semibold text-orange-800 mb-4 flex items-center gap-2"><Camera size={16} /> Documents & Photos</h3>
+                                
+                                <div className="mb-4"><h4 className="font-semibold text-gray-800 text-sm mb-2">Uploaded Documents</h4>
                                     {profileDocuments.length > 0 ? (
-                                        <>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                {profileDocuments.map((doc, idx) => {
-                                                    const isActive = selectedDocument?.url === getImageUrl(doc.url);
-                                                    return (
-                                                        <div
-                                                            key={`edit-doc-${idx}`}
-                                                            className={`flex items-center gap-2 p-2.5 rounded-lg border transition-all ${
-                                                                isActive
-                                                                    ? 'border-orange-400 bg-orange-100'
-                                                                    : 'border-orange-200 bg-white hover:bg-orange-50'
-                                                            }`}
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openDocumentInViewer(doc)}
-                                                                className="flex-1 text-left min-w-0"
-                                                            >
-                                                                <span className="text-xs sm:text-sm text-gray-700 truncate pr-2 block">{doc.label}</span>
-                                                            </button>
-                                                            <span className="text-[10px] font-bold text-orange-700">View</span>
-                                                            {doc.category === 'skillCertificate' && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => deleteSkillCertificate(doc.url)}
-                                                                    disabled={deletingSkillCertUrl === doc.url || uploading}
-                                                                    className="p-1.5 rounded-md bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"
-                                                                    title="Delete skill certificate"
-                                                                >
-                                                                    <Trash2 size={12} />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            <DocumentViewerCard compact />
-                                        </>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">No uploaded documents available yet.</p>
-                                    )}
-                                </div>
-
-                                <div className="mb-4 space-y-3">
-                                    <h4 className="font-semibold text-gray-800 text-sm">Uploaded Portfolio Photos</h4>
-                                    {Array.isArray(profile?.portfolioPhotos) && profile.portfolioPhotos.length > 0 ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                            {profile.portfolioPhotos.map((photo, idx) => (
-                                                <div key={`edit-portfolio-${idx}`} className="relative rounded-xl overflow-hidden border border-orange-100">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openDocumentInViewer({
-                                                            label: `Portfolio Photo ${idx + 1}`,
-                                                            url: photo,
-                                                        })}
-                                                        className="block w-full"
-                                                    >
-                                                        <img
-                                                            src={getImageUrl(photo)}
-                                                            alt={`Portfolio ${idx + 1}`}
-                                                            className="w-full h-24 sm:h-28 object-cover"
-                                                        />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => deletePortfolioPhoto(photo)}
-                                                        disabled={deletingPortfolioUrl === photo || uploading}
-                                                        className="absolute top-1 right-1 p-1.5 rounded-md bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"
-                                                        title="Delete portfolio photo"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {profileDocuments.map((doc, idx) => (
+                                                <div key={`edit-doc-${idx}`} className="flex items-center gap-2 p-2.5 rounded-lg border border-orange-200 bg-white">
+                                                    <button type="button" onClick={() => openDocumentInViewer(doc)} className="flex-1 text-left"><span className="text-xs text-gray-700 truncate block">{doc.label}</span></button>
+                                                    <span className="text-[10px] font-bold text-orange-700">View</span>
+                                                    {doc.category === 'skillCertificate' && <button type="button" onClick={() => deleteSkillCertificate(doc.url)} disabled={deletingSkillCertUrl === doc.url} className="p-1 rounded-md bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"><Trash2 size={10} /></button>}
                                                 </div>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">No portfolio photos uploaded yet.</p>
-                                    )}
+                                    ) : <p className="text-sm text-gray-500">No uploaded documents available yet.</p>}
+                                    <DocumentViewerCard compact />
+                                </div>
+
+                                <div className="mb-4"><h4 className="font-semibold text-gray-800 text-sm mb-2">Portfolio Photos</h4>
+                                    {profile?.portfolioPhotos?.length > 0 ? (
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {profile.portfolioPhotos.map((photo, idx) => (
+                                                <div key={`edit-portfolio-${idx}`} className="relative rounded-lg overflow-hidden border border-orange-100">
+                                                    <button type="button" onClick={() => openDocumentInViewer({ label: `Portfolio Photo ${idx + 1}`, url: photo })}><img src={getImageUrl(photo)} alt={`Portfolio ${idx + 1}`} className="w-full h-20 object-cover" /></button>
+                                                    <button type="button" onClick={() => deletePortfolioPhoto(photo)} disabled={deletingPortfolioUrl === photo} className="absolute top-1 right-1 p-1 rounded-md bg-red-100 text-red-600 hover:bg-red-200"><Trash2 size={10} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : <p className="text-sm text-gray-500">No portfolio photos uploaded yet.</p>}
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">Profile Photo</label>
-                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-4 text-center hover:border-orange-400 transition-colors bg-white">
-                                            <Camera size={24} className="text-orange-500 mx-auto mb-2" />
-                                            <input type="file" name="photo" onChange={handleFileChange} className="hidden" id="photo-upload" accept="image/*" />
-                                            <label htmlFor="photo-upload" className="cursor-pointer">
-                                                <div className="text-orange-600 font-semibold text-sm">Upload Photo</div>
-                                                <p className="text-xs text-gray-500 mt-1">JPG, PNG (Max 5MB)</p>
-                                            </label>
-                                            {files.photo && <p className="text-xs text-green-600 mt-2">✓ {files.photo.name}</p>}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">e-Shram Card (Image/PDF)</label>
-                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-4 text-center hover:border-orange-400 transition-colors bg-white">
-                                            <FileText size={24} className="text-orange-500 mx-auto mb-2" />
-                                            <input type="file" name="eShramCard" onChange={handleFileChange} className="hidden" id="eshram-upload" accept="image/*,.pdf" />
-                                            <label htmlFor="eshram-upload" className="cursor-pointer">
-                                                <div className="text-orange-600 font-semibold text-sm">Upload e-Shram Card</div>
-                                            </label>
-                                            {files.eShramCard && <p className="text-xs text-green-600 mt-2">✓ {files.eShramCard.name}</p>}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">Skill Certificates</label>
-                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-4 text-center hover:border-orange-400 transition-colors bg-white">
-                                            <Upload size={24} className="text-orange-500 mx-auto mb-2" />
-                                            <input type="file" name="skillCertificates" multiple onChange={handleFileChange} className="hidden" id="skill-cert-upload" accept="image/*,.pdf" />
-                                            <label htmlFor="skill-cert-upload" className="cursor-pointer">
-                                                <div className="text-orange-600 font-semibold text-sm">Upload Skill Certificates</div>
-                                            </label>
-                                            <p className="text-xs text-gray-500 mt-1">Maximum 3 certificates allowed</p>
-                                            <p className="text-xs text-orange-600 mt-1">Current: {(profile?.skillCertificates || []).length}/3</p>
-                                            {files.skillCertificates?.length > 0 && <p className="text-xs text-green-600 mt-2">✓ {files.skillCertificates.length} file(s)</p>}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-semibold text-gray-700">Portfolio Photos</label>
-                                        <div className="border-2 border-dashed border-orange-300 rounded-xl p-4 text-center hover:border-orange-400 transition-colors bg-white">
-                                            <Camera size={24} className="text-orange-500 mx-auto mb-2" />
-                                            <input type="file" name="portfolioPhotos" multiple onChange={handleFileChange} className="hidden" id="portfolio-upload" accept="image/*" />
-                                            <label htmlFor="portfolio-upload" className="cursor-pointer">
-                                                <div className="text-orange-600 font-semibold text-sm">Upload Portfolio Photos</div>
-                                            </label>
-                                            <p className="text-xs text-gray-500 mt-1">Maximum 4 photos allowed</p>
-                                            <p className="text-xs text-orange-600 mt-1">Current: {(profile?.portfolioPhotos || []).length}/4</p>
-                                            {files.portfolioPhotos?.length > 0 && <p className="text-xs text-green-600 mt-2">✓ {files.portfolioPhotos.length} photo(s)</p>}
-                                        </div>
-                                    </div>
-
+                                    <div className="border-2 border-dashed border-orange-300 rounded-xl p-3 text-center hover:border-orange-400"><Camera size={20} className="text-orange-500 mx-auto mb-1" /><input type="file" name="photo" onChange={handleFileChange} className="hidden" id="photo-upload" accept="image/*" /><label htmlFor="photo-upload" className="cursor-pointer block"><div className="text-orange-600 font-semibold text-xs">Upload Photo</div></label>{files.photo && <p className="text-xs text-green-600 mt-1">✓ {files.photo.name}</p>}</div>
+                                    <div className="border-2 border-dashed border-orange-300 rounded-xl p-3 text-center hover:border-orange-400"><FileText size={20} className="text-orange-500 mx-auto mb-1" /><input type="file" name="eShramCard" onChange={handleFileChange} className="hidden" id="eshram-upload" accept="image/*,.pdf" /><label htmlFor="eshram-upload" className="cursor-pointer block"><div className="text-orange-600 font-semibold text-xs">Upload e-Shram Card</div></label>{files.eShramCard && <p className="text-xs text-green-600 mt-1">✓ {files.eShramCard.name}</p>}</div>
+                                    <div className="border-2 border-dashed border-orange-300 rounded-xl p-3 text-center hover:border-orange-400"><Upload size={20} className="text-orange-500 mx-auto mb-1" /><input type="file" name="skillCertificates" multiple onChange={handleFileChange} className="hidden" id="skill-cert-upload" accept="image/*,.pdf" /><label htmlFor="skill-cert-upload" className="cursor-pointer block"><div className="text-orange-600 font-semibold text-xs">Upload Skill Certificates</div></label><p className="text-xs text-gray-500">Max 3</p>{files.skillCertificates?.length > 0 && <p className="text-xs text-green-600">✓ {files.skillCertificates.length} file(s)</p>}</div>
+                                    <div className="border-2 border-dashed border-orange-300 rounded-xl p-3 text-center hover:border-orange-400"><Camera size={20} className="text-orange-500 mx-auto mb-1" /><input type="file" name="portfolioPhotos" multiple onChange={handleFileChange} className="hidden" id="portfolio-upload" accept="image/*" /><label htmlFor="portfolio-upload" className="cursor-pointer block"><div className="text-orange-600 font-semibold text-xs">Upload Portfolio Photos</div></label><p className="text-xs text-gray-500">Max 4</p>{files.portfolioPhotos?.length > 0 && <p className="text-xs text-green-600">✓ {files.portfolioPhotos.length} photo(s)</p>}</div>
                                 </div>
                             </div>
 
                             <div className="flex justify-end">
-                                <button 
-                                    type="submit" 
-                                    disabled={uploading}
-                                    className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-6 rounded-xl transition-all active:scale-95 shadow-lg disabled:opacity-50 flex items-center gap-2"
-                                >
-                                    {uploading ? (
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                    ) : (
-                                        <Save size={18} />
-                                    )}
+                                <button type="submit" disabled={uploading} className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-md disabled:opacity-50 flex items-center gap-2">
+                                    {uploading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <Save size={18} />}
                                     <span>{uploading ? 'Saving...' : 'Save Changes'}</span>
                                 </button>
                             </div>
                         </form>
                     </motion.div>
                 ) : (
-                    // --- READ-ONLY VIEW ---
-                    <div className="space-y-4 sm:space-y-6">
-                        {/* Stats Overview - Mobile Optimized Grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                            <StatCard 
-                                title="Reputation" 
-                                value={profile.points || "85"} 
-                                subtitle="Excellent" 
-                                icon={Star}
-                                gradient="from-orange-500 to-amber-500"
-                                delay={0}
-                            />
-                            <StatCard 
-                                title="Jobs Done" 
-                                value={profile.completedJobs || "24"} 
-                                subtitle="This year" 
-                                icon={CheckCircle}
-                                gradient="from-green-500 to-emerald-600"
-                                delay={0.1}
-                            />
-                            <StatCard 
-                                title="Response" 
-                                value="2.4h" 
-                                subtitle="Average" 
-                                icon={Clock}
-                                gradient="from-blue-500 to-cyan-600"
-                                delay={0.2}
-                            />
-                            <StatCard 
-                                title="Success" 
-                                value="92%" 
-                                subtitle="Rate" 
-                                icon={Award}
-                                gradient="from-purple-500 to-pink-600"
-                                delay={0.3}
-                            />
+                    // READ-ONLY VIEW
+                    <div className="space-y-6">
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <StatCard title="Reputation" value={profile.points || "85"} subtitle="Excellent" icon={Star} gradient="from-orange-500 to-amber-500" delay={0} />
+                            <StatCard title="Jobs Done" value={profile.completedJobs || "24"} subtitle="Completed" icon={CheckCircle} gradient="from-emerald-500 to-green-600" delay={0.1} />
+                            <StatCard title="Response" value="2.4h" subtitle="Average" icon={Clock} gradient="from-blue-500 to-cyan-600" delay={0.2} />
+                            <StatCard title="Success" value="92%" subtitle="Rate" icon={Award} gradient="from-purple-500 to-pink-600" delay={0.3} />
                         </div>
 
-                        {/* Section Navigation - Mobile Friendly Tabs */}
-                        <div className="bg-white rounded-xl p-1 flex gap-1 overflow-x-auto scrollbar-hide shadow-sm">
-                            {sections.map(section => (
-                                <SectionButton
-                                    key={section.id}
-                                    id={section.id}
-                                    label={section.label}
-                                    icon={section.icon}
-                                    active={activeSection}
-                                />
-                            ))}
+                        {/* Section Navigation */}
+                        <div className="bg-white rounded-xl p-1 flex gap-1 overflow-x-auto shadow-sm border border-gray-100">
+                            {sections.map(section => <SectionButton key={section.id} id={section.id} label={section.label} icon={section.icon} active={activeSection} />)}
                         </div>
 
-                        {/* Personal Information Section */}
+                        {/* Personal Information */}
                         {activeSection === 'personal' && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
-                            >
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <User size={18} />
-                                    Personal Information
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+                                <h3 className="text-lg font-semibold text-orange-800 mb-5 flex items-center gap-2"><User size={18} /> Personal Information</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     <DetailItem label="Mobile Number" value={profile.mobile} icon={Phone} />
                                     <DetailItem label="Email Address" value={profile.email} icon={Mail} />
                                     <DetailItem label="Date of Birth" value={profile.dob ? new Date(profile.dob).toLocaleDateString() : 'Not provided'} icon={Calendar} />
                                     <DetailItem label="Age" value={ageLabel || 'Not available'} icon={Calendar} />
                                     <DetailItem label="Gender" value={profile.gender || 'Not specified'} icon={User} />
                                     <DetailItem label="ID Proof Type" value={profile.idProof?.idType || 'Not provided'} icon={Shield} />
-                                    <DetailItem label="ID Number" value={profile.idProof?.maskedNumber || 'Protected'} icon={Shield} />
-                                    <DetailItem label="City" value={profile.address?.city} icon={MapPin} />
+                                    <DetailItem label="District" value={profile.address?.city} icon={MapPin} />
                                     <DetailItem label="Pincode" value={profile.address?.pincode} icon={MapPin} />
-                                    <DetailItem label="Locality" value={profile.address?.locality} icon={Home} />
-                                    <DetailItem label="Village / Area" value={profile.address?.village || 'Not provided'} icon={Home} />
-                                    <DetailItem label="Full Address" value={profile.address?.fullAddress || 'Not provided'} icon={MapPin} />
-                                    <DetailItem label="Latitude" value={profile.address?.latitude ?? 'Not available'} icon={MapPin} />
-                                    <DetailItem label="Longitude" value={profile.address?.longitude ?? 'Not available'} icon={MapPin} />
+                                    <DetailItem label="Full Address" value={profile.address?.fullAddress || 'Not provided'} icon={Home} />
                                     <DetailItem label="Phone Type" value={profile.phoneType} icon={Smartphone} />
                                 </div>
                             </motion.div>
                         )}
 
-                        {/* Professional Information Section */}
+                        {/* Professional Information */}
                         {activeSection === 'professional' && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
-                            >
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Briefcase size={18} />
-                                    Professional Information
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
-                                    <DetailItem label="Experience Level" value={profile.overallExperience} icon={Award} />
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+                                <h3 className="text-lg font-semibold text-orange-800 mb-5 flex items-center gap-2"><Briefcase size={18} /> Professional Information</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     <DetailItem label="Years Experience" value={`${profile.experience || 0} years`} icon={Clock} />
                                     <DetailItem label="Education" value={profile.education || 'Not specified'} icon={BookOpen} />
                                     <DetailItem label="e-Shram Number" value={profile.eShramNumber || 'Not provided'} icon={FileText} />
-                                    <DetailItem label="Expected Min Pay" value={profile.expectedMinPay ? `₹${Number(profile.expectedMinPay).toLocaleString()}` : 'Not specified'} icon={TrendingUp} />
-                                    <DetailItem label="Expected Max Pay" value={profile.expectedMaxPay ? `₹${Number(profile.expectedMaxPay).toLocaleString()}` : 'Not specified'} icon={TrendingUp} />
-                                    <DetailItem label="Payout Preference" value={profile.payoutPreference ? String(profile.payoutPreference).toUpperCase() : 'Not specified'} icon={Wallet} />
-                                    <DetailItem label="UPI ID" value={maskUpiId(profile.payoutUpiId)} icon={Wallet} />
-                                    <DetailItem label="Bank Account" value={maskBankAccount(profile.payoutBankAccountNumber)} icon={Wallet} />
-                                    <DetailItem label="IFSC" value={profile.payoutBankIfsc || 'Not provided'} icon={Wallet} />
-                                    <DetailItem label="Account Holder" value={profile.payoutAccountHolderName || 'Not provided'} icon={User} />
+                                    <DetailItem label="Expected Min Pay" value={profile.expectedMinPay ? currencyLabel(profile.expectedMinPay) : 'Not specified'} icon={TrendingUp} />
+                                    <DetailItem label="Expected Max Pay" value={profile.expectedMaxPay ? currencyLabel(profile.expectedMaxPay) : 'Not specified'} icon={TrendingUp} />
                                     <DetailItem label="Travel Method" value={profile.travelMethod ? String(profile.travelMethod).toUpperCase() : 'Not specified'} icon={MapPin} />
                                     <DetailItem label="Preferred Categories" value={Array.isArray(profile.preferredJobCategories) && profile.preferredJobCategories.length ? profile.preferredJobCategories.join(', ') : 'Not specified'} icon={Briefcase} />
-                                    <DetailItem label="Status" value="Active" icon={Shield} color="text-green-600" />
                                 </div>
-                                
-                                {/* Emergency Contact */}
                                 <div className="mt-6 pt-4 border-t border-orange-100">
-                                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                                        <Shield size={16} className="text-orange-500" />
-                                        Emergency Contact
-                                    </h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <DetailItem label="Contact Name" value={profile.emergencyContact?.name} icon={User} />
-                                        <DetailItem label="Contact Mobile" value={profile.emergencyContact?.mobile} icon={Phone} />
-                                    </div>
+                                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2"><Shield size={14} className="text-orange-500" /> Emergency Contact</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><DetailItem label="Contact Name" value={profile.emergencyContact?.name} icon={User} /><DetailItem label="Contact Mobile" value={profile.emergencyContact?.mobile} icon={Phone} /></div>
                                 </div>
                             </motion.div>
                         )}
 
+                        {/* Payout Details */}
                         {activeSection === 'payout' && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
-                            >
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Wallet size={18} />
-                                    Payout Details
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+                                <h3 className="text-lg font-semibold text-orange-800 mb-5 flex items-center gap-2"><Wallet size={18} /> Payout Details</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     <DetailItem label="Payout Preference" value={profile.payoutPreference ? String(profile.payoutPreference).toUpperCase() : 'Not specified'} icon={Wallet} />
                                     <DetailItem label="UPI ID" value={maskUpiId(profile.payoutUpiId)} icon={Wallet} />
                                     <DetailItem label="Bank Account" value={maskBankAccount(profile.payoutBankAccountNumber)} icon={Wallet} />
                                     <DetailItem label="IFSC" value={profile.payoutBankIfsc || 'Not provided'} icon={Wallet} />
                                     <DetailItem label="Account Holder" value={profile.payoutAccountHolderName || 'Not provided'} icon={User} />
                                 </div>
-                                <p className="text-xs text-gray-500 mt-4">To change these details, click Edit Profile and update the Payout Details block.</p>
                             </motion.div>
                         )}
 
                         {/* Skills Section */}
                         {activeSection === 'skills' && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
-                            >
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Award size={18} />
-                                    Skills & Expertise
-                                </h3>
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+                                <h3 className="text-lg font-semibold text-orange-800 mb-5 flex items-center gap-2"><Award size={18} /> Skills & Expertise</h3>
                                 {profile.skills?.length > 0 ? (
-                                    <div className="flex flex-wrap gap-2 sm:gap-3">
+                                    <div className="flex flex-wrap gap-2">
                                         {profile.skills.map((skill, idx) => (
-                                            <motion.div 
-                                                key={skill.name} 
-                                                initial={{ opacity: 0, scale: 0.9 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                transition={{ delay: idx * 0.05 }}
-                                                className="bg-gradient-to-r from-orange-50 to-amber-50 px-3 py-2 rounded-xl border border-orange-200 shadow-sm hover:shadow-md transition-all"
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-gray-800 text-sm">{skill.name}</span>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                        skill.proficiency === 'High' ? 'bg-green-100 text-green-700' :
-                                                        skill.proficiency === 'Medium' ? 'bg-orange-100 text-orange-700' :
-                                                        'bg-blue-100 text-blue-700'
-                                                    }`}>
-                                                        {skill.proficiency}
-                                                    </span>
-                                                </div>
+                                            <motion.div key={skill.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: idx * 0.05 }} className="bg-gradient-to-r from-orange-50 to-amber-50 px-3 py-2 rounded-xl border border-orange-200 shadow-sm">
+                                                <div className="flex items-center gap-2"><span className="font-semibold text-gray-800 text-sm">{skill.name}</span>{skill.isPrimary && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">Primary</span>}</div>
                                             </motion.div>
                                         ))}
                                     </div>
-                                ) : (
-                                    <p className="text-gray-500 text-sm text-center py-8">No skills added yet</p>
-                                )}
+                                ) : <p className="text-gray-500 text-sm text-center py-8">No skills added yet</p>}
                             </motion.div>
                         )}
 
                         {/* References Section */}
                         {activeSection === 'references' && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
-                            >
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <Users size={18} />
-                                    Professional References
-                                </h3>
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+                                <h3 className="text-lg font-semibold text-orange-800 mb-5 flex items-center gap-2"><Users size={18} /> Professional References</h3>
                                 {profile.references?.length > 0 ? (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {profile.references.map((ref, idx) => (
-                                            <motion.div 
-                                                key={idx}
-                                                initial={{ opacity: 0, x: -20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: idx * 0.1 }}
-                                                className="bg-gradient-to-r from-orange-50 to-amber-50 p-3 rounded-xl border border-orange-100"
-                                            >
-                                                <p className="font-semibold text-gray-800 text-sm">{ref.name}</p>
-                                                <p className="text-xs text-gray-600 mt-1 break-words">{ref.contact}</p>
+                                            <motion.div key={idx} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.1 }} className="bg-gradient-to-r from-orange-50 to-amber-50 p-3 rounded-xl border border-orange-100">
+                                                <p className="font-semibold text-gray-800 text-sm">{ref.name}</p><p className="text-xs text-gray-600 mt-1 break-words">{ref.contact}</p>
                                             </motion.div>
                                         ))}
                                     </div>
-                                ) : (
-                                    <p className="text-gray-500 text-sm text-center py-8">No references provided</p>
-                                )}
+                                ) : <p className="text-gray-500 text-sm text-center py-8">No references provided</p>}
                             </motion.div>
                         )}
 
                         {/* Documents Section */}
                         {activeSection === 'documents' && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-white rounded-2xl shadow-sm border border-orange-200 p-4 sm:p-6"
-                            >
-                                <h3 className="text-base sm:text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                                    <FileText size={18} />
-                                    Certificates & Documents
-                                </h3>
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+                                <h3 className="text-lg font-semibold text-orange-800 mb-5 flex items-center gap-2"><FileText size={18} /> Certificates & Documents</h3>
                                 {profileDocuments.length > 0 ? (
-                                    <div className="space-y-3">
+                                    <div className="space-y-4">
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {profileDocuments.map((doc, idx) => {
-                                                const isActive = selectedDocument?.url === getImageUrl(doc.url);
-                                                return (
-                                                    <div
-                                                        key={`${doc.label}-${idx}`}
-                                                        className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
-                                                            isActive
-                                                                ? 'border-orange-400 bg-orange-100'
-                                                                : 'border-orange-100 bg-orange-50 hover:bg-orange-100'
-                                                        }`}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openDocumentInViewer(doc)}
-                                                            className="flex-1 text-left min-w-0"
-                                                        >
-                                                            <div className="flex items-center gap-2 min-w-0">
-                                                                <FileText size={16} className="text-orange-500 flex-shrink-0" />
-                                                                <span className="text-sm text-gray-700 truncate">{doc.label}</span>
-                                                            </div>
-                                                        </button>
-                                                        <span className="text-xs font-bold text-orange-700">View</span>
-                                                        {doc.category === 'skillCertificate' && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => deleteSkillCertificate(doc.url)}
-                                                                disabled={deletingSkillCertUrl === doc.url}
-                                                                className="p-1.5 rounded-md bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"
-                                                                title="Delete skill certificate"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <DocumentViewerCard />
-                                    </div>
-                                ) : (
-                                    <p className="text-gray-500 text-sm text-center py-8">No documents uploaded yet</p>
-                                )}
-
-                                <div className="mt-4 pt-4 border-t border-orange-100">
-                                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                                        <Camera size={16} className="text-orange-500" />
-                                        Portfolio Photos
-                                    </h4>
-                                    {Array.isArray(profile.portfolioPhotos) && profile.portfolioPhotos.length > 0 ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                            {profile.portfolioPhotos.map((photo, idx) => (
-                                                <div key={`portfolio-${idx}`} className="relative rounded-xl overflow-hidden border border-orange-100 hover:shadow-md transition-all">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openDocumentInViewer({
-                                                            label: `Portfolio Photo ${idx + 1}`,
-                                                            url: photo,
-                                                        })}
-                                                        className="block w-full"
-                                                    >
-                                                        <img
-                                                            src={getImageUrl(photo)}
-                                                            alt={`Portfolio ${idx + 1}`}
-                                                            className="w-full h-24 sm:h-28 object-cover"
-                                                        />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => deletePortfolioPhoto(photo)}
-                                                        disabled={deletingPortfolioUrl === photo}
-                                                        className="absolute top-1 right-1 p-1.5 rounded-md bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"
-                                                        title="Delete portfolio photo"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
+                                            {profileDocuments.map((doc, idx) => (
+                                                <div key={`${doc.label}-${idx}`} className={`flex items-center gap-2 p-3 rounded-xl border ${selectedDocument?.url === getImageUrl(doc.url) ? 'border-orange-400 bg-orange-100' : 'border-orange-100 bg-orange-50'}`}>
+                                                    <button type="button" onClick={() => openDocumentInViewer(doc)} className="flex-1 text-left"><div className="flex items-center gap-2"><FileText size={14} className="text-orange-500" /><span className="text-sm text-gray-700 truncate">{doc.label}</span></div></button>
+                                                    <span className="text-xs font-bold text-orange-700">View</span>
+                                                    {doc.category === 'skillCertificate' && <button type="button" onClick={() => deleteSkillCertificate(doc.url)} disabled={deletingSkillCertUrl === doc.url} className="p-1 rounded-md bg-red-100 text-red-600 hover:bg-red-200"><Trash2 size={10} /></button>}
                                                 </div>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <p className="text-gray-500 text-sm">No portfolio photos uploaded.</p>
-                                    )}
+                                        <DocumentViewerCard />
+                                    </div>
+                                ) : <p className="text-gray-500 text-sm text-center py-8">No documents uploaded yet</p>}
+
+                                <div className="mt-6 pt-4 border-t border-orange-100">
+                                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2"><Camera size={14} className="text-orange-500" /> Portfolio Photos</h4>
+                                    {profile.portfolioPhotos?.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                            {profile.portfolioPhotos.map((photo, idx) => (
+                                                <div key={`portfolio-${idx}`} className="relative rounded-xl overflow-hidden border border-orange-100 hover:shadow-md">
+                                                    <button type="button" onClick={() => openDocumentInViewer({ label: `Portfolio Photo ${idx + 1}`, url: photo })}><img src={getImageUrl(photo)} alt={`Portfolio ${idx + 1}`} className="w-full h-24 object-cover" /></button>
+                                                    <button type="button" onClick={() => deletePortfolioPhoto(photo)} disabled={deletingPortfolioUrl === photo} className="absolute top-1 right-1 p-1 rounded-md bg-red-100 text-red-600 hover:bg-red-200"><Trash2 size={10} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : <p className="text-gray-500 text-sm">No portfolio photos uploaded.</p>}
                                 </div>
                             </motion.div>
                         )}
                     </div>
                 )}
+
+                {/* Portfolio Modal */}
+                <AnimatePresence>
+                    {showPortfolioModal && profile && (
+                        <WorkerProfessionalPortfolio profile={profile} onClose={() => setShowPortfolioModal(false)} />
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

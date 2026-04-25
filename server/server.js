@@ -32,6 +32,8 @@ const communityRoutes            = require('./routes/communityRoutes');
 const adminCommunityRoutes       = require('./routes/adminCommunityRoutes');
 const locationRoutes             = require('./routes/locationRoutes');
 const semanticMatchingRoutes     = require('./routes/semanticMatchingRoutes');
+const chatbotRoutes              = require('./routes/chatbotRoutes');
+const chatbotSupportRoutes       = require('./routes/chatbotSupportRoutes');
 const { rebuildAllIndexes }      = require('./services/semanticMatchingService');
 const { ensureAdminAccounts }    = require('./utils/adminAccounts');
 const { sweepDirectHirePayments } = require('./controllers/directHireController');
@@ -198,7 +200,7 @@ mongoose.connect(process.env.MONGO_URI)
         console.log('✅  MongoDB connected');
         try {
             const admins = await ensureAdminAccounts();
-            console.log(`✅  Admin accounts ready: ${admins.map(a => a.mobile).join(', ')}`);
+            console.log(`✅  Admin accounts ready: ${admins.length}`);
         } catch (err) {
             console.error('❌  Failed to initialize admin accounts:', err.message);
         }
@@ -232,6 +234,8 @@ app.use('/api/jobs',                     jobRoutes);
 app.use('/api/ivr',                      ivrRoutes);
 app.use('/api/location',                 locationRoutes);
 app.use('/api/matching',                 semanticMatchingRoutes);
+app.use('/api/chatbot',                  chatbotRoutes);
+app.use('/api/chatbot/support',          chatbotSupportRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.5.0' }));

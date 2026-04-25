@@ -1,10 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Shield, Key, Phone, Trash2, AlertTriangle, X, Eye, EyeOff, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { 
+    Shield, Key, Phone, Trash2, AlertTriangle, X, Eye, EyeOff, 
+    Clock, CheckCircle2, Loader2, BookOpen, User, Mail, 
+    Calendar, Award, TrendingUp, Star, Crown, Diamond, Sparkles,
+    Settings as SettingsIcon, Bell, Globe, Lock, Smartphone,
+    CreditCard, ShieldCheck, Zap, Gift, Heart, ThumbsUp
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as api from '../../api';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
+import { useClientOnboarding } from '../../context/ClientOnboardingContext';
 
+// ── Enhanced Change Password Card ─────────────────────────────────────────────
 function ChangePasswordCard() {
     const [step, setStep] = useState('idle');
     const [otp, setOtp] = useState('');
@@ -79,121 +88,191 @@ function ChangePasswordCard() {
     const strength = getPasswordStrength(newPassword);
 
     return (
-        <div className="p-5 flex items-start gap-4">
-            <div className="h-10 w-10 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Key className="h-5 w-5 text-orange-500" />
-            </div>
-            <div className="w-full">
-                <h2 className="font-semibold text-gray-800">Change Password</h2>
-                <p className="text-sm text-gray-500 mt-1">Secure OTP-based password reset for logged-in users.</p>
+        <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-5"
+        >
+            <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md flex-shrink-0">
+                    <Key size="20" className="text-white" />
+                </div>
+                <div className="flex-1">
+                    <h2 className="font-bold text-gray-800 text-base">Change Password</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">Secure OTP-based password reset for logged-in users</p>
 
-                {step === 'idle' && (
-                    <button
-                        onClick={handleSendOtp}
-                        disabled={loading}
-                        className="mt-3 inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60"
-                    >
-                        {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-                        Send OTP
-                    </button>
-                )}
-
-                {step === 'otp_sent' && (
-                    <div className="mt-3 space-y-3">
-                        <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                            OTP sent to {maskedMobile}
-                        </p>
-                        <input
-                            type="number"
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value)}
-                            placeholder="Enter OTP"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        />
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleVerifyOtp}
-                                disabled={loading || !otp}
-                                className="inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60"
-                            >
-                                {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-                                Verify OTP
-                            </button>
-                            {countdown > 0 ? (
-                                <span className="text-xs text-gray-500 inline-flex items-center gap-1"><Clock size={12} /> {countdown}s</span>
-                            ) : (
-                                <button onClick={handleSendOtp} className="text-xs text-orange-600 font-semibold">Resend OTP</button>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {step === 'otp_verified' && (
-                    <div className="mt-3 space-y-3">
-                        <div className="relative">
-                            <input
-                                type={showPwd ? 'text' : 'password'}
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                placeholder="New password"
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm"
-                            />
-                            <button type="button" onClick={() => setShowPwd((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
-                                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                        </div>
-
-                        {!!newPassword && (
-                            <div className="space-y-1">
-                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className={`h-full ${strength.color}`} style={{ width: strength.width }} />
-                                </div>
-                                <p className={`text-xs ${strength.text}`}>Strength: {strength.label}</p>
-                                <p className="text-xs text-gray-500">{PASSWORD_POLICY_TEXT}</p>
-                            </div>
-                        )}
-
-                        <div className="relative">
-                            <input
-                                type={showConfirm ? 'text' : 'password'}
-                                value={confirmPwd}
-                                onChange={(e) => setConfirmPwd(e.target.value)}
-                                placeholder="Confirm password"
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm"
-                            />
-                            <button type="button" onClick={() => setShowConfirm((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
-                                {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                        </div>
-
-                        <button
-                            onClick={handleChangePassword}
-                            disabled={loading || !isStrongPassword(newPassword) || newPassword !== confirmPwd}
-                            className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-60"
+                    {step === 'idle' && (
+                        <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleSendOtp}
+                            disabled={loading}
+                            className="mt-3 inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:shadow-md transition-all disabled:opacity-60"
                         >
-                            {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-                            Update Password
-                        </button>
-                    </div>
-                )}
+                            {loading && <Loader2 size="14" className="animate-spin" />}
+                            Send OTP
+                        </motion.button>
+                    )}
 
-                {step === 'done' && (
-                    <p className="mt-3 text-sm text-green-700 inline-flex items-center gap-2">
-                        <CheckCircle2 size={16} /> Password updated. Redirecting to login...
-                    </p>
-                )}
+                    {step === 'otp_sent' && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-3 space-y-3"
+                        >
+                            <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <CheckCircle2 size="14" className="text-emerald-600" />
+                                <p className="text-xs text-emerald-700 font-medium">
+                                    OTP sent to <span className="font-bold">{maskedMobile}</span>
+                                </p>
+                            </div>
+                            <input
+                                type="text"
+                                value={otp}
+                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                                placeholder="Enter 6-digit OTP"
+                                maxLength={6}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
+                            />
+                            <div className="flex items-center gap-2">
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleVerifyOtp}
+                                    disabled={loading || !otp || otp.length !== 6}
+                                    className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:shadow-md transition-all disabled:opacity-60"
+                                >
+                                    {loading && <Loader2 size="14" className="animate-spin" />}
+                                    Verify OTP
+                                </motion.button>
+                                {countdown > 0 ? (
+                                    <span className="text-xs text-gray-500 inline-flex items-center gap-1">
+                                        <Clock size="12" /> {countdown}s
+                                    </span>
+                                ) : (
+                                    <button onClick={handleSendOtp} className="text-xs text-orange-600 font-semibold hover:underline">
+                                        Resend OTP
+                                    </button>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {step === 'otp_verified' && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-3 space-y-3"
+                        >
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2">
+                                <p className="text-xs text-blue-700 font-medium flex items-center gap-1">
+                                    <Shield size="12" /> Verified — set your new password
+                                </p>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    type={showPwd ? 'text' : 'password'}
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    placeholder="New password"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowPwd((v) => !v)} 
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    {showPwd ? <EyeOff size="16" /> : <Eye size="16" />}
+                                </button>
+                            </div>
+
+                            {!!newPassword && (
+                                <div className="space-y-1">
+                                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className={`h-full ${strength.color} transition-all duration-300`} style={{ width: strength.width }} />
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <p className={`text-xs font-medium ${strength.text}`}>Strength: {strength.label}</p>
+                                        <p className="text-xs text-gray-400">{Math.round(parseFloat(strength.width))}%</p>
+                                    </div>
+                                    <p className="text-xs text-gray-500 leading-relaxed">{PASSWORD_POLICY_TEXT}</p>
+                                </div>
+                            )}
+
+                            <div className="relative">
+                                <input
+                                    type={showConfirm ? 'text' : 'password'}
+                                    value={confirmPwd}
+                                    onChange={(e) => setConfirmPwd(e.target.value)}
+                                    placeholder="Confirm password"
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowConfirm((v) => !v)} 
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    {showConfirm ? <EyeOff size="16" /> : <Eye size="16" />}
+                                </button>
+                            </div>
+                            {confirmPwd && newPassword !== confirmPwd && (
+                                <p className="text-xs text-red-500 flex items-center gap-1">
+                                    <AlertTriangle size="10" /> Passwords do not match
+                                </p>
+                            )}
+
+                            <motion.button
+                                whileTap={{ scale: 0.95 }}
+                                onClick={handleChangePassword}
+                                disabled={loading || !isStrongPassword(newPassword) || newPassword !== confirmPwd}
+                                className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:shadow-md transition-all disabled:opacity-60"
+                            >
+                                {loading && <Loader2 size="14" className="animate-spin" />}
+                                Update Password
+                            </motion.button>
+                        </motion.div>
+                    )}
+
+                    {step === 'done' && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-3"
+                        >
+                            <p className="text-sm text-emerald-700 inline-flex items-center gap-2 bg-emerald-50 px-3 py-2 rounded-lg">
+                                <CheckCircle2 size="16" /> Password updated. Redirecting to login...
+                            </p>
+                        </motion.div>
+                    )}
+                </div>
             </div>
-        </div>
+        </motion.div>
     );
 }
 
+// ── Main Settings Component ─────────────────────────────────────────────────
 const Settings = () => {
     const navigate = useNavigate();
+    const { restartGuideFromSettings } = useClientOnboarding();
     const [showConfirm, setShowConfirm] = useState(false);
     const [confirmText, setConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
+    const [profile, setProfile] = useState(null);
+    const [loadingProfile, setLoadingProfile] = useState(true);
 
     const CONFIRM_PHRASE = 'DELETE';
+
+    useEffect(() => {
+        const loadProfile = async () => {
+            try {
+                const { data } = await api.getClientProfile();
+                setProfile(data);
+            } catch {
+                // Silently fail
+            } finally {
+                setLoadingProfile(false);
+            }
+        };
+        loadProfile();
+    }, []);
 
     const handleDeleteAccount = async () => {
         if (confirmText !== CONFIRM_PHRASE) {
@@ -215,130 +294,262 @@ const Settings = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 p-6">
-            <div className="max-w-lg mx-auto space-y-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
-                    <p className="text-gray-500 text-sm mt-1">Manage your account preferences</p>
-                </div>
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-20">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                
+                {/* Hero Header */}
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    data-guide-id="client-page-settings"
+                    className="mb-8"
+                >
+                    <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                    <SettingsIcon size="24" className="text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black">Settings</h1>
+                                    <p className="text-white/90 text-sm mt-0.5">Manage your account preferences</p>
+                                </div>
+                            </div>
+                            <motion.button
+                                whileTap={{ scale: 0.95 }}
+                                onClick={restartGuideFromSettings}
+                                className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-xl text-sm font-semibold hover:bg-white/30 transition-all"
+                            >
+                                <BookOpen size="16" /> User Guide
+                            </motion.button>
+                        </div>
+                    </div>
+                </motion.div>
 
-                {/* Info cards */}
-                <div className="bg-white rounded-2xl border border-orange-100 shadow-sm divide-y divide-gray-100">
+                {/* Profile Summary Card */}
+                {!loadingProfile && profile && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 }}
+                        className="bg-white rounded-xl border border-gray-100 shadow-md p-5 mb-6"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md">
+                                <User size="24" className="text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="font-bold text-gray-800 text-base">{profile.name}</h3>
+                                <p className="text-xs text-gray-500 font-mono">{profile.karigarId}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">{profile.email || 'Email not set'}</p>
+                            </div>
+                            {profile.verificationStatus === 'approved' && (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                                    <CheckCircle2 size="10" /> Verified
+                                </span>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* Settings Cards */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="bg-white rounded-xl border border-gray-100 shadow-md overflow-hidden mb-6"
+                >
+                    {/* Change Password Section */}
                     <ChangePasswordCard />
 
-                    <div className="p-5 flex items-start gap-4">
-                        <div className="h-10 w-10 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <Phone className="h-5 w-5 text-orange-500" />
-                        </div>
-                        <div>
-                            <h2 className="font-semibold text-gray-800">Change Mobile Number</h2>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Your mobile number is tied to your KarigarConnect identity. Contact support to update it.
-                            </p>
+                    {/* Divider */}
+                    <div className="border-t border-gray-100" />
+
+                    {/* Change Mobile Number */}
+                    <div className="p-5">
+                        <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md flex-shrink-0">
+                                <Smartphone size="20" className="text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h2 className="font-bold text-gray-800 text-base">Change Mobile Number</h2>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    Your mobile number is tied to your KarigarConnect identity. Contact support to update it.
+                                </p>
+                                <button className="mt-3 text-xs text-orange-600 font-semibold hover:underline">
+                                    Contact Support →
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="p-5 flex items-start gap-4">
-                        <div className="h-10 w-10 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <Shield className="h-5 w-5 text-orange-500" />
-                        </div>
-                        <div>
-                            <h2 className="font-semibold text-gray-800">Privacy & Data</h2>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Your data is stored securely and only accessible to authorised personnel.
-                            </p>
+                    {/* Divider */}
+                    <div className="border-t border-gray-100" />
+
+                    {/* Privacy & Data */}
+                    <div className="p-5">
+                        <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md flex-shrink-0">
+                                <Shield size="20" className="text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h2 className="font-bold text-gray-800 text-base">Privacy & Data</h2>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    Your data is stored securely and only accessible to authorised personnel.
+                                </p>
+                                <div className="flex items-center gap-2 mt-3">
+                                    <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                        <span>256-bit encrypted</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                        <span>GDPR compliant</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Danger Zone */}
-                <div>
-                    <h2 className="text-base font-bold text-red-600 mb-3 flex items-center gap-2">
-                        <AlertTriangle size={16} />
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                >
+                    <h2 className="text-sm font-bold text-red-600 mb-3 flex items-center gap-2">
+                        <AlertTriangle size="14" />
                         Danger Zone
                     </h2>
-                    <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-5">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div>
-                                <p className="font-semibold text-gray-800">Delete Account</p>
-                                <p className="text-sm text-gray-500 mt-1">
-                                    Once deleted, your profile, job history, and all data will be permanently removed.
-                                </p>
+                    <div className="bg-white rounded-xl border border-red-200 shadow-md overflow-hidden">
+                        <div className="p-5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-start gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center shadow-md flex-shrink-0">
+                                        <Trash2 size="20" className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="font-bold text-gray-800 text-base">Delete Account</h2>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                            Once deleted, your profile, job history, and all data will be permanently removed.
+                                        </p>
+                                    </div>
+                                </div>
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => { setConfirmText(''); setShowConfirm(true); }}
+                                    className="flex-shrink-0 flex items-center gap-2 bg-gradient-to-r from-red-500 to-rose-500 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:shadow-md transition-all"
+                                >
+                                    <Trash2 size="14" />
+                                    Delete Account
+                                </motion.button>
                             </div>
-                            <button
-                                onClick={() => { setConfirmText(''); setShowConfirm(true); }}
-                                className="flex-shrink-0 flex items-center gap-2 bg-red-500 text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-600 transition-colors"
-                            >
-                                <Trash2 size={15} />
-                                Delete Account
-                            </button>
                         </div>
                     </div>
-                </div>
+                </motion.div>
+
+                {/* Trust Badge */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                    className="text-center mt-8"
+                >
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-gray-100">
+                        <ShieldCheck size="14" className="text-emerald-500" />
+                        <span className="text-[10px] text-gray-500">Your data is encrypted and secure</span>
+                        <Lock size="10" className="text-gray-400" />
+                    </div>
+                </motion.div>
             </div>
 
             {/* Confirmation Modal */}
-            {showConfirm && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
-                        {/* Header */}
-                        <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                    <AlertTriangle className="h-5 w-5 text-red-600" />
+            <AnimatePresence>
+                {showConfirm && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                        >
+                            {/* Header */}
+                            <div className="bg-gradient-to-r from-red-500 to-rose-500 p-5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                                            <AlertTriangle size="18" className="text-white" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-white">Delete Account</h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowConfirm(false)}
+                                        className="text-white/80 hover:text-white transition-colors"
+                                    >
+                                        <X size="20" />
+                                    </button>
                                 </div>
-                                <h3 className="text-lg font-bold text-gray-900">Delete Account</h3>
                             </div>
-                            <button
-                                onClick={() => setShowConfirm(false)}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
 
-                        {/* Body */}
-                        <div className="space-y-3">
-                            <p className="text-sm text-gray-600">
-                                This action is <span className="font-semibold text-red-600">permanent and cannot be undone</span>.
-                                All your profile data, job history, and account information will be deleted immediately.
-                            </p>
-                            <p className="text-sm text-gray-700 font-medium">
-                                Type <span className="font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">{CONFIRM_PHRASE}</span> to confirm:
-                            </p>
-                            <input
-                                type="text"
-                                value={confirmText}
-                                onChange={(e) => setConfirmText(e.target.value)}
-                                placeholder={`Type ${CONFIRM_PHRASE} here`}
-                                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent"
-                                autoFocus
-                            />
-                        </div>
+                            {/* Body */}
+                            <div className="p-5 space-y-4">
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                    <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
+                                        <AlertTriangle size="14" />
+                                        This action is permanent and cannot be undone!
+                                    </p>
+                                </div>
+                                <p className="text-sm text-gray-600 leading-relaxed">
+                                    All your profile data, job history, and account information will be deleted immediately.
+                                </p>
+                                <p className="text-sm text-gray-700 font-medium">
+                                    Type <span className="font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">{CONFIRM_PHRASE}</span> to confirm:
+                                </p>
+                                <input
+                                    type="text"
+                                    value={confirmText}
+                                    onChange={(e) => setConfirmText(e.target.value)}
+                                    placeholder={`Type ${CONFIRM_PHRASE} here`}
+                                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent"
+                                    autoFocus
+                                />
+                            </div>
 
-                        {/* Actions */}
-                        <div className="flex gap-3 pt-1">
-                            <button
-                                onClick={() => setShowConfirm(false)}
-                                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleDeleteAccount}
-                                disabled={deleting || confirmText !== CONFIRM_PHRASE}
-                                className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {deleting ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                                ) : (
-                                    <><Trash2 size={14} /> Delete Permanently</>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                            {/* Actions */}
+                            <div className="p-5 pt-0 flex gap-3">
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => setShowConfirm(false)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </motion.button>
+                                <motion.button
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleDeleteAccount}
+                                    disabled={deleting || confirmText !== CONFIRM_PHRASE}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-red-500 to-rose-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:shadow-md transition-colors disabled:opacity-50"
+                                >
+                                    {deleting ? (
+                                        <Loader2 size="14" className="animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Trash2 size="14" />
+                                            Delete Permanently
+                                        </>
+                                    )}
+                                </motion.button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

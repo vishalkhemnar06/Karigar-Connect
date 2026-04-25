@@ -3,22 +3,34 @@
 
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { motion } from 'framer-motion';
 import { triggerFullScan } from '../../store/slices/fraudSlice';
+import { 
+    Shield, AlertTriangle, Users, Clock, 
+    TrendingUp, Zap, Server, Database, 
+    Activity, BarChart3, PieChart, Target 
+} from 'lucide-react';
 
-function StatCard({ label, value, sub, accent }) {
+function StatCard({ label, value, sub, icon: Icon, accent, delay = 0 }) {
     return (
-        <div style={{
-            background: '#fff', border: '1px solid #e5e7eb',
-            borderRadius: 10, padding: '14px 18px', flex: 1, minWidth: 130,
-        }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
-                {label}
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay }}
+            whileHover={{ y: -2 }}
+            className="bg-white rounded-xl p-4 shadow-md border border-gray-100 hover:shadow-lg transition-all"
+        >
+            <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{label}</p>
+                <div className={`p-1.5 rounded-lg bg-gradient-to-r ${accent} shadow-sm`}>
+                    <Icon size="14" className="text-white" />
+                </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: accent || '#111827', lineHeight: 1, marginBottom: 3 }}>
+            <p className={`text-2xl font-bold ${accent.includes('orange') ? 'text-orange-600' : accent.includes('red') ? 'text-red-600' : accent.includes('purple') ? 'text-purple-600' : 'text-gray-800'}`}>
                 {value}
-            </div>
-            {sub && <div style={{ fontSize: 11, color: '#9ca3af' }}>{sub}</div>}
-        </div>
+            </p>
+            {sub && <p className="text-[10px] text-gray-400 mt-1">{sub}</p>}
+        </motion.div>
     );
 }
 
@@ -26,61 +38,54 @@ export function FraudStatsBar() {
     const dispatch = useDispatch();
     const { alerts, complaintStats, scanStatus, scanLoading } = useSelector(s => s.fraud);
 
-    const high   = alerts.filter(a => a.risk_level === 'HIGH').length;
+    const high = alerts.filter(a => a.risk_level === 'HIGH').length;
     const medium = alerts.filter(a => a.risk_level === 'MEDIUM').length;
     const clientPending = complaintStats?.client?.pending ?? 0;
     const workerPending = (complaintStats?.worker?.byStatus?.submitted || 0) + (complaintStats?.worker?.byStatus?.inReview || 0);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-
-            {/* Queue stats */}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <StatCard label="Total Flagged"  value={alerts.length}          sub="in queue"                     accent="#6366f1" />
-                <StatCard label="High Risk"      value={high}                   sub="immediate review needed"       accent="#ef4444" />
-                <StatCard label="Medium Risk"    value={medium}                 sub="review recommended"            accent="#f97316" />
-                <StatCard label="Client Complaints" value={clientPending}       sub="pending"                      accent="#dc2626" />
-                <StatCard label="Worker Tickets"   value={workerPending}       sub="submitted + in-review"        accent="#b45309" />
-                <StatCard label="Last Scan"
+        <div className="space-y-4">
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <StatCard label="Total Flagged" value={alerts.length} sub="in queue" icon={Shield} accent="from-purple-500 to-pink-500" delay={0} />
+                <StatCard label="High Risk" value={high} sub="immediate review" icon={AlertTriangle} accent="from-red-500 to-rose-500" delay={0.05} />
+                <StatCard label="Medium Risk" value={medium} sub="review recommended" icon={TrendingUp} accent="from-orange-500 to-amber-500" delay={0.1} />
+                <StatCard label="Client Complaints" value={clientPending} sub="pending resolution" icon={Users} accent="from-blue-500 to-cyan-500" delay={0.15} />
+                <StatCard label="Worker Tickets" value={workerPending} sub="submitted + in-review" icon={Activity} accent="from-emerald-500 to-teal-500" delay={0.2} />
+                <StatCard label="Last Scan" 
                     value={scanStatus ? scanStatus.scanned?.toLocaleString() : '—'}
                     sub={scanStatus ? `${scanStatus.flagged_count} flagged` : 'not yet run'}
-                />
+                    icon={Database} accent="from-gray-500 to-gray-600" delay={0.25} />
             </div>
 
-            {/* Scan button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button
+            {/* Scan Button */}
+            <div className="flex justify-end">
+                <motion.button
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => dispatch(triggerFullScan())}
                     disabled={scanLoading}
-                    style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 8,
-                        background: scanLoading ? '#e5e7eb' : '#111827',
-                        color: scanLoading ? '#9ca3af' : '#fff',
-                        border: 'none', borderRadius: 8,
-                        padding: '9px 18px', fontSize: 13, fontWeight: 600,
-                        cursor: scanLoading ? 'not-allowed' : 'pointer',
-                        transition: 'background 0.2s',
-                    }}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-gray-800 to-gray-900 text-white font-bold text-sm hover:shadow-lg transition-all disabled:opacity-50"
                 >
                     {scanLoading ? (
-                        <><SpinIcon /> Scanning…</>
+                        <>
+                            <Loader2 size="14" className="animate-spin" />
+                            Scanning...
+                        </>
                     ) : (
-                        <><SearchIcon /> Run Full Scan Now</>
+                        <>
+                            <Zap size="14" />
+                            Run Full Scan Now
+                        </>
                     )}
-                </button>
+                </motion.button>
             </div>
         </div>
     );
 }
 
-const SearchIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 7v4l2 2"/>
-    </svg>
-);
-const SpinIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-        style={{ animation: 'fraud-spin 0.8s linear infinite' }}>
-        <path d="M21 12a9 9 0 1 1-9-9"/>
+// Helper Loader Component
+const Loader2 = ({ size, className }) => (
+    <svg className={`animate-spin ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </svg>
 );

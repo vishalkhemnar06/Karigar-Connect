@@ -1,18 +1,12 @@
 // client/src/pages/admin/AdminWorkerComplaints.jsx
-// FIXED:
-//   1. ComplaintDetail.load()  → api.getAdminWorkerComplaintById  (was api.getAdminComplaintById  → wrong model)
-//   2. handleStatusChange()    → api.takeAdminWorkerComplaintAction (was api.takeAdminActionOnComplaint → wrong model)
-//   3. Main loadData()         → api.getAdminWorkerComplaints / getAdminWorkerComplaintStats (were wrong model fns)
-//   4. Removed duplicate search debounce — search is already in loadData's useCallback deps via params,
-//      so a second setTimeout effect was causing a double request on every keystroke + a race condition.
-//      Replaced with a single properly debounced approach using a separate debouncedSearch state.
+// PREMIUM VERSION - Modern design with gradients, animations, and enhanced UX
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as api from '../../api';
 import { getImageUrl } from '../../constants/config';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
     AlertTriangle, CheckCircle, Clock, MessageSquare,
     Search, Send, RefreshCw, X, HelpCircle,
@@ -20,62 +14,85 @@ import {
     Phone, Shield, ChevronDown, Star, Award, Briefcase,
     Calendar, MapPin, Mail, Eye, TrendingUp, Zap,
     Sparkles, Crown, Flag, ThumbsUp, ThumbsDown,
-    FileText, BarChart3, ChevronRight, Menu
+    FileText, BarChart3, ChevronRight, Menu,
+    Verified, Heart, Gift, Diamond, Trophy,
+    Users, Building2, Home, Wallet, Camera, Upload
 } from 'lucide-react';
 
 // ── Enhanced Status Config ─────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-    submitted:   { label: 'Waiting',     bg: 'bg-gradient-to-r from-yellow-50 to-amber-50',  text: 'text-yellow-700', icon: Clock,        border: 'border-yellow-200' },
-    'in-review': { label: 'In Progress', bg: 'bg-gradient-to-r from-blue-50 to-indigo-50',   text: 'text-blue-700',   icon: Clock,        border: 'border-blue-200'   },
-    resolved:    { label: 'Resolved',    bg: 'bg-gradient-to-r from-green-50 to-emerald-50', text: 'text-green-700',  icon: CheckCircle,  border: 'border-green-200'  },
-    closed:      { label: 'Closed',      bg: 'bg-gradient-to-r from-gray-50 to-gray-100',    text: 'text-gray-600',   icon: X,            border: 'border-gray-200'   },
+    submitted:   { label: 'Waiting',     bg: 'from-yellow-50 to-amber-50',  text: 'text-yellow-700', icon: Clock,        border: 'border-yellow-200', gradient: 'from-yellow-500 to-amber-500' },
+    'in-review': { label: 'In Progress', bg: 'from-blue-50 to-indigo-50',   text: 'text-blue-700',   icon: Clock,        border: 'border-blue-200',   gradient: 'from-blue-500 to-indigo-500' },
+    resolved:    { label: 'Resolved',    bg: 'from-green-50 to-emerald-50', text: 'text-green-700',  icon: CheckCircle,  border: 'border-green-200',  gradient: 'from-emerald-500 to-green-500' },
+    closed:      { label: 'Closed',      bg: 'from-gray-50 to-gray-100',    text: 'text-gray-600',   icon: X,            border: 'border-gray-200',   gradient: 'from-gray-500 to-gray-600' },
 };
 
 function StatusBadge({ status }) {
     const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.submitted;
     const Icon = cfg.icon;
     return (
-        <span className={`inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border} shadow-sm`}>
-            <Icon size={10} />{cfg.label}
+        <span className={`inline-flex items-center gap-1.5 text-[10px] md:text-xs font-bold px-2.5 md:px-3 py-1 md:py-1.5 rounded-full bg-gradient-to-r ${cfg.bg} ${cfg.text} border ${cfg.border} shadow-sm`}>
+            <Icon size={10} className="md:size-3" /> {cfg.label}
         </span>
     );
 }
 
 function TypeChip({ type }) {
     return type === 'support'
-        ? <span className="inline-flex items-center gap-1 text-[9px] sm:text-[11px] font-bold px-2 sm:px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md"><HelpCircle size={10} /> Help</span>
-        : <span className="inline-flex items-center gap-1 text-[9px] sm:text-[11px] font-bold px-2 sm:px-3 py-1 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md"><AlertTriangle size={10} /> Complaint</span>;
+        ? <span className="inline-flex items-center gap-1.5 text-[9px] md:text-[11px] font-bold px-2.5 md:px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md"><HelpCircle size={10} /> Help Request</span>
+        : <span className="inline-flex items-center gap-1.5 text-[9px] md:text-[11px] font-bold px-2.5 md:px-3 py-1 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md"><AlertTriangle size={10} /> Complaint</span>;
 }
+
+// ── Stat Card Component ────────────────────────────────────────────────────────
+const StatCard = ({ label, value, icon: Icon, gradient, delay = 0 }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay }}
+        whileHover={{ y: -2, scale: 1.02 }}
+        className="bg-white rounded-xl p-4 shadow-md hover:shadow-xl transition-all relative overflow-hidden group"
+    >
+        <div className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-r ${gradient} opacity-10 rounded-full -m-4 group-hover:scale-110 transition-transform`} />
+        <div className="relative z-10">
+            <p className="text-2xl font-black text-gray-800">{value}</p>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mt-1">{label}</p>
+        </div>
+        <div className={`absolute bottom-3 right-3 p-2 rounded-lg bg-gradient-to-r ${gradient} text-white shadow-md`}>
+            <Icon size="14" />
+        </div>
+    </motion.div>
+);
 
 // ── Enhanced Message Bubble ────────────────────────────────────────────────────
 function MessageBubble({ message }) {
     const isAdmin = message.sender === 'admin';
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`flex ${isAdmin ? 'justify-end' : 'justify-start'} mb-3`}
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className={`flex ${isAdmin ? 'justify-end' : 'justify-start'} mb-4`}
         >
             <div className={`max-w-[85%] ${isAdmin ? 'ml-auto' : 'mr-auto'}`}>
-                <div className={`flex items-center gap-1.5 mb-1 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                <div className={`flex items-center gap-2 mb-1 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                     {!isAdmin && (
-                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-sm">
-                            <User size={8} className="text-white" />
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-sm">
+                            <User size="10" className="text-white" />
                         </div>
                     )}
-                    <p className={`text-[9px] sm:text-[11px] font-bold ${isAdmin ? 'text-orange-600' : 'text-gray-500'}`}>
+                    <p className={`text-[10px] font-bold ${isAdmin ? 'text-orange-600' : 'text-gray-500'}`}>
                         {isAdmin ? 'You (Admin)' : message.senderName || 'Worker'}
                     </p>
                     {isAdmin && (
-                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-sm">
-                            <Shield size={8} className="text-white" />
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-sm">
+                            <Shield size="10" className="text-white" />
                         </div>
                     )}
                 </div>
-                <div className={`px-3 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm leading-relaxed shadow-md ${
+                <div className={`px-4 py-3 rounded-xl text-xs md:text-sm leading-relaxed shadow-md ${
                     isAdmin
                         ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-tr-none'
-                        : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm'
+                        : 'bg-white border border-gray-100 text-gray-700 rounded-tl-none shadow-sm'
                 }`}>
                     {message.text}
                 </div>
@@ -93,73 +110,73 @@ function WorkerProfileCard({ worker, againstUserName }) {
     if (!worker) return null;
 
     const stats = [
-        { label: 'Jobs',   value: worker.completedJobs || 0,            icon: Briefcase  },
-        { label: 'Rating', value: worker.avgStars?.toFixed(1) || '—',   icon: Star       },
-        { label: 'Points', value: worker.points || 0,                   icon: Award      },
-        { label: 'Exp',    value: worker.experience ? `${worker.experience}y` : '—', icon: TrendingUp },
+        { label: 'Jobs',   value: worker.completedJobs || 0,            icon: Briefcase, gradient: 'from-blue-500 to-cyan-500' },
+        { label: 'Rating', value: worker.avgStars?.toFixed(1) || '—',   icon: Star,       gradient: 'from-yellow-500 to-amber-500' },
+        { label: 'Points', value: worker.points || 0,                   icon: Trophy,     gradient: 'from-orange-500 to-red-500' },
+        { label: 'Exp',    value: worker.experience ? `${worker.experience}y` : '—', icon: TrendingUp, gradient: 'from-purple-500 to-pink-500' },
     ];
 
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-lg"
+            className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-5 shadow-lg"
         >
-            <div className="flex items-start gap-3 sm:gap-5">
+            <div className="flex items-start gap-4">
                 <div className="relative flex-shrink-0">
-                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center overflow-hidden border-2 border-white shadow-lg">
-  {worker?.photo ? (
-    <img
-      src={getImageUrl(worker.photo)}
-      alt={worker.name}
-      className="w-full h-full object-cover"
-      onError={(e) => {
-        e.target.style.display = 'none';
-      }}
-    />
-  ) : (
-    <User size={20} className="text-white" />
-  )}
-</div>
+                    <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center overflow-hidden border-2 border-white shadow-md">
+                        {worker?.photo ? (
+                            <img
+                                src={getImageUrl(worker.photo)}
+                                alt={worker.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        ) : (
+                            <User size="24" className="text-white" />
+                        )}
+                    </div>
                     {worker.verificationStatus === 'approved' && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
-                            <CheckCircle size={10} className="text-white" />
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+                            <Verified size="10" className="text-white" />
                         </div>
                     )}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                        <p className="font-black text-gray-900 text-base sm:text-xl truncate">{worker.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <p className="font-bold text-gray-800 text-base truncate">{worker.name}</p>
                         {worker.avgStars > 0 && (
-                            <span className="flex items-center gap-0.5 text-[9px] sm:text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">
-                                <Star size={8} className="fill-yellow-500" />
+                            <span className="flex items-center gap-0.5 text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">
+                                <Star size="8" className="fill-yellow-500" />
                                 {worker.avgStars.toFixed(1)}
                             </span>
                         )}
                     </div>
-                    <p className="text-[10px] sm:text-sm text-orange-600 font-bold font-mono break-all">{worker.karigarId}</p>
+                    <p className="text-[10px] text-orange-600 font-mono font-semibold break-all">{worker.karigarId}</p>
 
-                    <div className="grid grid-cols-4 gap-1.5 sm:gap-3 mt-2 sm:mt-3">
-                        {stats.map(({ label, value, icon: Icon }) => (
-                            <div key={label} className="bg-white/60 rounded-lg sm:rounded-xl p-1.5 sm:p-2 text-center">
-                                <Icon size={10} className="text-orange-500 mx-auto mb-0.5 sm:mb-1" />
-                                <p className="text-[10px] sm:text-xs font-bold text-gray-800">{value}</p>
-                                <p className="text-[7px] sm:text-[9px] text-gray-500">{label}</p>
+                    <div className="grid grid-cols-4 gap-2 mt-3">
+                        {stats.map(({ label, value, icon: Icon, gradient }) => (
+                            <div key={label} className="bg-white/60 rounded-lg p-2 text-center">
+                                <div className={`w-6 h-6 rounded-lg bg-gradient-to-r ${gradient} flex items-center justify-center mx-auto mb-1 shadow-sm`}>
+                                    <Icon size="10" className="text-white" />
+                                </div>
+                                <p className="text-xs font-bold text-gray-800">{value}</p>
+                                <p className="text-[8px] text-gray-500">{label}</p>
                             </div>
                         ))}
                     </div>
 
                     {worker.mobile && (
-                        <a href={`tel:${worker.mobile}`} className="inline-flex items-center gap-1 text-[10px] sm:text-xs text-blue-600 font-semibold mt-2 hover:underline">
-                            <Phone size={10} /> {worker.mobile}
+                        <a href={`tel:${worker.mobile}`} className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-semibold mt-2 hover:underline">
+                            <Phone size="10" /> {worker.mobile}
                         </a>
                     )}
 
                     {againstUserName && (
-                        <div className="mt-2 sm:mt-3 bg-red-100 rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-red-200">
-                            <p className="text-[9px] sm:text-xs text-red-600 font-bold flex items-center gap-1">
-                                <Flag size={10} /> Against: {againstUserName}
+                        <div className="mt-3 bg-red-100 rounded-lg px-3 py-2 border border-red-200">
+                            <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                                <Flag size="10" /> Complaint Against: {againstUserName}
                             </p>
                         </div>
                     )}
@@ -175,51 +192,51 @@ function ComplaintDetailSummary({ complaint }) {
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-lg"
+            className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-5 shadow-lg"
         >
-            <div className="flex items-center gap-1.5 mb-3 sm:mb-4">
-                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-md">
-                    <MessageSquare size={14} className="text-white" />
+            <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-md">
+                    <MessageSquare size="14" className="text-white" />
                 </div>
-                <p className="text-[10px] sm:text-xs font-bold text-orange-700 uppercase tracking-wide">What the worker sent</p>
+                <p className="text-[10px] font-bold text-orange-700 uppercase tracking-wide">Complaint Details</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-4">
-                <div className="bg-white/60 rounded-lg sm:rounded-xl p-2 sm:p-3">
-                    <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold uppercase mb-1">Type</p>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-white/60 rounded-lg p-3">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase mb-1">Type</p>
                     <TypeChip type={complaint.type} />
                 </div>
-                <div className="bg-white/60 rounded-lg sm:rounded-xl p-2 sm:p-3">
-                    <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold uppercase mb-1">Category</p>
-                    <p className="font-bold text-gray-800 text-[11px] sm:text-sm truncate">{complaint.category}</p>
+                <div className="bg-white/60 rounded-lg p-3">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase mb-1">Category</p>
+                    <p className="font-bold text-gray-800 text-sm truncate">{complaint.category}</p>
                 </div>
-                <div className="bg-white/60 rounded-lg sm:rounded-xl p-2 sm:p-3">
-                    <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold uppercase mb-1">Status</p>
+                <div className="bg-white/60 rounded-lg p-3">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase mb-1">Status</p>
                     <StatusBadge status={complaint.status} />
                 </div>
-                <div className="bg-white/60 rounded-lg sm:rounded-xl p-2 sm:p-3">
-                    <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold uppercase mb-1">Date</p>
-                    <p className="text-[9px] sm:text-xs text-gray-700 font-semibold flex items-center gap-1">
-                        <Calendar size={8} />
-                        {new Date(complaint.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                <div className="bg-white/60 rounded-lg p-3">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase mb-1">Filed On</p>
+                    <p className="text-xs text-gray-700 font-semibold flex items-center gap-1">
+                        <Calendar size="10" />
+                        {new Date(complaint.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                 </div>
             </div>
 
             {complaint.againstUserName && (
-                <div className="bg-red-50 border border-red-200 rounded-lg sm:rounded-xl px-2 sm:px-4 py-2 sm:py-3 mb-3 sm:mb-4">
-                    <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold uppercase mb-1 flex items-center gap-1">
-                        <Flag size={10} /> Complaint Against
+                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
+                    <p className="text-[9px] text-gray-500 font-bold uppercase mb-1 flex items-center gap-1">
+                        <Flag size="10" /> Complaint Against
                     </p>
-                    <p className="text-[11px] sm:text-sm font-bold text-red-700 truncate">{complaint.againstUserName}</p>
+                    <p className="text-sm font-bold text-red-700 truncate">{complaint.againstUserName}</p>
                 </div>
             )}
 
-            <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-orange-200">
-                <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold uppercase mb-1.5 sm:mb-2 flex items-center gap-1">
-                    <FileText size={10} /> Description
+            <div className="bg-white rounded-lg p-4 border border-orange-200">
+                <p className="text-[9px] text-gray-500 font-bold uppercase mb-2 flex items-center gap-1">
+                    <FileText size="10" /> Description
                 </p>
-                <p className="text-[11px] sm:text-sm text-gray-800 leading-relaxed">{complaint.description}</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{complaint.description}</p>
             </div>
         </motion.div>
     );
@@ -235,7 +252,6 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
     const [actioning,  setActioning]  = useState(false);
     const bottomRef = useRef(null);
 
-    // ── FIX 1: use getAdminWorkerComplaintById (Complaint model) ──────────────
     const load = useCallback(async () => {
         try {
             const { data } = await api.getAdminWorkerComplaintById(complaintId);
@@ -254,7 +270,6 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
         if (!reply.trim()) return;
         setSending(true);
         try {
-            // adminReplyToComplaint already points to /worker-complaints/:id/reply ✓
             const { data } = await api.adminReplyToComplaint(complaintId, { text: reply.trim() });
             setComplaint(data.complaint);
             setReply('');
@@ -267,7 +282,6 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
         }
     };
 
-    // ── FIX 2: use takeAdminWorkerComplaintAction (Complaint model) ───────────
     const handleStatusChange = async (action) => {
         setActioning(true);
         setStatusOpen(false);
@@ -289,20 +303,16 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center py-32">
-            <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                className="w-10 h-10 sm:w-12 sm:h-12 border-3 sm:border-4 border-orange-500 border-t-transparent rounded-full"
-            />
-            <p className="mt-4 text-gray-500 font-semibold text-sm">Loading conversation...</p>
+            <Loader2 size="40" className="animate-spin text-orange-500 mb-4" />
+            <p className="text-gray-500 font-medium">Loading conversation...</p>
         </div>
     );
 
     if (!complaint) return (
-        <div className="text-center py-20 bg-white rounded-2xl sm:rounded-3xl shadow-xl">
-            <AlertCircle size={32} className="text-gray-300 mx-auto mb-3" />
+        <div className="text-center py-20 bg-white rounded-2xl shadow-xl">
+            <AlertCircle size="48" className="text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-semibold">Request not found.</p>
-            <button onClick={onBack} className="mt-4 text-orange-500 text-xs sm:text-sm font-bold underline">Go back</button>
+            <button onClick={onBack} className="mt-4 text-orange-500 font-bold underline">Go back</button>
         </div>
     );
 
@@ -310,101 +320,95 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
     const isClosed = ['resolved', 'closed'].includes(complaint.status);
 
     return (
-        <div className="flex flex-col bg-gray-50 rounded-xl sm:rounded-2xl shadow-xl overflow-hidden" style={{ minHeight: '85vh' }}>
+        <div className="flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden" style={{ minHeight: '85vh' }}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-orange-500 to-red-500 px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
-                <div className="flex items-center gap-2 sm:gap-3">
-                    <motion.button
-                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 px-6 py-4">
+                <div className="flex items-center gap-3">
+                    <button
                         onClick={onBack}
-                        className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-white/20 hover:bg-white/30 transition-all backdrop-blur-sm"
+                        className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-all"
                     >
-                        <ArrowLeft size={16} className="text-white" />
-                    </motion.button>
-                    <div className="flex-1 min-w-0 flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <ArrowLeft size="18" className="text-white" />
+                    </button>
+                    <div className="flex-1 flex items-center gap-2 flex-wrap">
                         <TypeChip type={complaint.type} />
                         <StatusBadge status={complaint.status} />
-                        <span className="text-[9px] sm:text-xs text-white/80 font-medium capitalize bg-white/20 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full">
+                        <span className="text-xs text-white/80 font-medium bg-white/20 px-2 py-0.5 rounded-full">
                             {complaint.category}
                         </span>
                     </div>
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2">
                         {isOpen && (
                             <div className="relative">
-                                <motion.button
-                                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                                    onClick={() => setStatusOpen(s => !s)}
+                                <button
+                                    onClick={() => setStatusOpen(!statusOpen)}
                                     disabled={actioning}
-                                    className="flex items-center gap-1 text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold transition-all disabled:opacity-60 backdrop-blur-sm"
+                                    className="flex items-center gap-1 text-xs px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold transition-all disabled:opacity-60"
                                 >
-                                    {actioning ? <Loader2 size={10} className="animate-spin" /> : 'Mark'}
-                                    <ChevronDown size={10} />
-                                </motion.button>
+                                    {actioning ? <Loader2 size="12" className="animate-spin" /> : 'Mark'}
+                                    <ChevronDown size="12" />
+                                </button>
                                 <AnimatePresence>
                                     {statusOpen && (
                                         <motion.div
                                             initial={{ opacity: 0, scale: 0.9, y: -10 }}
                                             animate={{ opacity: 1, scale: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.9, y: -10 }}
-                                            className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-20 overflow-hidden min-w-[120px] sm:min-w-[150px]"
+                                            className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-20 overflow-hidden min-w-[140px]"
                                         >
                                             <button
                                                 onClick={() => handleStatusChange('resolved')}
-                                                className="w-full text-left px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-green-700 hover:bg-green-50 font-bold flex items-center gap-1.5 sm:gap-2 transition-all"
+                                                className="w-full text-left px-4 py-2.5 text-sm text-emerald-700 hover:bg-emerald-50 font-bold flex items-center gap-2 transition-all"
                                             >
-                                                <CheckCircle size={12} /> Resolved
+                                                <CheckCircle size="14" /> Resolved
                                             </button>
                                             <button
                                                 onClick={() => handleStatusChange('closed')}
-                                                className="w-full text-left px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-gray-600 hover:bg-gray-50 font-bold flex items-center gap-1.5 sm:gap-2 transition-all"
+                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 font-bold flex items-center gap-2 transition-all"
                                             >
-                                                <X size={12} /> Close
+                                                <X size="14" /> Close
                                             </button>
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
                             </div>
                         )}
-                        <motion.button
-                            whileHover={{ scale: 1.05, rotate: 180 }} whileTap={{ scale: 0.95 }}
+                        <button
                             onClick={load}
-                            className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-white/20 hover:bg-white/30 transition-all backdrop-blur-sm"
+                            className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-all"
                         >
-                            <RefreshCw size={14} className="text-white" />
-                        </motion.button>
+                            <RefreshCw size="16" className="text-white" />
+                        </button>
                     </div>
                 </div>
             </div>
 
             {/* Worker Profile */}
-            <div className="px-3 sm:px-6 pt-3 sm:pt-6 pb-2 sm:pb-3 bg-white">
+            <div className="px-6 pt-6 pb-3 bg-white">
                 <WorkerProfileCard worker={complaint.filedBy} againstUserName={complaint.againstUserName} />
             </div>
 
-            {/* Full complaint details */}
-            <div className="px-3 sm:px-6 pb-3 sm:pb-4 bg-white">
+            {/* Complaint details */}
+            <div className="px-6 pb-4 bg-white">
                 <ComplaintDetailSummary complaint={complaint} />
             </div>
 
             {/* Message thread */}
-            <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-3 sm:py-5 bg-gradient-to-b from-gray-50 to-white">
-                <div className="text-center mb-4 sm:mb-6">
-                    <div className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-100 rounded-full">
-                        <MessageSquare size={12} className="text-gray-500" />
-                        <p className="text-[10px] sm:text-xs text-gray-500 font-semibold">Conversation</p>
+            <div className="flex-1 overflow-y-auto px-6 py-5 bg-gradient-to-b from-gray-50 to-white">
+                <div className="text-center mb-6">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-full">
+                        <MessageSquare size="14" className="text-gray-500" />
+                        <p className="text-xs text-gray-500 font-semibold">Conversation Thread</p>
                     </div>
                 </div>
 
                 {complaint.messages.length === 0 ? (
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                        className="text-center py-8 sm:py-12"
-                    >
-                        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                            <MessageSquare size={24} className="text-gray-400" />
+                    <div className="text-center py-16">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <MessageSquare size="28" className="text-gray-400" />
                         </div>
-                        <p className="text-xs sm:text-sm text-gray-500">No messages yet. Start the conversation below.</p>
-                    </motion.div>
+                        <p className="text-gray-500">No messages yet. Start the conversation below.</p>
+                    </div>
                 ) : (
                     complaint.messages.map((m, i) => <MessageBubble key={m._id || i} message={m} />)
                 )}
@@ -412,8 +416,8 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
             </div>
 
             {/* Reply box */}
-            <div className="px-3 sm:px-6 py-3 sm:py-4 bg-white border-t border-gray-100">
-                <div className="flex gap-2 sm:gap-3">
+            <div className="px-6 py-4 bg-white border-t border-gray-100">
+                <div className="flex gap-3">
                     <textarea
                         value={reply}
                         onChange={e => setReply(e.target.value)}
@@ -421,16 +425,15 @@ function ComplaintDetail({ complaintId, onBack, onUpdate }) {
                         rows={2}
                         placeholder={isClosed ? 'This issue is closed.' : 'Write your reply...'}
                         disabled={isClosed}
-                        className="flex-1 border border-gray-200 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 resize-none disabled:bg-gray-50 disabled:text-gray-400 transition-all"
+                        className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 resize-none disabled:bg-gray-50 disabled:text-gray-400 transition-all"
                     />
-                    <motion.button
-                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    <button
                         onClick={handleReply}
                         disabled={sending || !reply.trim() || isClosed}
-                        className="p-2 sm:p-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl sm:rounded-2xl disabled:opacity-50 transition-all shadow-md flex-shrink-0"
+                        className="px-5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl disabled:opacity-50 transition-all shadow-md flex items-center justify-center"
                     >
-                        {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                    </motion.button>
+                        {sending ? <Loader2 size="16" className="animate-spin" /> : <Send size="16" />}
+                    </button>
                 </div>
             </div>
         </div>
@@ -451,84 +454,82 @@ function ComplaintCard({ complaint, onClick }) {
             animate={{ opacity: 1, y: 0 }}
             whileHover={{ y: -2 }}
             onClick={onClick}
-            className={`bg-white rounded-xl sm:rounded-2xl border p-3 sm:p-5 cursor-pointer hover:shadow-xl transition-all active:scale-[0.98] ${
+            className={`bg-white rounded-xl border p-5 cursor-pointer hover:shadow-xl transition-all ${
                 unread > 0 ? 'border-orange-300 bg-gradient-to-r from-orange-50/30 to-amber-50/30' : 'border-gray-100 hover:border-orange-200'
             }`}
         >
-            <div className="flex items-start gap-2 sm:gap-4">
+            <div className="flex items-start gap-4">
                 <div className="relative flex-shrink-0">
-                   <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center overflow-hidden shadow-md">
-  {worker?.photo ? (
-    <img
-      src={getImageUrl(worker.photo)}
-      alt={worker.name}
-      className="w-full h-full object-cover"
-      onError={(e) => {
-        e.target.style.display = 'none';
-      }}
-    />
-  ) : (
-    <User size={20} className="text-white" />
-  )}
-</div>
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center overflow-hidden shadow-md">
+                        {worker?.photo ? (
+                            <img
+                                src={getImageUrl(worker.photo)}
+                                alt={worker.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        ) : (
+                            <User size="20" className="text-white" />
+                        )}
+                    </div>
                     {unread > 0 && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-orange-500 rounded-full border-2 border-white flex items-center justify-center">
-                            <span className="text-[8px] sm:text-[9px] font-black text-white">{unread}</span>
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+                            <span className="text-[9px] font-bold text-white">{unread}</span>
                         </div>
                     )}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-1 mb-1 sm:mb-2">
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="font-bold text-gray-900 text-sm sm:text-base truncate">{worker?.name || 'Worker'}</p>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-bold text-gray-800 text-base truncate">{worker?.name || 'Worker'}</p>
                                 {worker?.mobile && (
-                                    <span className="text-[8px] sm:text-[10px] text-gray-400 flex items-center gap-0.5">
-                                        <Phone size={6} /> {worker.mobile}
+                                    <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
+                                        <Phone size="8" /> {worker.mobile}
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
                                 <TypeChip type={complaint.type} />
                                 <StatusBadge status={complaint.status} />
                                 {unread > 0 && (
-                                    <span className="bg-orange-500 text-white text-[8px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                                    <span className="bg-orange-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
                                         {unread} new
                                     </span>
                                 )}
                             </div>
                         </div>
-                        <p className="text-[8px] sm:text-[10px] text-gray-400 flex items-center gap-0.5 flex-shrink-0">
-                            <Calendar size={8} />
+                        <p className="text-[9px] text-gray-400 flex items-center gap-0.5">
+                            <Calendar size="8" />
                             {new Date(complaint.updatedAt || complaint.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                         </p>
                     </div>
 
-                    <p className="text-[10px] sm:text-xs font-semibold text-gray-700 flex items-center gap-1">
-                        <Flag size={8} className="text-orange-500" />
+                    <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                        <Flag size="10" className="text-orange-500" />
                         <span className="truncate">{complaint.category}</span>
                         {complaint.againstUserName && (
-                            <span className="text-red-500 font-normal text-[9px] sm:text-xs truncate">— vs {complaint.againstUserName}</span>
+                            <span className="text-red-500 font-normal text-xs truncate">— vs {complaint.againstUserName}</span>
                         )}
                     </p>
 
-                    <p className="text-[10px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2 line-clamp-2 leading-relaxed">{complaint.description}</p>
+                    <p className="text-xs text-gray-500 mt-2 line-clamp-2 leading-relaxed">{complaint.description}</p>
 
                     {preview && (
-                        <div className="mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-gray-100">
-                            <p className="text-[9px] sm:text-[10px] text-gray-400">
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                            <p className="text-[10px] text-gray-400">
                                 <span className="font-bold text-gray-500">{from}:</span> {preview}
                             </p>
                         </div>
                     )}
 
-                    <div className="flex items-center gap-2 sm:gap-3 mt-1.5 sm:mt-2 text-[8px] sm:text-[10px] text-gray-400">
+                    <div className="flex items-center gap-3 mt-2 text-[9px] text-gray-400">
                         <span className="flex items-center gap-0.5">
-                            <MessageSquare size={8} /> {complaint.messages?.length || 0}
+                            <MessageSquare size="8" /> {complaint.messages?.length || 0} messages
                         </span>
                         <span className="flex items-center gap-0.5">
-                            <Calendar size={7} />
+                            <Calendar size="7" />
                             {new Date(complaint.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                         </span>
                     </div>
@@ -538,49 +539,25 @@ function ComplaintCard({ complaint, onClick }) {
     );
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ label, value, icon: Icon, gradient, delay = 0 }) => (
-    <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay }}
-        whileHover={{ y: -2, scale: 1.02 }}
-        className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-md hover:shadow-xl transition-all relative overflow-hidden group"
-    >
-        <div className={`absolute top-0 right-0 w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r ${gradient} opacity-10 rounded-full -m-4 group-hover:scale-110 transition-transform`} />
-        <div className="relative z-10">
-            <p className="text-xl sm:text-3xl font-black text-gray-900">{value}</p>
-            <p className="text-[9px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider mt-0.5 sm:mt-1">{label}</p>
-        </div>
-        <div className={`absolute bottom-2 right-2 sm:bottom-3 sm:right-3 p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-gradient-to-r ${gradient} text-white shadow-md`}>
-            <Icon size={14} />
-        </div>
-    </motion.div>
-);
-
 // ── Main Component ────────────────────────────────────────────────────────────
 const AdminWorkerComplaints = () => {
     const navigate = useNavigate();
     const [complaints,   setComplaints]   = useState([]);
     const [stats,        setStats]        = useState(null);
     const [loading,      setLoading]      = useState(true);
+    const [refreshing,   setRefreshing]   = useState(false);
     const [detailId,     setDetailId]     = useState(null);
     const [typeFilter,   setTypeFilter]   = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
-    // ── FIX 4: single source of truth for search ──────────────────────────────
-    // `searchInput` is what the user types (updates instantly for the input UI).
-    // `debouncedSearch` is what actually goes into the API call (300ms behind).
     const [searchInput,     setSearchInput]     = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [showFilters,     setShowFilters]     = useState(false);
 
-    // Debounce: only update debouncedSearch 300ms after the user stops typing
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
         return () => clearTimeout(timer);
     }, [searchInput]);
 
-    // ── FIX 3: use getAdminWorkerComplaints + getAdminWorkerComplaintStats ─────
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
@@ -605,14 +582,20 @@ const AdminWorkerComplaints = () => {
         } finally {
             setLoading(false);
         }
-    // debouncedSearch (not searchInput) is the dep so we don't fire on every keystroke
     }, [typeFilter, statusFilter, debouncedSearch]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await loadData();
+        setRefreshing(false);
+        toast.success('Complaints refreshed');
+    };
+
     if (detailId) {
         return (
-            <div className="max-w-3xl mx-auto p-2 sm:p-4">
+            <div className="max-w-4xl mx-auto p-4">
                 <ComplaintDetail
                     complaintId={detailId}
                     onBack={() => { setDetailId(null); loadData(); }}
@@ -625,49 +608,81 @@ const AdminWorkerComplaints = () => {
     const hasActiveFilters = typeFilter !== 'all' || statusFilter !== 'all' || searchInput;
 
     return (
-        <div className="bg-gradient-to-br from-orange-50/30 via-white to-orange-50/20 p-3 sm:p-4 md:p-6">
-            <div className="max-w-5xl mx-auto space-y-3 sm:space-y-6">
+        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-16">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+                
+                {/* Hero Header */}
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-8"
+                >
+                    <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                    <AlertTriangle size="24" className="text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black">Worker Complaints</h1>
+                                    <p className="text-white/90 text-sm mt-0.5">Manage worker complaints and support requests</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="bg-white/15 rounded-xl px-3 py-1.5 text-center">
+                                    <p className="text-xl font-bold">{stats?.total || 0}</p>
+                                    <p className="text-[10px] text-white/80">Total Requests</p>
+                                </div>
+                                <div className="bg-white/15 rounded-xl px-3 py-1.5 text-center">
+                                    <p className="text-xl font-bold">{stats?.adminUnread || 0}</p>
+                                    <p className="text-[10px] text-white/80">Unread</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
 
-                {/* Stats */}
+                {/* Stats Cards */}
                 {stats && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-                        <StatCard label="Total"    value={stats.total}                    icon={MessageSquare} gradient="from-gray-500 to-gray-600"      delay={0}    />
-                        <StatCard label="Waiting"  value={stats.byStatus?.submitted || 0} icon={Clock}         gradient="from-yellow-500 to-amber-500"   delay={0.05} />
-                        <StatCard label="Unread"   value={stats.adminUnread || 0}          icon={Mail}          gradient="from-orange-500 to-red-500"     delay={0.1}  />
-                        <StatCard label="Resolved" value={stats.byStatus?.resolved || 0}  icon={CheckCircle}   gradient="from-green-500 to-emerald-500"  delay={0.15} />
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <StatCard label="Total Requests" value={stats.total} icon={MessageSquare} gradient="from-gray-500 to-gray-600" delay={0} />
+                        <StatCard label="Pending" value={stats.byStatus?.submitted || 0} icon={Clock} gradient="from-yellow-500 to-amber-500" delay={0.05} />
+                        <StatCard label="Unread" value={stats.adminUnread || 0} icon={Mail} gradient="from-orange-500 to-red-500" delay={0.1} />
+                        <StatCard label="Resolved" value={stats.byStatus?.resolved || 0} icon={CheckCircle} gradient="from-emerald-500 to-green-500" delay={0.15} />
                     </div>
                 )}
 
-                {/* Search + Filter */}
-                <div className="bg-white rounded-xl sm:rounded-2xl border border-orange-100 shadow-md p-3 sm:p-5">
-                    <div className="flex gap-2 sm:gap-3">
-                        <div className="relative flex-1">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                {/* Search & Filters */}
+                <div className="bg-white rounded-xl shadow-md border border-gray-100 p-5 mb-6">
+                    <div className="flex gap-3">
+                        <div className="flex-1 relative">
+                            <Search size="16" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
                                 type="text"
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
-                                placeholder="Search..."
-                                className="w-full pl-8 sm:pl-11 pr-3 py-2 sm:py-3 border border-gray-200 rounded-lg sm:rounded-xl text-xs sm:text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-50 transition-all"
+                                placeholder="Search by worker name, category, or complaint ID..."
+                                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
                             />
                         </div>
-                        <motion.button
-                            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                            onClick={() => setShowFilters(f => !f)}
-                            className={`flex items-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl border text-xs sm:text-sm font-bold transition-all ${
-                                showFilters || typeFilter !== 'all' || statusFilter !== 'all'
-                                    ? 'border-orange-400 bg-orange-50 text-orange-700'
-                                    : 'border-gray-200 text-gray-500 hover:border-orange-200'
-                            }`}
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${showFilters || hasActiveFilters ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-orange-50'}`}
                         >
-                            <Filter size={12} />
-                            <span className="hidden xs:inline">Filter</span>
+                            <Filter size="14" /> Filter
                             {(typeFilter !== 'all' || statusFilter !== 'all') && (
-                                <span className="w-4 h-4 bg-orange-500 text-white rounded-full text-[8px] flex items-center justify-center">
+                                <span className="ml-0.5 w-4 h-4 bg-white/20 rounded-full text-white text-[10px] flex items-center justify-center">
                                     {(typeFilter !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0)}
                                 </span>
                             )}
-                        </motion.button>
+                        </button>
+                        <button
+                            onClick={handleRefresh}
+                            disabled={refreshing}
+                            className="p-2.5 border border-gray-200 rounded-xl hover:border-orange-300 transition-all"
+                        >
+                            <RefreshCw size="16" className={`text-orange-500 ${refreshing ? 'animate-spin' : ''}`} />
+                        </button>
                     </div>
 
                     <AnimatePresence>
@@ -676,54 +691,52 @@ const AdminWorkerComplaints = () => {
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
                                 exit={{ opacity: 0, height: 0 }}
-                                className="overflow-hidden"
+                                className="mt-4 pt-4 border-t border-gray-100"
                             >
-                                <div className="space-y-3 pt-3 mt-2 border-t border-gray-100">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-[9px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Type</label>
-                                        <div className="flex gap-1.5 flex-wrap">
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Type</label>
+                                        <div className="flex gap-2">
                                             {[
-                                                { v: 'all',       l: 'All',        icon: MessageSquare  },
-                                                { v: 'complaint', l: 'Complaints', icon: AlertTriangle  },
-                                                { v: 'support',   l: 'Help',       icon: HelpCircle     },
-                                            ].map(({ v, l, icon: Icon }) => (
-                                                <motion.button
+                                                { v: 'all', label: 'All', icon: MessageSquare },
+                                                { v: 'complaint', label: 'Complaints', icon: AlertTriangle },
+                                                { v: 'support', label: 'Help Requests', icon: HelpCircle },
+                                            ].map(({ v, label, icon: Icon }) => (
+                                                <button
                                                     key={v}
-                                                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                                                     onClick={() => setTypeFilter(v)}
-                                                    className={`flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-xs font-bold transition-all ${
+                                                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                                                         typeFilter === v
-                                                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md'
-                                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                            ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm'
+                                                            : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
                                                     }`}
                                                 >
-                                                    <Icon size={9} /> {l}
-                                                </motion.button>
+                                                    <Icon size="12" /> {label}
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-[9px] sm:text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Status</label>
-                                        <div className="flex gap-1.5 flex-wrap">
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Status</label>
+                                        <div className="flex gap-2">
                                             {[
-                                                { v: 'all',       l: 'All',      icon: BarChart3   },
-                                                { v: 'submitted', l: 'Wait',     icon: Clock       },
-                                                { v: 'in-review', l: 'Progress', icon: Eye         },
-                                                { v: 'resolved',  l: 'Resolved', icon: CheckCircle },
-                                                { v: 'closed',    l: 'Closed',   icon: X           },
-                                            ].map(({ v, l, icon: Icon }) => (
-                                                <motion.button
+                                                { v: 'all', label: 'All', icon: BarChart3 },
+                                                { v: 'submitted', label: 'Waiting', icon: Clock },
+                                                { v: 'in-review', label: 'In Progress', icon: Eye },
+                                                { v: 'resolved', label: 'Resolved', icon: CheckCircle },
+                                                { v: 'closed', label: 'Closed', icon: X },
+                                            ].map(({ v, label, icon: Icon }) => (
+                                                <button
                                                     key={v}
-                                                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                                                     onClick={() => setStatusFilter(v)}
-                                                    className={`flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-xs font-bold transition-all ${
+                                                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                                                         statusFilter === v
-                                                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md'
-                                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                            ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm'
+                                                            : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
                                                     }`}
                                                 >
-                                                    <Icon size={9} /> {l}
-                                                </motion.button>
+                                                    <Icon size="12" /> {label}
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
@@ -732,77 +745,75 @@ const AdminWorkerComplaints = () => {
                         )}
                     </AnimatePresence>
 
+                    {/* Active Filters */}
                     {hasActiveFilters && (
-                        <motion.button
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setSearchInput(''); setDebouncedSearch(''); }}
-                            className="mt-2 text-[10px] sm:text-xs text-orange-500 font-bold hover:underline flex items-center gap-1"
-                        >
-                            <X size={10} /> Clear all
-                        </motion.button>
+                        <div className="flex flex-wrap items-center gap-2 mt-4 pt-2 border-t border-gray-100">
+                            <span className="text-[9px] text-gray-500 font-semibold">Active filters:</span>
+                            {searchInput && (
+                                <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                    Search: {searchInput}
+                                    <button onClick={() => setSearchInput('')} className="hover:text-orange-900">✕</button>
+                                </span>
+                            )}
+                            {typeFilter !== 'all' && (
+                                <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                    Type: {typeFilter}
+                                    <button onClick={() => setTypeFilter('all')} className="hover:text-orange-900">✕</button>
+                                </span>
+                            )}
+                            {statusFilter !== 'all' && (
+                                <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                    Status: {statusFilter}
+                                    <button onClick={() => setStatusFilter('all')} className="hover:text-orange-900">✕</button>
+                                </span>
+                            )}
+                            <button onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setSearchInput(''); }} className="text-[9px] text-orange-500 font-semibold hover:underline">
+                                Clear all
+                            </button>
+                        </div>
                     )}
                 </div>
 
-                {/* List */}
-                <AnimatePresence mode="wait">
-                    {loading ? (
-                        <motion.div
-                            key="loading"
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="flex flex-col items-center justify-center py-16 sm:py-20 bg-white rounded-2xl sm:rounded-3xl shadow-xl"
-                        >
-                            <motion.div
-                                animate={{ rotate: 360 }}
-                                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                                className="w-10 h-10 sm:w-12 sm:h-12 border-3 sm:border-4 border-orange-500 border-t-transparent rounded-full"
-                            />
-                            <p className="mt-3 sm:mt-4 text-gray-500 font-semibold text-sm">Loading requests...</p>
-                        </motion.div>
-                    ) : complaints.length === 0 ? (
-                        <motion.div
-                            key="empty"
-                            initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                            className="text-center py-16 sm:py-20 bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100"
-                        >
-                            <motion.div
-                                animate={{ y: [0, -5, 0] }}
-                                transition={{ duration: 2, repeat: Infinity }}
-                                className="text-4xl sm:text-6xl mb-3 sm:mb-4"
-                            >
-                                📭
-                            </motion.div>
-                            <p className="font-bold text-gray-800 text-base sm:text-xl mb-1 sm:mb-2">No requests found</p>
-                            <p className="text-gray-400 text-[11px] sm:text-sm px-4">
-                                {hasActiveFilters
-                                    ? 'Try different filters or clear search'
-                                    : 'No workers have submitted any complaints or help requests yet.'}
-                            </p>
-                            {hasActiveFilters && (
-                                <button
-                                    onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setSearchInput(''); setDebouncedSearch(''); }}
-                                    className="mt-4 sm:mt-6 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold hover:shadow-lg transition-all"
-                                >
-                                    Clear Filters
-                                </button>
-                            )}
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="list"
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="space-y-2 sm:space-y-3"
-                        >
-                            <p className="text-[9px] sm:text-xs text-gray-400 font-semibold flex items-center gap-1">
-                                <MessageSquare size={8} />
-                                {complaints.length} item{complaints.length !== 1 ? 's' : ''} found
-                            </p>
-                            {complaints.map((c) => (
-                                <ComplaintCard key={c._id} complaint={c} onClick={() => setDetailId(c._id)} />
-                            ))}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                {/* Results Count */}
+                {!loading && complaints.length > 0 && (
+                    <div className="flex items-center justify-between mb-4">
+                        <p className="text-xs text-gray-500 font-medium">
+                            {complaints.length} complaint{complaints.length !== 1 ? 's' : ''} found
+                        </p>
+                    </div>
+                )}
+
+                {/* Complaints List */}
+                {loading ? (
+                    <div className="flex items-center justify-center py-20 bg-white rounded-xl shadow-md">
+                        <Loader2 size="40" className="animate-spin text-orange-500" />
+                    </div>
+                ) : complaints.length === 0 ? (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.96 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center"
+                    >
+                        <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <MessageSquare size="36" className="text-gray-400" />
+                        </div>
+                        <h3 className="font-bold text-gray-700 text-lg mb-2">No Complaints Found</h3>
+                        <p className="text-gray-400 text-sm max-w-sm mx-auto">
+                            {hasActiveFilters ? 'Try adjusting your filters or search terms.' : 'No workers have submitted any complaints or help requests yet.'}
+                        </p>
+                        {hasActiveFilters && (
+                            <button onClick={() => { setTypeFilter('all'); setStatusFilter('all'); setSearchInput(''); }} className="mt-5 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl text-sm font-semibold hover:shadow-md transition-all">
+                                Clear Filters
+                            </button>
+                        )}
+                    </motion.div>
+                ) : (
+                    <div className="space-y-4">
+                        {complaints.map((c, idx) => (
+                            <ComplaintCard key={c._id} complaint={c} onClick={() => setDetailId(c._id)} />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

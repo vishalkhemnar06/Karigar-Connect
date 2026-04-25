@@ -4,11 +4,14 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:chatbot-security": "node --test tests/chatbotSecurityPolicy.test.js",
     "start": "node server.js",
     "semantic:run": "python semantic_match_service/main.py",
     "smoke:commute": "node scripts/smokeCommuteFlows.js",
     "jobs:cleanup:dry": "node scripts/cleanupJobLegacyFields.js --dry-run",
-    "jobs:cleanup:apply": "node scripts/cleanupJobLegacyFields.js --apply"
+    "jobs:cleanup:apply": "node scripts/cleanupJobLegacyFields.js --apply",
+    "workers:skills:migrate:dry": "node scripts/migrateWorkerSkillsPrimary.js --dry-run",
+    "workers:skills:migrate:apply": "node scripts/migrateWorkerSkillsPrimary.js --apply"
   },
   "keywords": [],
   "author": "",

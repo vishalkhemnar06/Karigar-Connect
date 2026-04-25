@@ -2,21 +2,7 @@
 const Shop        = require('../models/shopModel');
 const Coupon      = require('../models/couponModel');
 const Transaction = require('../models/transactionModel');
-const twilio      = require('twilio');
-
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-const sendSms = async (to, body) => {
-    try {
-        await twilioClient.messages.create({
-            body,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: to.startsWith('+') ? to : `+91${to}`,
-        });
-    } catch (err) {
-        console.error('SMS failed:', err.message);
-    }
-};
+const { sendCustomSms } = require('../utils/smsHelper');
 
 // ── GET ALL SHOPS ─────────────────────────────────────────────────────────────
 exports.getAllShops = async (req, res) => {
@@ -46,10 +32,13 @@ exports.approveShop = async (req, res) => {
         shop.rejectionReason = null;
         await shop.save({ validateBeforeSave: false });
 
-        await sendSms(
+        const smsResult = await sendCustomSms(
             shop.mobile,
             `Congratulations ${shop.ownerName}! Your shop "${shop.shopName}" has been approved on KarigarConnect. You can now login to your dashboard.`
         );
+        if (smsResult?.success === false) {
+            console.warn('Shop approval SMS was not delivered:', smsResult.reason);
+        }
 
         return res.json({ message: 'Shop approved.', shop });
     } catch (err) {
@@ -69,10 +58,13 @@ exports.rejectShop = async (req, res) => {
         const shopName  = shop.shopName;
 
         // SMS before delete
-        await sendSms(
+        const smsResult = await sendCustomSms(
             mobile,
             `Hi ${ownerName}, your shop "${shopName}" registration on KarigarConnect has been rejected. Reason: ${reason || 'Does not meet requirements'}. Contact support for more info.`
         );
+        if (smsResult?.success === false) {
+            console.warn('Shop rejection SMS was not delivered:', smsResult.reason);
+        }
 
         // Permanently delete
         await Shop.findByIdAndDelete(req.params.id);
@@ -92,7 +84,10 @@ exports.blockShop = async (req, res) => {
             { new: true }
         );
         if (!shop) return res.status(404).json({ message: 'Not found.' });
-        await sendSms(shop.mobile, `Hi ${shop.ownerName}, your shop "${shop.shopName}" has been blocked on KarigarConnect. Contact support for details.`);
+        const smsResult = await sendCustomSms(shop.mobile, `Hi ${shop.ownerName}, your shop "${shop.shopName}" has been blocked on KarigarConnect. Contact support for details.`);
+        if (smsResult?.success === false) {
+            console.warn('Shop block SMS was not delivered:', smsResult.reason);
+        }
         return res.json({ message: 'Shop blocked.', shop });
     } catch { return res.status(500).json({ message: 'Failed.' }); }
 };

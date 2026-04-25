@@ -1,14 +1,12 @@
-// src/pages/admin/AdminDashboard.jsx — UPDATED
-// Changes from previous version:
-//   - Sidebar extracted to src/components/admin/AdminSidebar.jsx
-//   - Desktop sidebar is sticky + scrollable
-//   - Mobile: slide-in drawer + bottom navigation bar (all nav at bottom)
-//   - isSidebarOpen state still controls mobile drawer
-//   - All original functionality preserved exactly
+// src/pages/admin/AdminDashboard.jsx
+// COMPLETE PREMIUM VERSION - 2000+ lines
+// Includes all sections: Dashboard, User Management, Fraud Monitor, Complaints, 
+// Worker Complaints, Community, Shops, Users, Marketplace, Leaderboard, Direct Hires
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import * as api from '../../api';
+import toast from 'react-hot-toast';
 import { getImageUrl } from '../../constants/config';
 import Header from '../../components/Header';
 import {
@@ -18,7 +16,10 @@ import {
     FileText, Image, Briefcase, AlertCircle,
     LogOut, Menu, X as CloseIcon, Calendar, Smartphone,
     MapPin as MapPinIcon, FileText as FileTextIcon,
-    Camera, Award as AwardIcon, Star, PhoneCall, Store, Gift, Wrench, TrendingUp, BarChart3, RefreshCw
+    Camera, Award as AwardIcon, Star, PhoneCall, Store, Gift, Wrench, TrendingUp, BarChart3, RefreshCw,
+    CreditCard, DollarSign, Wallet, Zap, Sparkles, Crown, Diamond,
+    Heart, ThumbsUp, MessageCircle, Flag, Shield, UserCog,
+    Building2, HomeIcon, MailOpen, Lock, Fingerprint, Globe,CheckCircle
 } from 'lucide-react';
 import {
     PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
@@ -27,22 +28,30 @@ import {
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { motion, AnimatePresence } from 'framer-motion';
 
-import AdminSidebar from '../../pages/admin/AdminSidebar';
-import FraudMonitor from '../../pages/admin/FraudMonitor';
-import AdminComplaints from '../../pages/admin/AdminComplaints';
-import AdminWorkerComplaints from '../../pages/admin/AdminWorkerComplaints';
-import AdminCommunity from '../../pages/admin/AdminCommunity';
-import AdminShops from '../../pages/admin/AdminShops';
-import AdminUsersSection from '../../pages/admin/AdminUsersSection';
-import AdminMarketplaceSection from '../../pages/admin/AdminMarketplaceSection';
-import AdminWorkerLeaderboardSection from '../../pages/admin/AdminWorkerLeaderboardSection';
+import AdminSidebar from './AdminSidebar';
+import FraudMonitor from './FraudMonitor';
+import AdminComplaints from './AdminComplaints';
+import AdminWorkerComplaints from './AdminWorkerComplaints';
+import AdminCommunity from './AdminCommunity';
+import AdminShops from './AdminShops';
+import AdminUsersSection from './AdminUsersSection';
+import AdminMarketplaceSection from './AdminMarketplaceSection';
+import AdminWorkerLeaderboardSection from './AdminWorkerLeaderboardSection';
+import ChatbotSupportRequests from './ChatbotSupportRequests';
+import PendingReview from './PendingReview';
+import Approved from './Approved';
+import Rejected from './Rejected';
+import Blocked from './Blocked';
+import AllClients from './AllClients';
+import Payment from './Payment';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modal: Verify Worker & Assign Points
 // ─────────────────────────────────────────────────────────────────────────────
 const VerificationModal = ({ worker, onClose, onConfirm }) => {
-    const [points,   setPoints]   = useState(10);
+    const [points, setPoints] = useState(10);
     const [feedback, setFeedback] = useState('');
 
     if (!worker) return null;
@@ -51,19 +60,34 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
     const finalScore = Number(points) + (experience * 10);
 
     const handleSubmit = () => {
-        if (points < 1 || points > 50) { return; }
+        if (points < 1 || points > 50) {
+            toast.error('Points must be between 1 and 50');
+            return;
+        }
         onConfirm(worker._id, 'approved', points, feedback);
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex justify-center items-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex justify-center items-center p-4"
+        >
+            <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
                 <div className="bg-gradient-to-r from-orange-600 to-amber-500 p-5 text-white flex justify-between items-center">
                     <div>
                         <h3 className="text-xl font-bold">Verify Profile</h3>
                         <p className="text-orange-100 text-xs">Reviewing: {worker.name}</p>
                     </div>
-                    <button onClick={onClose} className="hover:rotate-90 transition-transform"><CloseIcon size={24} /></button>
+                    <button onClick={onClose} className="hover:rotate-90 transition-transform">
+                        <CloseIcon size={24} />
+                    </button>
                 </div>
 
                 <div className="p-6 space-y-6">
@@ -85,10 +109,17 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
                             <span className="text-orange-500">Leaderboard Beta</span>
                         </div>
                         <div className="space-y-1 text-sm text-gray-700">
-                            <div className="flex justify-between"><span>Admin Points:</span><span className="font-mono">+{points || 0}</span></div>
-                            <div className="flex justify-between"><span>Experience Bonus ({experience} yrs):</span><span className="font-mono">+{experience * 10}</span></div>
+                            <div className="flex justify-between">
+                                <span>Admin Points:</span>
+                                <span className="font-mono">+{points || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Experience Bonus ({experience} yrs):</span>
+                                <span className="font-mono">+{experience * 10}</span>
+                            </div>
                             <div className="border-t border-orange-200 mt-2 pt-2 flex justify-between font-black text-lg text-orange-900">
-                                <span>Final Ranking Score:</span><span>{finalScore}</span>
+                                <span>Final Ranking Score:</span>
+                                <span>{finalScore}</span>
                             </div>
                         </div>
                     </div>
@@ -110,8 +141,8 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
                         APPROVE & ACTIVATE ID
                     </button>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 };
 
@@ -121,9 +152,9 @@ const VerificationModal = ({ worker, onClose, onConfirm }) => {
 const UserDetailsModal = ({ user, onClose, baseURL }) => {
     if (!user) return null;
 
-    const address   = user.address           || {};
-    const emergency = user.emergencyContact  || {};
-    const idDoc     = user.idProof           || {};
+    const address = user.address || {};
+    const emergency = user.emergencyContact || {};
+    const idDoc = user.idProof || {};
 
     const resolvePath = (value) => {
         if (!value) return null;
@@ -157,8 +188,21 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-orange-50/85 backdrop-blur-[2px] p-2 sm:p-4 lg:p-6" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-2xl border border-orange-100 w-full max-w-6xl h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] mx-auto flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm p-2 sm:p-4 lg:p-6 overflow-y-auto"
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="bg-white rounded-2xl shadow-2xl border border-orange-100 w-full max-w-6xl mx-auto flex flex-col overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header */}
                 <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-orange-600 p-4 sm:p-6 rounded-t-xl flex justify-between items-center z-10">
                     <div className="flex items-center gap-3 sm:gap-4">
                         <img
@@ -172,24 +216,27 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <p className="text-orange-100 text-sm">{user.userId || user.karigarId} | {user.role}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-white text-2xl sm:text-3xl hover:text-orange-200 transition-colors leading-none">&times;</button>
+                    <button onClick={onClose} className="text-white text-2xl sm:text-3xl hover:text-orange-200 transition-colors leading-none">
+                        &times;
+                    </button>
                 </div>
 
-                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto">
+                {/* Body */}
+                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto max-h-[calc(100vh-200px)]">
                     {/* Personal & Contact */}
                     <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
                         <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-orange-800 flex items-center">
                             <UserCheck size={18} className="mr-2" /> Personal & Contact Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            <DetailItem label="Full Name"      value={user.name}                                                   icon={UserCheck} />
-                            <DetailItem label="Age"            value={user.age || 'N/A'} />
-                            <DetailItem label="Date of Birth"  value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar}  />
-                            <DetailItem label="Phone Type"     value={user.phoneType || 'N/A'}                                     icon={Smartphone} />
-                            <DetailItem label="Gender"         value={user.gender} />
-                            <DetailItem label="Mobile"         value={user.mobile}                                                 icon={Phone} />
-                            <DetailItem label="Email"          value={user.email}                                                  icon={Mail} />
-                            <DetailItem label="Aadhar Number"  value={user.aadharNumber} />
+                            <DetailItem label="Full Name" value={user.name} icon={UserCheck} />
+                            <DetailItem label="Age" value={user.age || 'N/A'} />
+                            <DetailItem label="Date of Birth" value={user.dob ? new Date(user.dob).toLocaleDateString() : 'N/A'} icon={Calendar} />
+                            <DetailItem label="Phone Type" value={user.phoneType || 'N/A'} icon={Smartphone} />
+                            <DetailItem label="Gender" value={user.gender} />
+                            <DetailItem label="Mobile" value={user.mobile} icon={Phone} />
+                            <DetailItem label="Email" value={user.email} icon={Mail} />
+                            <DetailItem label="Aadhar Number" value={user.aadharNumber} />
                             <DetailItem label="E-Shram Number" value={user.eShramNumber || 'N/A'} />
                         </div>
                     </div>
@@ -200,14 +247,14 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                             <MapPinIcon size={18} className="mr-2" /> Address Information
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            <DetailItem label="Full Address"   value={address.fullAddress || user.fullAddress || address.homeLocation || user.homeLocation} icon={MapPinIcon} />
-                            <DetailItem label="City"           value={address.city     || user.city}     icon={Home} />
-                            <DetailItem label="Village"        value={address.village  || user.village} />
-                            <DetailItem label="Pincode"        value={address.pincode  || user.pincode} />
-                            <DetailItem label="Locality/Area"  value={address.locality || user.locality} />
-                            <DetailItem label="House Number"   value={address.houseNumber || user.houseNumber} />
-                            <DetailItem label="Latitude"       value={address.latitude ?? user.latitude} />
-                            <DetailItem label="Longitude"      value={address.longitude ?? user.longitude} />
+                            <DetailItem label="Full Address" value={address.fullAddress || user.fullAddress} icon={MapPinIcon} />
+                            <DetailItem label="City" value={address.city || user.city} icon={HomeIcon} />
+                            <DetailItem label="Village" value={address.village || user.village} />
+                            <DetailItem label="Pincode" value={address.pincode || user.pincode} />
+                            <DetailItem label="Locality/Area" value={address.locality || user.locality} />
+                            <DetailItem label="House Number" value={address.houseNumber || user.houseNumber} />
+                            <DetailItem label="Latitude" value={address.latitude ?? user.latitude} />
+                            <DetailItem label="Longitude" value={address.longitude ?? user.longitude} />
                         </div>
                     </div>
 
@@ -219,8 +266,8 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <Briefcase size={18} className="mr-2" /> Professional Details
                                 </h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <DetailItem label="Overall Experience"   value={user.overallExperience} />
-                                    <DetailItem label="Years of Experience"  value={user.experience ? `${user.experience} years` : 'N/A'} />
+                                    <DetailItem label="Overall Experience" value={user.overallExperience} />
+                                    <DetailItem label="Years of Experience" value={user.experience ? `${user.experience} years` : 'N/A'} />
                                     <div className="sm:col-span-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase tracking-wider mb-2">Skills & Proficiency</p>
                                         <div className="bg-white p-3 rounded-lg border border-orange-100">
@@ -234,7 +281,7 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <AlertCircle size={18} className="mr-2" /> Emergency & References
                                 </h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <DetailItem label="Emergency Contact Name"   value={emergency.name   || user.emergencyContactName} />
+                                    <DetailItem label="Emergency Contact Name" value={emergency.name || user.emergencyContactName} />
                                     <DetailItem label="Emergency Contact Mobile" value={emergency.mobile || user.emergencyContactMobile} />
                                     <div className="sm:col-span-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase tracking-wider mb-2">References</p>
@@ -257,20 +304,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                     {/* Client-specific */}
                     {user.role === 'client' && (
                         <>
-                            <div className="bg-gradient-to-r from-red-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-red-100">
-                                <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-red-800 flex items-center">
-                                    <AlertCircle size={18} className="mr-2" /> Security & Verification
-                                </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <DetailItem label="Age Verified (18+)" value={user.ageVerified ? '✓ Yes' : '✗ No'} />
-                                    <DetailItem label="Address Verified" value={user.addressVerified ? '✓ Yes' : '✗ No'} />
-                                    <DetailItem label="Emergency Contact Name" value={emergency.name || 'N/A'} />
-                                    <DetailItem label="Emergency Contact Mobile" value={emergency.mobile || 'N/A'} />
-                                    <DetailItem label="Device Fingerprint" value={user.deviceFingerprint ? user.deviceFingerprint.substring(0, 16) + '...' : 'N/A'} />
-                                    <DetailItem label="Signup IP Address" value={user.signupIpAddress || 'N/A'} />
-                                </div>
-                            </div>
-
                             <div className="bg-gradient-to-r from-blue-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-blue-100">
                                 <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-blue-800 flex items-center">
                                     <Briefcase size={18} className="mr-2" /> Profile & Intent
@@ -297,23 +330,10 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     <DetailItem label="Worker Protection" value={user.termsWorkerProtectionAccepted ? '✓ Accepted' : '✗ Not Accepted'} />
                                 </div>
                             </div>
-
-                            <div className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 sm:p-5 rounded-xl border border-orange-100">
-                                <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-orange-800 flex items-center">
-                                    <Briefcase size={18} className="mr-2" /> Additional Information
-                                </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <DetailItem label="Workplace/Profession (Legacy)" value={user.workplaceInfo || 'N/A'} />
-                                    <DetailItem label="Social Profile"
-                                        value={user.socialProfile
-                                            ? <a href={user.socialProfile} target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">View Profile</a>
-                                            : 'N/A'}
-                                    />
-                                </div>
-                            </div>
                         </>
                     )}
 
+                    {/* Documents */}
                     <div className="bg-gradient-to-r from-gray-50 to-orange-50 p-4 sm:p-5 rounded-xl border border-gray-100">
                         <h4 className="font-bold text-base sm:text-lg mb-3 sm:mb-4 text-gray-800 flex items-center">
                             <FileTextIcon size={18} className="mr-2" /> Documents & Uploads
@@ -341,13 +361,6 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                         <p className="font-semibold text-orange-600 text-xs uppercase">Professional Certification</p>
                                         <FileLink path={user.professionalCertification} label="View Certification" icon={AwardIcon} />
                                     </div>
-                                    <div className="space-y-2">
-                                        <p className="font-semibold text-orange-600 text-xs uppercase">Live Face Photo</p>
-                                        <FileLink path={user.liveFacePhoto} label="View Live Face" icon={Camera} />
-                                        <p className="text-xs text-gray-600 mt-1">
-                                            Similarity: {typeof user.faceVerificationScore === 'number' ? user.faceVerificationScore.toFixed(3) : 'N/A'} | Status: {user.faceVerificationStatus || 'N/A'}
-                                        </p>
-                                    </div>
                                 </>
                             )}
                             {user.role === 'worker' && (
@@ -357,23 +370,16 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                         <FileLink path={user.eShramCardPath || user.eShramCard} label="View E-Shram Card" icon={FileText} />
                                     </div>
                                     <div className="space-y-2">
-                                        <p className="font-semibold text-orange-600 text-xs uppercase">Live Face Photo</p>
-                                        <FileLink path={user.liveFacePhoto} label="View Live Face" icon={Camera} />
-                                        <p className="text-xs text-gray-600 mt-1">
-                                            Similarity: {typeof user.faceVerificationScore === 'number' ? user.faceVerificationScore.toFixed(3) : 'N/A'} | Status: {user.faceVerificationStatus || 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div className="sm:col-span-2 space-y-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase">Skill Certificates</p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 gap-2">
                                             {user.skillCertificates?.length > 0
                                                 ? user.skillCertificates.map((cert, i) => <FileLink key={i} path={cert} label={`Certificate ${i + 1}`} icon={AwardIcon} />)
                                                 : <span className="text-gray-400 text-sm">Not Provided</span>}
                                         </div>
                                     </div>
-                                    <div className="sm:col-span-2 space-y-2">
+                                    <div className="space-y-2">
                                         <p className="font-semibold text-orange-600 text-xs uppercase">Portfolio Photos</p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 gap-2">
                                             {user.portfolioPhotos?.length > 0
                                                 ? user.portfolioPhotos.map((photo, i) => <FileLink key={i} path={photo} label={`Photo ${i + 1}`} icon={Image} />)
                                                 : <span className="text-gray-400 text-sm">Not Provided</span>}
@@ -381,6 +387,14 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                                     </div>
                                 </>
                             )}
+                            <div className="space-y-2">
+                                <p className="font-semibold text-orange-600 text-xs uppercase">Live Face Photo</p>
+                                <FileLink path={user.liveFacePhoto} label="View Live Face" icon={Camera} />
+                                <p className="text-xs text-gray-600 mt-1">
+                                    Similarity: {typeof user.faceVerificationScore === 'number' ? user.faceVerificationScore.toFixed(3) : 'N/A'} | 
+                                    Status: {user.faceVerificationStatus || 'N/A'}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -390,23 +404,317 @@ const UserDetailsModal = ({ user, onClose, baseURL }) => {
                         Close
                     </button>
                 </div>
+            </motion.div>
+        </motion.div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Info Pill Component
+// ─────────────────────────────────────────────────────────────────────────────
+const InfoPill = ({ label, value, mono = false }) => (
+    <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">{label}</p>
+        <p className={`mt-1 text-sm font-bold text-gray-900 ${mono ? 'font-mono' : ''}`}>{value}</p>
+    </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stat Card Component
+// ─────────────────────────────────────────────────────────────────────────────
+const StatCard = ({ title, value, icon: Icon, color, gradient, onClick }) => (
+    <motion.div
+        whileHover={{ y: -2, scale: 1.02 }}
+        onClick={onClick}
+        className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${color} relative overflow-hidden group hover:shadow-md transition-all cursor-pointer`}
+    >
+        <div className={`absolute top-0 right-0 w-16 h-16 opacity-10 ${gradient} rounded-full -m-4 group-hover:scale-110 transition-transform`}></div>
+        <div className="relative z-10">
+            <p className="text-xs font-medium text-gray-500 mb-1">{title}</p>
+            <p className="text-xl lg:text-3xl font-bold text-gray-900">{value}</p>
+        </div>
+        <div className={`absolute bottom-4 right-4 p-2 rounded-lg ${gradient} text-white`}>
+            <Icon size={18} />
+        </div>
+    </motion.div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Worker Review Board Component
+// ─────────────────────────────────────────────────────────────────────────────
+const WorkerReviewBoard = ({
+    currentTab,
+    onTabChange,
+    searchValue,
+    onSearchChange,
+    cityValue,
+    onCityChange,
+    cityOptions,
+    rows,
+    stats,
+    onRefresh,
+    currentAdminId,
+    onViewDetails,
+    onClaimWorker,
+    onStatusUpdate,
+    onDelete,
+    onVerifyOpen,
+}) => {
+    const tabs = [
+        { key: 'pending', label: 'Pending', count: stats.pending, icon: Clock, tone: 'amber' },
+        { key: 'approved', label: 'Approved', count: stats.approved, icon: UserCheck, tone: 'green' },
+        { key: 'rejected', label: 'Rejected', count: stats.rejected, icon: UserX, tone: 'red' },
+        { key: 'blocked', label: 'Blocked', count: stats.blocked, icon: ShieldX, tone: 'slate' },
+    ];
+
+    const tabTone = {
+        amber: 'from-amber-400 to-orange-500',
+        green: 'from-emerald-500 to-green-600',
+        red: 'from-rose-500 to-red-600',
+        slate: 'from-slate-600 to-slate-700',
+    };
+
+    const chipTone = {
+        pending: 'bg-amber-100 text-amber-800 border-amber-200',
+        approved: 'bg-green-100 text-green-800 border-green-200',
+        rejected: 'bg-red-100 text-red-800 border-red-200',
+        blocked: 'bg-slate-100 text-slate-800 border-slate-200',
+    };
+
+    const renderCard = (user) => {
+        const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
+        const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
+        const claimedByOther = lockOwnerId && !claimedByMe;
+        const city = user?.address?.city || user?.city || 'N/A';
+
+        return (
+            <motion.div
+                key={user._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -4 }}
+                className="group rounded-3xl border border-orange-100 bg-white shadow-sm overflow-hidden hover:shadow-xl transition-all duration-300"
+            >
+                <div className={`h-20 bg-gradient-to-r ${
+                    user.verificationStatus === 'approved' ? 'from-emerald-400 to-green-500' :
+                    user.verificationStatus === 'rejected' ? 'from-rose-400 to-red-500' :
+                    user.verificationStatus === 'blocked' ? 'from-slate-500 to-slate-700' :
+                    'from-amber-400 to-orange-500'
+                }`} />
+
+                <div className="px-5 pb-5 -mt-10">
+                    <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <img
+                                src={getImageUrl(user.photo)}
+                                alt={user.name}
+                                className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-lg bg-white"
+                                onError={(event) => { event.currentTarget.src = '/default-avatar.png'; }}
+                            />
+                            <div className="pt-1 min-w-0 flex-1">
+                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-orange-500">Worker</p>
+                                <h3 className="text-lg font-black text-gray-900 leading-tight break-words whitespace-normal">{user.name}</h3>
+                                <p className="text-sm text-gray-500 mt-1">{city}</p>
+                            </div>
+                        </div>
+                        <span className={`shrink-0 px-3 py-1 rounded-full border text-[11px] font-black uppercase tracking-[0.18em] ${chipTone[user.verificationStatus] || chipTone.pending}`}>
+                            {user.verificationStatus}
+                        </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <InfoPill label="Mobile" value={user.mobile || 'N/A'} />
+                        <InfoPill label="Karigar ID" value={user.karigarId || 'N/A'} mono />
+                        <InfoPill label="Points" value={user.points || 0} />
+                        <InfoPill label="Experience" value={`${user.experience || 0} yrs`} />
+                    </div>
+
+                    {user.role === 'worker' && user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
+                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            Locked by {user.reviewLock.lockedBy.name || 'Admin'}
+                        </div>
+                    )}
+
+                    <div className="mt-4 grid grid-cols-1 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => onViewDetails(user)}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-sm font-bold text-white hover:shadow-md transition-shadow"
+                        >
+                            <Eye size={16} /> View Details
+                        </button>
+
+                        {user.role === 'worker' && user.verificationStatus === 'pending' && (
+                            !lockOwnerId ? (
+                                <button
+                                    type="button"
+                                    onClick={() => onClaimWorker(user._id)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100 transition-colors"
+                                >
+                                    <ShieldCheck size={16} /> Claim Review
+                                </button>
+                            ) : claimedByMe ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onVerifyOpen(user)}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 transition-colors"
+                                    >
+                                        <Check size={16} /> Approve
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const reason = window.prompt('Enter rejection reason:') || '';
+                                            onStatusUpdate(user._id, 'rejected', 0, reason);
+                                        }}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-500 transition-colors"
+                                    >
+                                        <X size={16} /> Reject
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-sm font-bold text-slate-600">
+                                    Under Review
+                                </div>
+                            )
+                        )}
+
+                        {user.role === 'worker' && user.verificationStatus === 'approved' && (
+                            <button
+                                type="button"
+                                onClick={() => onStatusUpdate(user._id, 'blocked')}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+                            >
+                                <ShieldX size={16} /> Block Account
+                            </button>
+                        )}
+
+                        {user.role === 'worker' && user.verificationStatus === 'blocked' && (
+                            <button
+                                type="button"
+                                onClick={() => onStatusUpdate(user._id, 'unblocked')}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                                <ShieldCheck size={16} /> Unblock Account
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={() => onDelete(user._id, user.name, user.role)}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
+                        >
+                            <Trash2 size={16} /> Delete
+                        </button>
+                    </div>
+                </div>
+            </motion.div>
+        );
+    };
+
+    return (
+        <div className="bg-white rounded-3xl border border-orange-100 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-orange-100 bg-gradient-to-r from-orange-50 via-white to-white space-y-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-500">Workers</p>
+                        <h3 className="text-2xl font-black text-gray-900">Worker Review Board</h3>
+                        <p className="text-sm text-gray-500">Switch between worker statuses. Search only matches the active tab by name or mobile.</p>
+                    </div>
+                    <div className="flex items-center gap-2 w-full lg:w-auto">
+                        <button
+                            type="button"
+                            onClick={onRefresh}
+                            className="inline-flex items-center justify-center rounded-2xl border border-orange-200 bg-white p-3 text-orange-600 hover:bg-orange-50 hover:border-orange-300 transition-colors"
+                            title="Refresh Pending Review"
+                        >
+                            <RefreshCw size={16} />
+                        </button>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 lg:flex-none">
+                            {tabs.map((tab) => {
+                                const Icon = tab.icon;
+                                const active = currentTab === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => onTabChange(tab.key)}
+                                        className={`rounded-2xl border px-4 py-3 text-left transition-all ${active ? `bg-gradient-to-r ${tabTone[tab.tone]} text-white border-transparent shadow-lg shadow-orange-100` : 'bg-white border-gray-200 text-gray-700 hover:border-orange-200 hover:bg-orange-50'}`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <Icon size={16} />
+                                            <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
+                                                {tab.count}
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-sm font-bold">{tab.label}</p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+                    <select
+                        value={cityValue}
+                        onChange={(event) => onCityChange(event.target.value)}
+                        className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 lg:min-w-[220px]"
+                    >
+                        <option value="all">All Cities</option>
+                        {cityOptions.map((city) => (
+                            <option key={city} value={city.toLowerCase()}>{city}</option>
+                        ))}
+                    </select>
+                    <div className="relative flex-1">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="text"
+                            value={searchValue}
+                            onChange={(event) => onSearchChange(event.target.value)}
+                            placeholder={`Search ${currentTab} workers by name or mobile`}
+                            className="w-full rounded-2xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50"
+                        />
+                    </div>
+                    {searchValue && (
+                        <button
+                            type="button"
+                            onClick={() => onSearchChange('')}
+                            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
+                        >
+                            Clear Search
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="p-6">
+                {rows.length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {rows.map((worker) => renderCard(worker))}
+                    </div>
+                ) : (
+                    <div className="rounded-3xl border border-dashed border-orange-200 bg-orange-50/50 p-10 text-center text-gray-500">
+                        <p className="text-lg font-bold text-gray-700">No {currentTab} workers found.</p>
+                        <p className="mt-2 text-sm">Try a different search term or switch tabs.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
-
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Mobile User Card
+// Mobile User Card Component
 // ─────────────────────────────────────────────────────────────────────────────
 const MobileUserCard = ({ user, currentAdminId, onViewDetails, onVerifyOpen, onClaimWorker, onStatusUpdate, onDelete }) => {
     const renderStatusBadge = (status) => {
         const colors = {
-            pending:  'bg-yellow-100 text-yellow-800 border-yellow-200',
+            pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
             approved: 'bg-green-100 text-green-800 border-green-200',
             rejected: 'bg-red-100 text-red-800 border-red-200',
-            blocked:  'bg-gray-200 text-gray-800 border-gray-300',
+            blocked: 'bg-gray-200 text-gray-800 border-gray-300',
         };
         return <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${colors[status]}`}>{status}</span>;
     };
@@ -492,19 +800,19 @@ const MobileUserCard = ({ user, currentAdminId, onViewDetails, onVerifyOpen, onC
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main Dashboard
+// Main AdminDashboard Component
 // ─────────────────────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
     const location = useLocation();
     const navState = location.state || {};
 
-    const [workers,        setWorkers]        = useState([]);
-    const [clients,        setClients]        = useState([]);
-    const [loading,        setLoading]        = useState(true);
-    const [selectedUser,   setSelectedUser]   = useState(null);
-    const [userToVerify,   setUserToVerify]   = useState(null);
-    const [activeFilter,   setActiveFilter]   = useState(navState.activeFilter || 'pending');
-    const [searchTerm,     setSearchTerm]     = useState('');
+    const [workers, setWorkers] = useState([]);
+    const [clients, setClients] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [userToVerify, setUserToVerify] = useState(null);
+    const [activeFilter, setActiveFilter] = useState(navState.activeFilter || 'pending');
+    const [searchTerm, setSearchTerm] = useState('');
     const [workerReviewTab, setWorkerReviewTab] = useState(
         ['pending', 'approved', 'rejected', 'blocked'].includes(navState.activeFilter) ? navState.activeFilter : 'pending'
     );
@@ -520,11 +828,11 @@ const AdminDashboard = () => {
         rejected: 'all',
         blocked: 'all',
     });
-    const [sortConfig,     setSortConfig]     = useState({ key: null, direction: 'asc' });
-    const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
-    const [isLoggedIn,     setIsLoggedIn]     = useState(true);
-    const [currentSection, setCurrentSection] = useState(navState.currentSection || 'dashboard'); // 'dashboard', 'fraud', 'complaints', 'worker-complaints', 'community', 'shops', 'users', 'marketplace', 'leaderboard'
-    const [viewMode, setViewMode] = useState(navState.viewMode || 'stats'); // 'stats' or 'records'
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isLoggedIn, setIsLoggedIn] = useState(true);
+    const [currentSection, setCurrentSection] = useState(navState.currentSection || 'dashboard');
+    const [viewMode, setViewMode] = useState(navState.viewMode || 'stats');
     const [directHirePayments, setDirectHirePayments] = useState([]);
     const [directHireLoading, setDirectHireLoading] = useState(false);
     const [directHireTab, setDirectHireTab] = useState('pending');
@@ -535,16 +843,24 @@ const AdminDashboard = () => {
     const [directHireSkillOptions, setDirectHireSkillOptions] = useState([]);
     const [directHireSummary, setDirectHireSummary] = useState({ totalPaidAmount: 0, count: 0 });
     const [directHireActionLoading, setDirectHireActionLoading] = useState({});
+    const [chatbotPendingRequestCount, setChatbotPendingRequestCount] = useState(0);
     const [dashboardStats, setDashboardStats] = useState({
         ivrStats: {},
         shops: 0,
         couponsGenerated: 0,
-        topSkills: []
+        topSkills: [],
+        workerStatusBreakdown: {},
+        jobStatusBreakdown: {},
+        weeklyIVRTrend: [],
+        dailyWorkerRegistrations: [],
+        topCitiesByWorkers: [],
+        topCitiesByCompletedJobs: [],
+        monthlyJobTrend: [],
+        topEarningSkills: [],
+        trendMetrics: {},
     });
 
     const navigate = useNavigate();
-    // const baseURL  = 'http://localhost:5000/';
-    // const baseURL = 'http://Y192.168.0.103:5000/';
     const baseURL = `${window.location.protocol}//${window.location.hostname}:5000/`;
 
     const currentAdminId = useMemo(() => {
@@ -556,6 +872,7 @@ const AdminDashboard = () => {
         }
     }, []);
 
+    // Prevent back button after logout
     useEffect(() => {
         if (isLoggedIn) {
             const handleBack = (e) => { e.preventDefault(); window.history.forward(); };
@@ -565,14 +882,15 @@ const AdminDashboard = () => {
         }
     }, [isLoggedIn]);
 
+    // Fetch data
     const fetchData = async (silent = false) => {
         if (!silent) setLoading(true);
         try {
             const [workersRes, clientsRes] = await Promise.all([api.getAllWorkers(), api.getAllClients()]);
             setWorkers(workersRes.data);
             setClients(clientsRes.data);
-        } catch {
-            // silently fail when silent mode enabled
+        } catch (error) {
+            console.error('Error fetching data:', error);
         } finally {
             if (!silent) setLoading(false);
         }
@@ -608,9 +926,26 @@ const AdminDashboard = () => {
         }
     };
 
-    useEffect(() => { 
+    const fetchChatbotPendingCount = async () => {
+        try {
+            const response = await api.getAdminChatbotSupportRequests({ status: 'pending' });
+            const pendingRequests = Array.isArray(response?.data?.requests) ? response.data.requests.length : 0;
+            setChatbotPendingRequestCount(pendingRequests);
+        } catch (err) {
+            console.error('Error fetching chatbot pending count:', err);
+            setChatbotPendingRequestCount(0);
+        }
+    };
+
+    useEffect(() => {
         fetchData();
         fetchDashboardStats();
+        fetchChatbotPendingCount();
+    }, []);
+
+    useEffect(() => {
+        const intervalId = setInterval(fetchChatbotPendingCount, 15000);
+        return () => clearInterval(intervalId);
     }, []);
 
     useEffect(() => {
@@ -618,53 +953,6 @@ const AdminDashboard = () => {
             fetchDirectHirePayments();
         }
     }, [currentSection, directHireTab, directHireCityFilter, directHireSkillFilter, directHireSearch]);
-
-    const formatMoney = (amount) => `₹${Number(amount || 0).toLocaleString('en-IN')}`;
-
-    const formatJobDateTime = (job) => {
-        const sourceDate = job?.directHire?.expectedStartAt || job?.scheduledDate;
-        if (!sourceDate) return 'Not scheduled';
-        const date = new Date(sourceDate);
-        const dateText = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-        const timeText = job?.scheduledTime || date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-        return `${dateText} • ${timeText}`;
-    };
-
-    const handleWarnClient = async (jobId) => {
-        try {
-            setDirectHireActionLoading((prev) => ({ ...prev, [`warn-${jobId}`]: true }));
-            await api.adminWarnDirectHireClient(jobId);
-            await fetchDirectHirePayments();
-        } catch (err) {
-            console.error('Warning failed:', err);
-        } finally {
-            setDirectHireActionLoading((prev) => ({ ...prev, [`warn-${jobId}`]: false }));
-        }
-    };
-
-    const handleBlockClient = async (jobId) => {
-        try {
-            setDirectHireActionLoading((prev) => ({ ...prev, [`block-${jobId}`]: true }));
-            await api.adminBlockDirectHireClient(jobId);
-            await fetchDirectHirePayments();
-        } catch (err) {
-            console.error('Block failed:', err);
-        } finally {
-            setDirectHireActionLoading((prev) => ({ ...prev, [`block-${jobId}`]: false }));
-        }
-    };
-
-    const handleUnblockClient = async (jobId) => {
-        try {
-            setDirectHireActionLoading((prev) => ({ ...prev, [`unblock-${jobId}`]: true }));
-            await api.adminUnblockDirectHireClient(jobId);
-            await fetchDirectHirePayments();
-        } catch (err) {
-            console.error('Unblock failed:', err);
-        } finally {
-            setDirectHireActionLoading((prev) => ({ ...prev, [`unblock-${jobId}`]: false }));
-        }
-    };
 
     useEffect(() => {
         if (navState.activeFilter) setActiveFilter(navState.activeFilter);
@@ -679,11 +967,12 @@ const AdminDashboard = () => {
     }, [navState.activeFilter]);
 
     useEffect(() => {
-        if (activeFilter === 'pending') {
-            setWorkerReviewTab('pending');
+        if (['pending', 'approved', 'rejected', 'blocked'].includes(activeFilter)) {
+            setWorkerReviewTab(activeFilter);
         }
     }, [activeFilter]);
 
+    // Auto-refresh pending section every 15 seconds
     useEffect(() => {
         if (activeFilter !== 'pending') return;
         const intervalId = setInterval(() => fetchData(true), 15000);
@@ -700,10 +989,10 @@ const AdminDashboard = () => {
 
     const stats = useMemo(() => ({
         totalWorkers: workers.length,
-        pending:      workers.filter(w => w.verificationStatus === 'pending').length,
-        approved:     workers.filter(w => w.verificationStatus === 'approved').length,
-        rejected:     workers.filter(w => w.verificationStatus === 'rejected').length,
-        blocked:      workers.filter(w => w.verificationStatus === 'blocked').length,
+        pending: workers.filter(w => w.verificationStatus === 'pending').length,
+        approved: workers.filter(w => w.verificationStatus === 'approved').length,
+        rejected: workers.filter(w => w.verificationStatus === 'rejected').length,
+        blocked: workers.filter(w => w.verificationStatus === 'blocked').length,
         totalClients: clients.length,
     }), [workers, clients]);
 
@@ -719,8 +1008,8 @@ const AdminDashboard = () => {
         if (sortConfig.key) {
             data.sort((a, b) => {
                 const av = a[sortConfig.key], bv = b[sortConfig.key];
-                if (av < bv) return sortConfig.direction === 'asc' ? -1 :  1;
-                if (av > bv) return sortConfig.direction === 'asc' ?  1 : -1;
+                if (av < bv) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (av > bv) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
@@ -734,7 +1023,6 @@ const AdminDashboard = () => {
                 .map((worker) => String(worker?.address?.city || worker?.city || '').trim())
                 .filter(Boolean)
         )).sort((a, b) => a.localeCompare(b));
-
         return cities;
     }, [workers, workerReviewTab]);
 
@@ -777,8 +1065,9 @@ const AdminDashboard = () => {
             await api.updateWorkerStatus({ workerId, status, points: Number(points), rejectionReason: feedback });
             setUserToVerify(null);
             fetchData(true);
-        } catch {
-            // silently handle errors
+            toast.success(`Worker ${status} successfully`);
+        } catch (error) {
+            toast.error('Failed to update worker status');
         }
     };
 
@@ -786,333 +1075,101 @@ const AdminDashboard = () => {
         try {
             await api.claimWorkerForReview(workerId);
             fetchData(true);
-        } catch {
-            // silently handle errors
+            toast.success('Worker claimed for review');
+        } catch (error) {
+            toast.error('Failed to claim worker');
         }
     };
 
     const handleDelete = async (userId, name, role) => {
-        if (!window.confirm(`Delete ${role}: ${name}?`)) return;
+        if (!window.confirm(`Delete ${role}: ${name}? This action cannot be undone.`)) return;
         try {
             await api.deleteUser(userId);
             fetchData();
-        } catch {
-            // silently handle errors
+            toast.success(`${role} deleted successfully`);
+        } catch (error) {
+            toast.error('Failed to delete user');
+        }
+    };
+
+    const handleWarnClient = async (jobId) => {
+        try {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`warn-${jobId}`]: true }));
+            await api.adminWarnDirectHireClient(jobId);
+            await fetchDirectHirePayments();
+            toast.success('Warning SMS sent to client');
+        } catch (err) {
+            toast.error('Failed to send warning');
+        } finally {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`warn-${jobId}`]: false }));
+        }
+    };
+
+    const handleBlockClient = async (jobId) => {
+        try {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`block-${jobId}`]: true }));
+            await api.adminBlockDirectHireClient(jobId);
+            await fetchDirectHirePayments();
+            toast.success('Client services blocked');
+        } catch (err) {
+            toast.error('Failed to block client');
+        } finally {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`block-${jobId}`]: false }));
+        }
+    };
+
+    const handleUnblockClient = async (jobId) => {
+        try {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`unblock-${jobId}`]: true }));
+            await api.adminUnblockDirectHireClient(jobId);
+            await fetchDirectHirePayments();
+            toast.success('Client services unblocked');
+        } catch (err) {
+            toast.error('Failed to unblock client');
+        } finally {
+            setDirectHireActionLoading((prev) => ({ ...prev, [`unblock-${jobId}`]: false }));
         }
     };
 
     const exportApprovedWorkers = (format) => {
         const approved = workers.filter(w => w.verificationStatus === 'approved');
-        if (!approved.length) { return; }
+        if (!approved.length) {
+            toast.error('No approved workers to export');
+            return;
+        }
         if (format === 'excel') {
             const rows = approved.map(w => ({
-                'Karigar ID': w.karigarId, Name: w.name, Mobile: w.mobile,
-                Score: w.points || 0, Experience: w.experience, City: w.city,
+                'Karigar ID': w.karigarId, 'Name': w.name, 'Mobile': w.mobile,
+                'Score': w.points || 0, 'Experience': w.experience, 'City': w.city,
             }));
             const ws = XLSX.utils.json_to_sheet(rows);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Approved');
-            XLSX.writeFile(wb, 'workers.xlsx');
+            XLSX.utils.book_append_sheet(wb, ws, 'Approved Workers');
+            XLSX.writeFile(wb, `approved_workers_${new Date().toISOString().split('T')[0]}.xlsx`);
+            toast.success('Export successful');
         } else if (format === 'pdf') {
             const doc = new jsPDF();
             doc.text('Approved Workers', 14, 22);
             doc.autoTable({
                 startY: 30,
-                head:   [['ID', 'Name', 'Mobile', 'Score', 'City']],
-                body:   approved.map(w => [w.karigarId, w.name, w.mobile, w.points || 0, w.city]),
+                head: [['ID', 'Name', 'Mobile', 'Score', 'City']],
+                body: approved.map(w => [w.karigarId, w.name, w.mobile, w.points || 0, w.city]),
             });
-            doc.save('workers.pdf');
+            doc.save(`approved_workers_${new Date().toISOString().split('T')[0]}.pdf`);
+            toast.success('Export successful');
         }
     };
 
-    const renderStatusBadge = (status) => {
-        const colors = {
-            pending:  'bg-yellow-100 text-yellow-800 border-yellow-200',
-            approved: 'bg-green-100 text-green-800 border-green-200',
-            rejected: 'bg-red-100 text-red-800 border-red-200',
-            blocked:  'bg-gray-200 text-gray-800 border-gray-300',
-        };
-        return <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${colors[status]}`}>{status}</span>;
+    const formatMoney = (amount) => `₹${Number(amount || 0).toLocaleString('en-IN')}`;
+
+    const formatJobDateTime = (job) => {
+        const sourceDate = job?.directHire?.expectedStartAt || job?.scheduledDate;
+        if (!sourceDate) return 'Not scheduled';
+        const date = new Date(sourceDate);
+        const dateText = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        const timeText = job?.scheduledTime || date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        return `${dateText} • ${timeText}`;
     };
-
-    const StatCard = ({ title, value, icon: Icon, color, gradient }) => {
-        if (!Icon) return null;  // Ensure Icon is used
-        return (
-            <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${color} relative overflow-hidden group hover:shadow-md transition-shadow`}>
-                <div className={`absolute top-0 right-0 w-16 h-16 opacity-10 ${gradient} rounded-full -m-4 group-hover:scale-110 transition-transform`}></div>
-                <div className="relative z-10">
-                    <p className="text-xs font-medium text-gray-500 mb-1">{title}</p>
-                    <p className="text-xl lg:text-3xl font-bold text-gray-900">{value}</p>
-                </div>
-                <div className={`absolute bottom-4 right-4 p-2 rounded-lg ${gradient} text-white`}><Icon size={18} /></div>
-            </div>
-        );
-    };
-
-    const WorkerReviewBoard = ({
-        currentTab,
-        onTabChange,
-        searchValue,
-        onSearchChange,
-        cityValue,
-        onCityChange,
-        cityOptions,
-        rows,
-        stats,
-        onRefresh,
-        currentAdminId,
-        onViewDetails,
-        onClaimWorker,
-        onStatusUpdate,
-        onDelete,
-        onVerifyOpen,
-    }) => {
-        const tabs = [
-            { key: 'pending', label: 'Pending', count: stats.pending, icon: Clock, tone: 'amber' },
-            { key: 'approved', label: 'Approved', count: stats.approved, icon: UserCheck, tone: 'green' },
-            { key: 'rejected', label: 'Rejected', count: stats.rejected, icon: UserX, tone: 'red' },
-            { key: 'blocked', label: 'Blocked', count: stats.blocked, icon: ShieldX, tone: 'slate' },
-        ];
-
-        const tabTone = {
-            amber: 'from-amber-400 to-orange-500',
-            green: 'from-emerald-500 to-green-600',
-            red: 'from-rose-500 to-red-600',
-            slate: 'from-slate-600 to-slate-700',
-        };
-
-        const chipTone = {
-            pending: 'bg-amber-100 text-amber-800 border-amber-200',
-            approved: 'bg-green-100 text-green-800 border-green-200',
-            rejected: 'bg-red-100 text-red-800 border-red-200',
-            blocked: 'bg-slate-100 text-slate-800 border-slate-200',
-        };
-
-        const renderCard = (user) => {
-            const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
-            const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
-            const claimedByOther = lockOwnerId && !claimedByMe;
-            const city = user?.address?.city || user?.city || 'N/A';
-
-            return (
-                <div key={user._id} className="group rounded-3xl border border-orange-100 bg-white shadow-sm overflow-hidden hover:shadow-xl transition-all duration-300">
-                    <div className={`h-20 bg-gradient-to-r ${
-                        user.verificationStatus === 'approved' ? 'from-emerald-400 to-green-500' :
-                        user.verificationStatus === 'rejected' ? 'from-rose-400 to-red-500' :
-                        user.verificationStatus === 'blocked' ? 'from-slate-500 to-slate-700' :
-                        'from-amber-400 to-orange-500'
-                    }`} />
-
-                    <div className="px-5 pb-5 -mt-10">
-                        <div className="flex items-start gap-3">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                                <img
-                                    src={getImageUrl(user.photo)}
-                                    alt={user.name}
-                                    className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-lg bg-white"
-                                    onError={(event) => { event.currentTarget.src = '/default-avatar.png'; }}
-                                />
-                                <div className="pt-1 min-w-0 flex-1">
-                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-orange-500">Worker</p>
-                                    <h3 className="text-lg font-black text-gray-900 leading-tight break-words whitespace-normal">{user.name}</h3>
-                                    <p className="text-sm text-gray-500 mt-1">{city}</p>
-                                </div>
-                            </div>
-                            <span className={`shrink-0 px-3 py-1 rounded-full border text-[11px] font-black uppercase tracking-[0.18em] ${chipTone[user.verificationStatus] || chipTone.pending}`}>
-                                {user.verificationStatus}
-                            </span>
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                            <InfoPill label="Mobile" value={user.mobile || 'N/A'} />
-                            <InfoPill label="Karigar ID" value={user.karigarId || 'N/A'} mono />
-                            <InfoPill label="Points" value={user.points || 0} />
-                            <InfoPill label="Experience" value={`${user.experience || 0} yrs`} />
-                        </div>
-
-                        {user.role === 'worker' && user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
-                            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                Locked by {user.reviewLock.lockedBy.name || 'Admin'}
-                            </div>
-                        )}
-
-                        <div className="mt-4 grid grid-cols-1 gap-2">
-                            <button
-                                type="button"
-                                onClick={() => onViewDetails(user)}
-                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-sm font-bold text-white hover:shadow-md transition-shadow"
-                            >
-                                <Eye size={16} /> View Details
-                            </button>
-
-                            {user.role === 'worker' && user.verificationStatus === 'pending' && (
-                                !lockOwnerId ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => onClaimWorker(user._id)}
-                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100 transition-colors"
-                                    >
-                                        <ShieldCheck size={16} /> Claim Review
-                                    </button>
-                                ) : claimedByMe ? (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => onVerifyOpen(user)}
-                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 transition-colors"
-                                        >
-                                            <Check size={16} /> Approve
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const reason = window.prompt('Enter rejection reason:') || '';
-                                                onStatusUpdate(user._id, 'rejected', 0, reason);
-                                            }}
-                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-500 transition-colors"
-                                        >
-                                            <X size={16} /> Reject
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-sm font-bold text-slate-600">
-                                        Under Review
-                                    </div>
-                                )
-                            )}
-
-                            {user.role === 'worker' && user.verificationStatus === 'approved' && (
-                                <button
-                                    type="button"
-                                    onClick={() => onStatusUpdate(user._id, 'blocked')}
-                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 transition-colors"
-                                >
-                                    <ShieldX size={16} /> Block Account
-                                </button>
-                            )}
-
-                            {user.role === 'worker' && user.verificationStatus === 'blocked' && (
-                                <button
-                                    type="button"
-                                    onClick={() => onStatusUpdate(user._id, 'unblocked')}
-                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
-                                >
-                                    <ShieldCheck size={16} /> Unblock Account
-                                </button>
-                            )}
-
-                            <button
-                                type="button"
-                                onClick={() => onDelete(user._id, user.name, user.role)}
-                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
-                            >
-                                <Trash2 size={16} /> Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        return (
-            <div className="bg-white rounded-3xl border border-orange-100 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-orange-100 bg-gradient-to-r from-orange-50 via-white to-white space-y-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-500">Workers</p>
-                            <h3 className="text-2xl font-black text-gray-900">Pending Review Board</h3>
-                            <p className="text-sm text-gray-500">Switch between worker statuses. Search only matches the active tab by name or mobile.</p>
-                        </div>
-                        <div className="flex items-center gap-2 w-full lg:w-auto">
-                            <button
-                                type="button"
-                                onClick={onRefresh}
-                                className="inline-flex items-center justify-center rounded-2xl border border-orange-200 bg-white p-3 text-orange-600 hover:bg-orange-50 hover:border-orange-300 transition-colors"
-                                title="Refresh Pending Review"
-                                aria-label="Refresh Pending Review"
-                            >
-                                <RefreshCw size={16} />
-                            </button>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 lg:flex-none">
-                            {tabs.map((tab) => {
-                                const Icon = tab.icon;
-                                const active = currentTab === tab.key;
-                                return (
-                                    <button
-                                        key={tab.key}
-                                        type="button"
-                                        onClick={() => onTabChange(tab.key)}
-                                        className={`rounded-2xl border px-4 py-3 text-left transition-all ${active ? `bg-gradient-to-r ${tabTone[tab.tone]} text-white border-transparent shadow-lg shadow-orange-100` : 'bg-white border-gray-200 text-gray-700 hover:border-orange-200 hover:bg-orange-50'}`}
-                                    >
-                                        <div className="flex items-center justify-between gap-2">
-                                            <Icon size={16} />
-                                            <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-600'}`}>
-                                                {tab.count}
-                                            </span>
-                                        </div>
-                                        <p className="mt-2 text-sm font-bold">{tab.label}</p>
-                                    </button>
-                                );
-                            })}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
-                        <select
-                            value={cityValue}
-                            onChange={(event) => onCityChange(event.target.value)}
-                            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 lg:min-w-[220px]"
-                        >
-                            <option value="all">All Cities</option>
-                            {cityOptions.map((city) => (
-                                <option key={city} value={city.toLowerCase()}>{city}</option>
-                            ))}
-                        </select>
-                        <div className="relative flex-1">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                value={searchValue}
-                                onChange={(event) => onSearchChange(event.target.value)}
-                                placeholder={`Search ${currentTab} workers by name or mobile`}
-                                className="w-full rounded-2xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50"
-                            />
-                        </div>
-                        {searchValue && (
-                            <button
-                                type="button"
-                                onClick={() => onSearchChange('')}
-                                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
-                            >
-                                Clear Search
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="p-6">
-                    {rows.length ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {rows.map((worker) => renderCard(worker))}
-                        </div>
-                    ) : (
-                        <div className="rounded-3xl border border-dashed border-orange-200 bg-orange-50/50 p-10 text-center text-gray-500">
-                            <p className="text-lg font-bold text-gray-700">No {currentTab} workers found.</p>
-                            <p className="mt-2 text-sm">Try a different search term or switch tabs.</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
-    const InfoPill = ({ label, value, mono = false }) => (
-        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-500">{label}</p>
-            <p className={`mt-1 text-sm font-bold text-gray-900 ${mono ? 'font-mono' : ''}`}>{value}</p>
-        </div>
-    );
 
     const SortHeader = ({ label, sortKey }) => (
         <button onClick={() => handleSort(sortKey)} className="flex items-center font-semibold text-gray-700 hover:text-orange-700 text-sm">
@@ -1124,15 +1181,22 @@ const AdminDashboard = () => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white">
             {/* Modals */}
-            <VerificationModal worker={userToVerify} onClose={() => setUserToVerify(null)} onConfirm={handleStatusUpdate} />
-            <UserDetailsModal user={selectedUser} onClose={() => setSelectedUser(null)} baseURL={baseURL} />
+            <AnimatePresence>
+                {userToVerify && (
+                    <VerificationModal worker={userToVerify} onClose={() => setUserToVerify(null)} onConfirm={handleStatusUpdate} />
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
+                {selectedUser && (
+                    <UserDetailsModal user={selectedUser} onClose={() => setSelectedUser(null)} baseURL={baseURL} />
+                )}
+            </AnimatePresence>
 
             {/* Header */}
             <Header />
 
             {/* Body: sidebar + main */}
             <div className="flex">
-                {/* ── Sidebar (desktop sticky / mobile drawer + bottom nav) ── */}
                 <AdminSidebar
                     isOpen={isSidebarOpen}
                     onClose={() => setIsSidebarOpen(false)}
@@ -1142,21 +1206,26 @@ const AdminDashboard = () => {
                     onSectionChange={setCurrentSection}
                     stats={stats}
                     dashboardStats={dashboardStats}
+                    chatbotSupportCount={chatbotPendingRequestCount}
                     onViewModeChange={setViewMode}
                 />
 
-                {/* ── Main content ── */}
-                {/* pb-20 on mobile to clear the bottom nav bar */}
-                <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0 overflow-auto">
-                    {currentSection === 'dashboard' && viewMode === 'stats' && (
-                        <>
-                            {/* Dashboard Section - Stats Only */}
-                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8">
-                                <div>
-                                    <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">📊 Dashboard</h1>
-                                    <p className="text-gray-500 text-sm">Overview of platform metrics and statistics</p>
-                                </div>
+                <main className="flex-1 min-h-screen">
+                    <div className="p-6 lg:p-8">
+                        {currentSection === 'dashboard' && viewMode === 'stats' && (
+                            <>
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                            <div>
+                                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">📊 Dashboard</h1>
+                                <p className="text-gray-500 text-sm">Overview of platform metrics and statistics</p>
                             </div>
+                            <button
+                                onClick={() => fetchData()}
+                                className="mt-2 lg:mt-0 inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-all"
+                            >
+                                <RefreshCw size={16} /> Refresh Data
+                            </button>
+                        </div>
 
                             {/* IVR & Call Center Metrics */}
                             <div className="mb-8">
@@ -1210,10 +1279,106 @@ const AdminDashboard = () => {
                                             <div key={idx} className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-xl shadow-sm border border-orange-100 hover:shadow-md transition-shadow">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <Wrench size={20} className="text-orange-500" />
-                                                    <span className="bg-orange-200 text-orange-800 text-xs font-bold px-2 py-1 rounded-full">{skill.count}</span>
+                                                                                                     <span className="bg-orange-200 text-orange-800 text-xs font-bold px-2 py-1 rounded-full">{skill.count}</span>
                                                 </div>
                                                 <p className="font-semibold text-gray-800 text-sm capitalize">{skill.skill}</p>
                                                 <p className="text-xs text-gray-500 mt-1">jobs posted</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Job Growth Signals */}
+                            <div className="mb-8">
+                                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <TrendingUp size={20} className="text-emerald-500" />
+                                    Job Growth Signals
+                                </h2>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <StatCard title="Posted This Month" value={dashboardStats.trendMetrics?.postedThisMonth || 0} icon={Briefcase} color="border-blue-500" gradient="bg-blue-500" />
+                                    <StatCard title="Completed This Month" value={dashboardStats.trendMetrics?.completedThisMonth || 0} icon={CheckCircle} color="border-emerald-500" gradient="bg-emerald-500" />
+                                    <StatCard title="Completion Rate" value={`${dashboardStats.trendMetrics?.completionRate || 0}%`} icon={Sparkles} color="border-purple-500" gradient="bg-purple-500" />
+                                </div>
+                            </div>
+
+                            {/* Monthly Posted vs Completed Jobs */}
+                            {dashboardStats.monthlyJobTrend && dashboardStats.monthlyJobTrend.length > 0 && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <Calendar size={20} className="text-indigo-500" />
+                                        Monthly Posted vs Completed Jobs
+                                    </h2>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border">
+                                        <ResponsiveContainer width="100%" height={320}>
+                                            <LineChart data={dashboardStats.monthlyJobTrend}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="label" />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Legend />
+                                                <Line type="monotone" dataKey="posted" stroke="#f97316" strokeWidth={3} dot={{ r: 4 }} name="Posted" />
+                                                <Line type="monotone" dataKey="completed" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} name="Completed" />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Top Cities */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                                <div className="bg-white rounded-xl shadow-sm border p-5">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <MapPinIcon size={18} className="text-orange-500" />
+                                        Top Cities by Workers
+                                    </h2>
+                                    <div className="space-y-3">
+                                        {(dashboardStats.topCitiesByWorkers || []).map((item, index) => (
+                                            <div key={item.city || index} className="flex items-center justify-between rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+                                                <div>
+                                                    <p className="font-semibold text-gray-800">{item.city}</p>
+                                                    <p className="text-xs text-gray-500">Active workers</p>
+                                                </div>
+                                                <span className="text-lg font-black text-orange-600">{item.count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-xl shadow-sm border p-5">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <CheckCircle size={18} className="text-emerald-500" />
+                                        Top Cities by Completed Jobs
+                                    </h2>
+                                    <div className="space-y-3">
+                                        {(dashboardStats.topCitiesByCompletedJobs || []).map((item, index) => (
+                                            <div key={item.city || index} className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                                                <div>
+                                                    <p className="font-semibold text-gray-800">{item.city}</p>
+                                                    <p className="text-xs text-gray-500">Completed jobs</p>
+                                                </div>
+                                                <span className="text-lg font-black text-emerald-600">{item.count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Top Earning Skills */}
+                            {dashboardStats.topEarningSkills && dashboardStats.topEarningSkills.length > 0 && (
+                                <div className="mb-8">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                        <DollarSign size={20} className="text-emerald-600" />
+                                        Top Earning Skills
+                                    </h2>
+                                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                                        {dashboardStats.topEarningSkills.map((skill, idx) => (
+                                            <div key={idx} className="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-xl shadow-sm border border-emerald-100 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <AwardIcon size={18} className="text-emerald-600" />
+                                                    <span className="bg-emerald-200 text-emerald-800 text-xs font-bold px-2 py-1 rounded-full">{skill.jobs} jobs</span>
+                                                </div>
+                                                <p className="font-semibold text-gray-800 text-sm capitalize">{skill.skill}</p>
+                                                <p className="text-xs text-gray-500 mt-1">{formatMoney(skill.earnings)}</p>
                                             </div>
                                         ))}
                                     </div>
@@ -1248,17 +1413,16 @@ const AdminDashboard = () => {
                                             <PieChart>
                                                 <Pie
                                                     data={[
-                                                        { name: 'Pending', value: dashboardStats.workerStatusBreakdown.pending, fill: '#eab308' },
-                                                        { name: 'Approved', value: dashboardStats.workerStatusBreakdown.approved, fill: '#22c55e' },
-                                                        { name: 'Rejected', value: dashboardStats.workerStatusBreakdown.rejected, fill: '#ef4444' },
-                                                        { name: 'Blocked', value: dashboardStats.workerStatusBreakdown.blocked, fill: '#6b7280' }
+                                                        { name: 'Pending', value: dashboardStats.workerStatusBreakdown.pending || 0, fill: '#eab308' },
+                                                        { name: 'Approved', value: dashboardStats.workerStatusBreakdown.approved || 0, fill: '#22c55e' },
+                                                        { name: 'Rejected', value: dashboardStats.workerStatusBreakdown.rejected || 0, fill: '#ef4444' },
+                                                        { name: 'Blocked', value: dashboardStats.workerStatusBreakdown.blocked || 0, fill: '#6b7280' }
                                                     ]}
                                                     cx="50%"
                                                     cy="50%"
                                                     labelLine={false}
-                                                    label={(entry) => `${entry.name}: ${entry.value}`}
+                                                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                                                     outerRadius={80}
-                                                    fill="#8884d8"
                                                     dataKey="value"
                                                 >
                                                     <Cell fill="#eab308" />
@@ -1267,6 +1431,7 @@ const AdminDashboard = () => {
                                                     <Cell fill="#6b7280" />
                                                 </Pie>
                                                 <Tooltip formatter={(value) => value} />
+                                                <Legend />
                                             </PieChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -1284,10 +1449,10 @@ const AdminDashboard = () => {
                                         <ResponsiveContainer width="100%" height={300}>
                                             <BarChart
                                                 data={[
-                                                    { name: 'Open', count: dashboardStats.jobStatusBreakdown.open },
-                                                    { name: 'Running', count: dashboardStats.jobStatusBreakdown.running },
-                                                    { name: 'Completed', count: dashboardStats.jobStatusBreakdown.completed },
-                                                    { name: 'Cancelled', count: dashboardStats.jobStatusBreakdown.cancelled }
+                                                    { name: 'Open', count: dashboardStats.jobStatusBreakdown.open || 0 },
+                                                    { name: 'Running', count: dashboardStats.jobStatusBreakdown.running || 0 },
+                                                    { name: 'Completed', count: dashboardStats.jobStatusBreakdown.completed || 0 },
+                                                    { name: 'Cancelled', count: dashboardStats.jobStatusBreakdown.cancelled || 0 }
                                                 ]}
                                             >
                                                 <CartesianGrid strokeDasharray="3 3" />
@@ -1372,432 +1537,138 @@ const AdminDashboard = () => {
                         </>
                     )}
 
+                    {/* Dashboard Section - Records View */}
                     {currentSection === 'dashboard' && viewMode === 'records' && (
-                        <>
-                            {/* Table */}
-                            <div className="bg-white rounded-xl shadow-sm border">
-                                <div className="p-6 border-b space-y-4">
-                                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                                        <h3 className="text-lg font-bold capitalize">
-                                            {activeFilter === 'clients' ? `Client Records (${filteredData.length})` : 'Worker Review'}
-                                        </h3>
-                                        {activeFilter === 'approved' && (
-                                            <div className="relative group">
-                                                <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
-                                                    <Download size={14} className="mr-2" /> Export
-                                                </button>
-                                                <div className="absolute right-0 mt-1 w-40 bg-white shadow-xl border rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                                                    <button onClick={() => exportApprovedWorkers('excel')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">Excel Format</button>
-                                                    <button onClick={() => exportApprovedWorkers('pdf')}   className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">PDF Format</button>
-                                                </div>
+                        <div className="bg-white rounded-xl shadow-sm border">
+                            <div className="p-6 border-b space-y-4">
+                                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                                    <h3 className="text-lg font-bold capitalize">
+                                        {activeFilter === 'clients' ? `Client Records (${filteredData.length})` : `Worker Review (${activeFilter})`}
+                                    </h3>
+                                    {activeFilter === 'approved' && (
+                                        <div className="relative group">
+                                            <button className="flex items-center bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                                                <Download size={14} className="mr-2" /> Export
+                                            </button>
+                                            <div className="absolute right-0 mt-1 w-40 bg-white shadow-xl border rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                                <button onClick={() => exportApprovedWorkers('excel')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">Excel Format</button>
+                                                <button onClick={() => exportApprovedWorkers('pdf')} className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50">PDF Format</button>
                                             </div>
-                                        )}
-                                    </div>
-
-                                    {activeFilter === 'clients' && (
-                                        <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
-                                            <div className="relative flex-1">
-                                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search by name, mobile, or email..."
-                                                    value={searchTerm}
-                                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none text-sm transition-all"
-                                                />
-                                            </div>
-                                            {searchTerm && (
-                                                <button
-                                                    onClick={() => setSearchTerm('')}
-                                                    className="px-3 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors"
-                                                >
-                                                    Clear Search
-                                                </button>
-                                            )}
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="p-4">
-                                    {loading ? (
-                                        <div className="text-center py-12">
-                                            <div className="animate-spin h-10 w-10 border-4 border-orange-600 border-t-transparent rounded-full mx-auto"></div>
-                                        </div>
-                                    ) : activeFilter !== 'clients' ? (
-                                        <WorkerReviewBoard
-                                            currentTab={workerReviewTab}
-                                            onTabChange={setWorkerReviewTab}
-                                            searchValue={currentWorkerSearch}
-                                            onSearchChange={setCurrentWorkerSearch}
-                                            cityValue={currentWorkerCity}
-                                            onCityChange={setCurrentWorkerCity}
-                                            cityOptions={workerCityOptions}
-                                            rows={workerReviewRows}
-                                            stats={stats}
-                                            onRefresh={() => fetchData(true)}
-                                            currentAdminId={currentAdminId}
-                                            onViewDetails={setSelectedUser}
-                                            onClaimWorker={handleClaimWorker}
-                                            onStatusUpdate={handleStatusUpdate}
-                                            onDelete={handleDelete}
-                                            onVerifyOpen={setUserToVerify}
-                                        />
-                                    ) : filteredData.length > 0 ? (
-                                            <>
-                                            {/* Card Grid - Show on all devices */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                                                {filteredData.map(user => {
-                                                    const lockOwnerId = user?.reviewLock?.lockedBy?._id || user?.reviewLock?.lockedBy || null;
-                                                    const claimedByMe = lockOwnerId && String(lockOwnerId) === String(currentAdminId);
-                                                    const claimedByOther = lockOwnerId && !claimedByMe;
-
-                                                    return (
-                                                        <div key={user._id} className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
-                                                            {/* Enhanced Header Bar */}
-                                                            <div className="h-16 bg-gradient-to-r from-orange-400 via-orange-300 to-amber-300"></div>
-
-                                                            {/* Avatar */}
-                                                            <div className="-mt-10 flex justify-center">
-                                                                <img
-                                                                    src={getImageUrl(user.photo)}
-                                                                    alt={user.name}
-                                                                    className="w-24 h-24 rounded-full border-4 border-white object-cover object-center shadow-lg"
-                                                                    onError={(e) => { e.target.src = '/default-avatar.png'; }}
-                                                                />
-                                                            </div>
-
-                                                            {/* Card Body - Enhanced */}
-                                                            <div className="p-6 pt-2 space-y-4 relative">
-                                                                {/* Status Badge - Top Right */}
-                                                                {user.role === 'worker' && (
-                                                                    <div className={`absolute top-6 right-6 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md ${
-                                                                        user.verificationStatus === 'approved' ? 'bg-green-500' :
-                                                                        user.verificationStatus === 'pending' ? 'bg-yellow-500' :
-                                                                        user.verificationStatus === 'blocked' ? 'bg-red-500' :
-                                                                        'bg-gray-500'
-                                                                    }`}>
-                                                                        {user.verificationStatus?.charAt(0).toUpperCase() + user.verificationStatus?.slice(1)}
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Name and Role */}
-                                                                <div>
-                                                                    <h3 className="font-bold text-lg text-gray-900 truncate">{user.name}</h3>
-                                                                    <p className="text-sm text-gray-500 capitalize font-medium">{user.role}</p>
-                                                                </div>
-
-                                                                {/* Karigar ID */}
-                                                                {user.karigarId && (
-                                                                    <p className="text-xs text-gray-500 font-mono font-semibold bg-gray-100 p-2.5 rounded-lg border border-gray-300">{user.karigarId}</p>
-                                                                )}
-
-                                                                {/* Contact */}
-                                                                <div className="flex items-center gap-2 text-sm text-gray-700 bg-blue-50 p-3 rounded-lg border border-blue-300">
-                                                                    <Phone size={16} className="text-blue-600 flex-shrink-0" />
-                                                                    <span className="font-mono font-medium">{user.mobile}</span>
-                                                                </div>
-
-                                                                {/* Score / Email */}
-                                                                {user.role === 'worker' ? (
-                                                                    <div className="flex gap-2">
-                                                                        <div className="flex-1 bg-gradient-to-br from-orange-50 to-orange-100 p-3 rounded-lg border border-orange-300 text-center">
-                                                                            <p className="text-xs text-orange-700 font-bold tracking-wider">SCORE</p>
-                                                                            <p className="text-2xl font-black text-orange-700">{user.points || 0}</p>
-                                                                        </div>
-                                                                        <div className="flex-1 bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-lg border border-purple-300 text-center">
-                                                                            <p className="text-xs text-purple-700 font-bold tracking-wider">EXP</p>
-                                                                            <p className="text-2xl font-black text-purple-700">{user.experience}y</p>
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="text-sm text-gray-700 break-all bg-blue-50 p-3 rounded-lg border border-blue-300">
-                                                                        <p className="font-bold text-blue-700 text-xs mb-1 tracking-wider">EMAIL</p>
-                                                                        <p className="font-mono text-xs truncate">{user.email}</p>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Lock Info */}
-                                                                {user.verificationStatus === 'pending' && user?.reviewLock?.lockedBy && (
-                                                                    <div className="text-xs bg-yellow-50 p-3 rounded-lg border border-yellow-300 flex items-center gap-2">
-                                                                        <span className="text-lg">🔒</span>
-                                                                        <span className="font-bold text-yellow-800 truncate">Locked by {user.reviewLock.lockedBy.name || 'Admin'}</span>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Action Buttons - Enhanced */}
-                                                                <div className="space-y-2 pt-2">
-                                                                    {/* View Button */}
-                                                                    <button 
-                                                                        onClick={() => setSelectedUser(user)} 
-                                                                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                    >
-                                                                        <Eye size={16} /> View Details
-                                                                    </button>
-
-                                                                    {/* Worker Specific Actions */}
-                                                                    {user.role === 'worker' && user.verificationStatus === 'pending' && (
-                                                                        (() => {
-                                                                            if (!lockOwnerId) {
-                                                                                return (
-                                                                                    <button 
-                                                                                        onClick={() => handleClaimWorker(user._id)} 
-                                                                                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                                    >
-                                                                                        <ShieldCheck size={16} /> Claim Review
-                                                                                    </button>
-                                                                                );
-                                                                            }
-
-                                                                            if (claimedByMe) {
-                                                                                return (
-                                                                                    <div className="flex gap-2">
-                                                                                        <button 
-                                                                                            onClick={() => setUserToVerify(user)} 
-                                                                                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                                        >
-                                                                                            <Check size={16} /> Approve
-                                                                                        </button>
-                                                                                        <button 
-                                                                                            onClick={() => {
-                                                                                                const reason = window.prompt('Enter rejection reason:') || '';
-                                                                                                handleStatusUpdate(user._id, 'rejected', 0, reason);
-                                                                                            }}
-                                                                                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                                        >
-                                                                                            <X size={16} /> Reject
-                                                                                        </button>
-                                                                                    </div>
-                                                                                );
-                                                                            }
-
-                                                                            if (claimedByOther) {
-                                                                                return (
-                                                                                    <div className="w-full bg-gray-300 text-gray-800 py-2.5 rounded-lg text-sm font-bold text-center">
-                                                                                        🔒 Under Review
-                                                                                    </div>
-                                                                                );
-                                                                            }
-
-                                                                            return null;
-                                                                        })()
-                                                                    )}
-
-                                                                    {/* Approved Status Actions */}
-                                                                    {user.role === 'worker' && user.verificationStatus === 'approved' && (
-                                                                        <button 
-                                                                            onClick={() => handleStatusUpdate(user._id, 'blocked')}
-                                                                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-gray-600 to-gray-700 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                        >
-                                                                            <ShieldX size={16} /> Block Account
-                                                                        </button>
-                                                                    )}
-
-                                                                    {/* Blocked Status Actions */}
-                                                                    {user.role === 'worker' && user.verificationStatus === 'blocked' && (
-                                                                        <button 
-                                                                            onClick={() => handleStatusUpdate(user._id, 'unblocked')}
-                                                                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg text-white py-2.5 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                        >
-                                                                            <ShieldCheck size={16} /> Unblock Account
-                                                                        </button>
-                                                                    )}
-
-                                                                    {/* Delete - Always Available */}
-                                                                    <button 
-                                                                        onClick={() => handleDelete(user._id, user.name, user.role)}
-                                                                        className="w-full flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 border border-red-300 text-red-600 py-2 rounded-lg text-sm font-bold transition-all active:scale-95"
-                                                                    >
-                                                                        <Trash2 size={16} /> Delete
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            </>
-                                    ) : (
-                                        <div className="text-center py-16 text-gray-400">
-                                            <div className="text-4xl mb-4">📋</div>
-                                            <p className="text-lg font-medium">No records found.</p>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
-                        </>
+
+                            <div className="p-4">
+                                {loading ? (
+                                    <div className="text-center py-12">
+                                        <div className="animate-spin h-10 w-10 border-4 border-orange-600 border-t-transparent rounded-full mx-auto"></div>
+                                        <p className="mt-4 text-gray-500">Loading data...</p>
+                                    </div>
+                                ) : activeFilter === 'clients' ? (
+                                    <AllClients
+                                        rows={filteredData}
+                                        searchTerm={searchTerm}
+                                        onSearchChange={setSearchTerm}
+                                        onViewDetails={setSelectedUser}
+                                        onDelete={handleDelete}
+                                    />
+                                ) : activeFilter === 'approved' ? (
+                                    <Approved
+                                        currentTab={workerReviewTab}
+                                        onTabChange={(nextTab) => {
+                                            setWorkerReviewTab(nextTab);
+                                            setActiveFilter(nextTab);
+                                        }}
+                                        searchValue={currentWorkerSearch}
+                                        onSearchChange={setCurrentWorkerSearch}
+                                        cityValue={currentWorkerCity}
+                                        onCityChange={setCurrentWorkerCity}
+                                        cityOptions={workerCityOptions}
+                                        rows={workerReviewRows}
+                                        stats={stats}
+                                        onRefresh={() => fetchData(true)}
+                                        currentAdminId={currentAdminId}
+                                        onViewDetails={setSelectedUser}
+                                        onClaimWorker={handleClaimWorker}
+                                        onStatusUpdate={handleStatusUpdate}
+                                        onDelete={handleDelete}
+                                        onVerifyOpen={setUserToVerify}
+                                    />
+                                ) : (
+                                    (() => {
+                                        const WorkerSection =
+                                            activeFilter === 'rejected' ? Rejected :
+                                            activeFilter === 'blocked' ? Blocked :
+                                            PendingReview;
+
+                                        return (
+                                            <WorkerSection
+                                                currentTab={workerReviewTab}
+                                                onTabChange={(nextTab) => {
+                                                    setWorkerReviewTab(nextTab);
+                                                    setActiveFilter(nextTab);
+                                                }}
+                                                searchValue={currentWorkerSearch}
+                                                onSearchChange={setCurrentWorkerSearch}
+                                                cityValue={currentWorkerCity}
+                                                onCityChange={setCurrentWorkerCity}
+                                                cityOptions={workerCityOptions}
+                                                rows={workerReviewRows}
+                                                stats={stats}
+                                                onRefresh={() => fetchData(true)}
+                                                currentAdminId={currentAdminId}
+                                                onViewDetails={setSelectedUser}
+                                                onClaimWorker={handleClaimWorker}
+                                                onStatusUpdate={handleStatusUpdate}
+                                                onDelete={handleDelete}
+                                                onVerifyOpen={setUserToVerify}
+                                            />
+                                        );
+                                    })()
+                                )}
+                            </div>
+                        </div>
                     )}
 
+                    {/* Other Sections */}
                     {currentSection === 'fraud' && <FraudMonitor />}
                     {currentSection === 'users' && <AdminUsersSection />}
                     {currentSection === 'marketplace' && <AdminMarketplaceSection />}
                     {currentSection === 'leaderboard' && <AdminWorkerLeaderboardSection />}
-                    {currentSection === 'direct-hires' && (
-                        <div className="space-y-4">
-                            <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div>
-                                        <h2 className="text-xl font-black text-gray-900">Payment Section</h2>
-                                        <p className="text-sm text-gray-500">Track pending and completed direct hire payments with city and skill filtering.</p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setDirectHireTab('pending')}
-                                            className={`px-4 py-2 rounded-xl font-bold border ${directHireTab === 'pending' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-700 border-gray-200'}`}
-                                        >
-                                            Pending Payments
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setDirectHireTab('completed')}
-                                            className={`px-4 py-2 rounded-xl font-bold border ${directHireTab === 'completed' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-700 border-gray-200'}`}
-                                        >
-                                            Completed Payments
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-2">
-                                    <select
-                                        value={directHireCityFilter}
-                                        onChange={(e) => setDirectHireCityFilter(e.target.value)}
-                                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                                    >
-                                        <option value="all">All Cities</option>
-                                        {directHireCityOptions.map((city) => (
-                                            <option key={city} value={city.toLowerCase()}>{city}</option>
-                                        ))}
-                                    </select>
-
-                                    <select
-                                        value={directHireSkillFilter}
-                                        onChange={(e) => setDirectHireSkillFilter(e.target.value)}
-                                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                                    >
-                                        <option value="all">All Skills</option>
-                                        {directHireSkillOptions.map((skill) => (
-                                            <option key={skill} value={skill.toLowerCase()}>{skill}</option>
-                                        ))}
-                                    </select>
-
-                                    <input
-                                        type="text"
-                                        value={directHireSearch}
-                                        onChange={(e) => setDirectHireSearch(e.target.value)}
-                                        placeholder="Search client name or phone"
-                                        className="rounded-xl border border-gray-200 px-3 py-2 text-sm"
-                                    />
-
-                                    <button
-                                        type="button"
-                                        onClick={fetchDirectHirePayments}
-                                        className="px-4 py-2 rounded-xl bg-orange-600 text-white font-bold"
-                                    >
-                                        Refresh
-                                    </button>
-                                </div>
-
-                                {directHireTab === 'completed' && (
-                                    <div className="mt-3 text-sm font-bold text-emerald-700">
-                                        Total Paid Amount: {formatMoney(directHireSummary.totalPaidAmount || 0)}
-                                    </div>
-                                )}
-                            </div>
-
-                            {directHireLoading ? (
-                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">Loading payment records...</div>
-                            ) : directHirePayments.length === 0 ? (
-                                <div className="bg-white rounded-2xl border border-gray-100 p-6 text-gray-500">No payment records found for selected filters.</div>
-                            ) : (
-                                <div className="grid grid-cols-1 gap-4">
-                                    {directHirePayments.map((row) => {
-                                        const job = row?.job || {};
-                                        const clientLocked = Boolean(job?.postedBy?.paymentLock?.active);
-                                        return (
-                                        <div key={job._id} className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5 space-y-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <h3 className="text-lg font-black text-gray-900">{job.title}</h3>
-                                                    <p className="text-sm text-gray-500">{job.postedBy?.name} • {job.postedBy?.mobile || 'N/A'}</p>
-                                                </div>
-                                                {row?.isOverdue ? (
-                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-100">Overdue • {row.overdueMinutes} min</span>
-                                                ) : (
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${directHireTab === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                                                        {directHireTab === 'completed' ? 'Payment Done' : 'Pending'}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
-                                                <div><span className="font-semibold text-gray-800">Date & Time:</span> {formatJobDateTime(job)}</div>
-                                                <div><span className="font-semibold text-gray-800">Duration:</span> {job?.directHire?.durationValue || 1} {job?.directHire?.durationUnit || '/day'}</div>
-                                                <div><span className="font-semibold text-gray-800">City:</span> {job?.location?.city || row?.city || 'N/A'}</div>
-                                                <div><span className="font-semibold text-gray-800">Address:</span> {job?.location?.fullAddress || 'N/A'}</div>
-                                                <div><span className="font-semibold text-gray-800">Skill:</span> {row?.skill || (job?.skills || []).join(', ') || 'N/A'}</div>
-                                                <div><span className="font-semibold text-gray-800">Payment Status:</span> {row?.paymentStatus || 'pending'}</div>
-                                            </div>
-
-                                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                                                <p className="text-xs font-black text-gray-700 uppercase tracking-wider mb-2">Workers & Payments</p>
-                                                <div className="space-y-2">
-                                                    {(row?.paymentRows || []).map((pay, idx) => (
-                                                        <div key={`${job._id}-worker-${idx}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                                                            <div className="font-semibold text-gray-800">{pay.name} • {pay.mobile || 'N/A'}</div>
-                                                            <div className="text-gray-700">{formatMoney(pay.amount || 0)} • {pay.method || 'cash'} {pay.paid ? '(Paid)' : '(Pending)'}</div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {directHireTab === 'pending' && (
-                                                <div className="flex gap-2 flex-wrap">
-                                                    <a
-                                                        href={job?.postedBy?.mobile ? `tel:${job.postedBy.mobile}` : undefined}
-                                                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold"
-                                                    >
-                                                        Call Client
-                                                    </a>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleWarnClient(job._id)}
-                                                        disabled={directHireActionLoading[`warn-${job._id}`]}
-                                                        className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-60"
-                                                    >
-                                                        {directHireActionLoading[`warn-${job._id}`] ? 'Sending...' : 'Send Warning SMS'}
-                                                    </button>
-                                                    {!clientLocked ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleBlockClient(job._id)}
-                                                            disabled={directHireActionLoading[`block-${job._id}`]}
-                                                            className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold disabled:opacity-60"
-                                                        >
-                                                            {directHireActionLoading[`block-${job._id}`] ? 'Blocking...' : 'Block Services'}
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleUnblockClient(job._id)}
-                                                            disabled={directHireActionLoading[`unblock-${job._id}`]}
-                                                            className="px-4 py-2 rounded-xl bg-green-600 text-white font-bold disabled:opacity-60"
-                                                        >
-                                                            {directHireActionLoading[`unblock-${job._id}`] ? 'Unblocking...' : 'Unblock Services'}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    )}
                     {currentSection === 'complaints' && <AdminComplaints />}
                     {currentSection === 'worker-complaints' && <AdminWorkerComplaints />}
                     {currentSection === 'community' && <AdminCommunity />}
                     {currentSection === 'shops' && <AdminShops />}
+                    {currentSection === 'chatbot-support' && <ChatbotSupportRequests />}
+
+                    {/* Direct Hires Section */}
+                    {currentSection === 'direct-hires' && (
+                        <Payment
+                            directHireTab={directHireTab}
+                            setDirectHireTab={setDirectHireTab}
+                            directHireCityFilter={directHireCityFilter}
+                            setDirectHireCityFilter={setDirectHireCityFilter}
+                            directHireSkillFilter={directHireSkillFilter}
+                            setDirectHireSkillFilter={setDirectHireSkillFilter}
+                            directHireSearch={directHireSearch}
+                            setDirectHireSearch={setDirectHireSearch}
+                            directHireCityOptions={directHireCityOptions}
+                            directHireSkillOptions={directHireSkillOptions}
+                            directHireSummary={directHireSummary}
+                            directHireLoading={directHireLoading}
+                            directHirePayments={directHirePayments}
+                            directHireActionLoading={directHireActionLoading}
+                            fetchDirectHirePayments={fetchDirectHirePayments}
+                            handleWarnClient={handleWarnClient}
+                            handleBlockClient={handleBlockClient}
+                            handleUnblockClient={handleUnblockClient}
+                            formatJobDateTime={formatJobDateTime}
+                            formatMoney={formatMoney}
+                        />
+                    )}
+                    </div>
                 </main>
             </div>
         </div>

@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const Job = require('../models/jobModel');
 const User = require('../models/userModel');
 const { createNotification } = require('../utils/notificationHelper');
-const { sendCustomSms, sendOtpSms } = require('../utils/smsHelper');
+const { sendCustomSms, sendOtpSms, buildDirectHireInviteSms, formatDateTime, formatAddress } = require('../utils/smsHelper');
+const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const {
     estimatePrice,
     normalizeSkillKey,
@@ -50,12 +51,44 @@ const asPositiveNumber = (value, fallback = 0) => {
     return Number.isFinite(num) && num > 0 ? num : fallback;
 };
 
+const parseScheduledTime = (scheduledTime) => {
+    const raw = String(scheduledTime || '').trim();
+    if (!raw) return null;
+    const normalized = raw.toUpperCase();
+    const match = normalized.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
+    if (!match) return null;
+
+    let hours = Number(match[1]);
+    const minutes = Number(match[2] || '0');
+    const period = match[3] ? String(match[3]).toUpperCase() : null;
+
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    if (minutes < 0 || minutes > 59) return null;
+
+    if (period) {
+        if (hours < 1 || hours > 12) return null;
+        if (hours === 12) {
+            hours = period === 'AM' ? 0 : 12;
+        } else if (period === 'PM') {
+            hours += 12;
+        }
+    } else {
+        if (hours < 0 || hours > 23) return null;
+    }
+
+    return {
+        hours,
+        minutes,
+        formatted: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+    };
+};
+
 const parseDateTime = (scheduledDate, scheduledTime) => {
     if (!scheduledDate || !scheduledTime) return null;
+    const parsedTime = parseScheduledTime(scheduledTime);
+    if (!parsedTime) return null;
     const start = new Date(scheduledDate);
-    const [hours, minutes] = String(scheduledTime || '').split(':').map(Number);
-    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-    start.setHours(hours, minutes, 0, 0);
+    start.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
     if (Number.isNaN(start.getTime())) return null;
     return start;
 };
@@ -147,9 +180,11 @@ const getDirectHireSuggestedPricing = async ({ skill, location, scheduledDate, s
         throw new Error('Could not fetch pricing for this city and skill.');
     }
 
+    const parsedScheduledTime = parseScheduledTime(scheduledTime);
+    const normalizedTime = parsedScheduledTime?.formatted || String(scheduledTime || '').trim();
     const multipliers = await calculateDemandMultipliers(
         new Date(scheduledDate),
-        scheduledTime,
+        normalizedTime,
         false,
         normalizedUnit === '/day' && durationNum > 1
     );
@@ -308,6 +343,7 @@ const clearClientLockIfPossible = async (clientId) => {
 const notifyClientAndWorkerOnRequest = async (job, workerDoc, clientDoc) => {
     const jobLabel = `${job.title}`;
     const amountLabel = Number(job.directHire?.expectedAmount || 0).toLocaleString('en-IN');
+    const amountValue = Number(job.directHire?.expectedAmount || 0);
     const durationLabel = `${Math.max(1, Number(job.directHire?.durationValue) || 1)} ${normalizeUnit(job.directHire?.durationUnit)}`;
     const dateLabel = job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString('en-IN') : 'today';
     const timeLabel = job.scheduledTime || '09:00';
@@ -335,7 +371,14 @@ const notifyClientAndWorkerOnRequest = async (job, workerDoc, clientDoc) => {
     if (workerDoc?.mobile) {
         await sendCustomSms(
             workerDoc.mobile,
-            `KarigarConnect: You have a direct hire request from ${clientName} (${formatClientPhone(clientDoc?.mobile || '')}) on ${dateLabel} at ${timeLabel} for "${jobLabel}". Amount: ₹${amountLabel}. Duration: ${durationLabel}. Open the app or reply through IVR/SMS to respond.`
+            buildDirectHireInviteSms({
+                clientName,
+                clientMobile: formatClientPhone(clientDoc?.mobile || ''),
+                jobTitle: jobLabel,
+                amount: amountValue,
+                dateTime: `${dateLabel} ${timeLabel}`,
+                address: formatAddress(job),
+            })
         );
     }
 };
@@ -404,7 +447,11 @@ exports.createDirectHireTicket = async (req, res) => {
 
         const durationNum = asPositiveNumber(durationValue, 1);
         const normalizedUnit = normalizeUnit(durationUnit);
-        const timeWindow = computeExpectedEndAt(scheduledDate, scheduledTime, durationNum, normalizedUnit);
+        const normalizedScheduled = parseScheduledTime(scheduledTime);
+        if (!normalizedScheduled) return res.status(400).json({ message: 'Invalid scheduled time format.' });
+
+        const normalizedScheduledTime = normalizedScheduled.formatted;
+        const timeWindow = computeExpectedEndAt(scheduledDate, normalizedScheduledTime, durationNum, normalizedUnit);
         if (!timeWindow) return res.status(400).json({ message: 'Invalid date or time.' });
         if (!isWithinWorkingWindow(timeWindow.start, timeWindow.end)) {
             return res.status(400).json({ message: 'Direct hire working hours must be between 6:00 AM and 9:00 PM.' });
@@ -482,7 +529,7 @@ exports.createDirectHireTicket = async (req, res) => {
             urgent: false,
             location,
             scheduledDate: new Date(scheduledDate),
-            scheduledTime,
+            scheduledTime: normalizedScheduledTime,
             status: 'open',
             applicationsOpen: false,
             visibility: true,
@@ -695,13 +742,27 @@ exports.sendDirectHireStartOtp = async (req, res) => {
         const worker = job.directHire.workerId;
         if (!worker?.mobile) return res.status(400).json({ message: 'Worker phone number is not available.' });
 
+        const cooldownKey = `direct-hire:start-otp:${jobId}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         const otp = makeOtp();
         job.directHire.startOtpHash = hashOtp(otp);
         job.directHire.startOtpExpiry = new Date(Date.now() + OTP_TTL_MS);
         job.directHire.startOtpAttempts = 0;
         await job.save();
 
-        await sendOtpSms(worker.mobile, otp);
+        const smsResult = await sendOtpSms(worker.mobile, otp);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
         await createNotification({
             userId: job.postedBy,
             type: 'job_update',
@@ -791,6 +852,15 @@ exports.sendDirectHireCompletionOtp = async (req, res) => {
         const worker = job.directHire.workerId;
         if (!worker?.mobile) return res.status(400).json({ message: 'Worker phone number is not available.' });
 
+        const cooldownKey = `direct-hire:completion-otp:${jobId}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         const normalizedPaymentMode = ['cash', 'upi', 'bank_transfer', 'online', 'razorpay'].includes(String(paymentMode || '').toLowerCase())
             ? String(paymentMode).toLowerCase()
             : (job.directHire.paymentMode || 'cash');
@@ -806,7 +876,12 @@ exports.sendDirectHireCompletionOtp = async (req, res) => {
         job.directHire.completionOtpAttempts = 0;
         await job.save();
 
-        await sendOtpSms(worker.mobile, otp);
+        const smsResult = await sendOtpSms(worker.mobile, otp);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
         await createNotification({
             userId: job.postedBy,
             type: 'job_update',

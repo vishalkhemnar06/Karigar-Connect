@@ -13,6 +13,7 @@ const {
     getWorkerLeaderboard,
     claimWorkerForReview,
     updateWorkerStatus,
+    updateClientStatus,
     deleteUser,
     getAdminStats,
     getAllJobs,
@@ -50,6 +51,7 @@ const csvUpload = multer({
 router.get('/workers',                  protect, admin, getAllWorkers);
 router.get('/workers/leaderboard',      protect, admin, getWorkerLeaderboard);
 router.get('/clients',                  protect, admin, getAllClients);
+router.put('/clients/status',           protect, admin, updateClientStatus);
 router.get('/marketplace/rates',        protect, admin, getMarketplaceRates);
 router.post('/workers/:workerId/claim', protect, admin, claimWorkerForReview);
 router.put('/workers/status',           protect, admin, updateWorkerStatus);

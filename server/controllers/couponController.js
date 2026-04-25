@@ -11,19 +11,14 @@ const generateCode = () => {
     return code;
 };
 
-// ── Calculate discount based on leaderboard points + completed jobs ────────────
-// Points >= 200  → 20%
-// Points >= 100  → 15%
-// Points >= 50   → 10%
-// Points >= 25   → 5%
-// Below 25 → not eligible
-const calcDiscount = (points, completedJobs) => {
-    const score = points + completedJobs * 5;
-    if (score >= 200) return 20;
-    if (score >= 100) return 15;
-    if (score >= 50)  return 10;
-    if (score >= 25)  return 5;
-    return 0;
+// ── Calculate discount based solely on completed jobs tiers ──────────────
+// 30+ completed jobs → 25%
+// 15–29  completed jobs → 20%
+// 0–14   completed jobs → 10%
+const calcDiscount = (_points, completedJobs) => {
+    if (completedJobs >= 30) return 25;
+    if (completedJobs >= 15) return 20;
+    return 10;
 };
 
 // ── GET MY COUPON (or generate if eligible) ───────────────────────────────────

@@ -27,6 +27,12 @@ const handleFraudError = (res, error) => {
     });
 };
 
+const maskPhoneNumber = (value = '') => {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (digits.length <= 4) return '****';
+    return `***${digits.slice(-4)}`;
+};
+
 exports.getFraudQueue = async (req, res) => {
     try {
         const data = await fraudService.getFraudQueue(req.query);
@@ -105,11 +111,11 @@ exports.fraudNotify = async (req, res) => {
 
     try {
         const { userId, title, message, mobile, smsMessage, action } = req.body;
-        console.log('[fraudNotify] Received fraud action notification:', { userId, action, mobile });
+        console.log('[fraudNotify] Received fraud action notification:', { userId, action, mobile: maskPhoneNumber(mobile) });
 
         if (mobile) {
             const msgToSend = smsMessage || message || title;
-            console.log(`[SMS] Sending to ${mobile}...`);
+            console.log(`[SMS] Sending to ${maskPhoneNumber(mobile)}...`);
             const smsResult = await sendCustomSms(mobile, msgToSend);
             console.log(`[SMS] Result:`, smsResult);
         } else {

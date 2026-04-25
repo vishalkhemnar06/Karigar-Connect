@@ -194,8 +194,8 @@ const ShopHeader = () => {
                     </Link>
 
                     {/* Desktop Navigation */}
-                    <div className="hidden md:flex items-center gap-1 lg:gap-2 xl:gap-3 flex-wrap">
-                        <Link to="/" className={navLinkClass('/')}>
+                    <div className="hidden md:flex items-center gap-1 lg:gap-2 xl:gap-3 flex-wrap" data-guide-id="shop-navbar-area">
+                        <Link to="/" className={navLinkClass('/')} data-guide-id="shop-navbar-home">
                             <div className="flex items-center gap-1">
                                 <Home size={16} className={isActive('/') ? 'text-orange-500' : ''} />
                                 <span>Home</span>
@@ -204,7 +204,7 @@ const ShopHeader = () => {
 
                         {shopToken && (
                             <>
-                                <Link to="/shop/dashboard" className={navLinkClass('/shop/dashboard')}>
+                                <Link to="/shop/dashboard" className={navLinkClass('/shop/dashboard')} data-guide-id="shop-navbar-dashboard">
                                     <div className="flex items-center gap-1">
                                         <LayoutDashboard size={16} className={isActive('/shop/dashboard') ? 'text-orange-500' : ''} />
                                         <span>Dashboard</span>
@@ -215,7 +215,9 @@ const ShopHeader = () => {
                                     <Bell className="w-5 h-5 text-gray-600 hover:text-orange-500 cursor-pointer" />
                                 </motion.div>
 
-                                <LanguageSwitcher />
+                                <div data-guide-id="shop-navbar-language">
+                                    <LanguageSwitcher />
+                                </div>
 
                                 {/* Profile Dropdown */}
                                 <div className="relative profile-menu">
@@ -301,7 +303,7 @@ const ShopHeader = () => {
                     </div>
 
                     {/* Mobile Menu Toggle */}
-                    <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
+                    <div className="flex md:hidden items-center gap-1.5 sm:gap-2" data-guide-id="shop-navbar-area-mobile">
                         <motion.button
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

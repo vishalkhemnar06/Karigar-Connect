@@ -6,6 +6,7 @@ const {
     generateQuestions,
     generateEstimate,
     getRateTableCities,
+    getRateSummaryByCity,
     generateAdvisorReport,   // NEW
     generatePreviewImages,
     startConversation,
@@ -19,6 +20,7 @@ router.post('/generate-questions', protect, generateQuestions);
 // Shared city options used by AI and job post forms
 // GET /api/ai/rate-table-cities
 router.get('/rate-table-cities', protect, getRateTableCities);
+router.get('/rate-summary', protect, getRateSummaryByCity);
 
 // Stage 2: Full structured estimate with component-based budget
 // POST /api/ai/generate-estimate

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
     ChevronDown, Menu, X, Home, LayoutDashboard, LogOut, User, 
     Settings, CreditCard, Bell, Sparkles, Globe, Check, Shield, 
-    Award, Star, TrendingUp, Zap, Crown 
+    Award, Star, TrendingUp, Zap, Crown, HelpCircle 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from '../api';
@@ -196,7 +196,14 @@ const Header = () => {
     else if (role === 'admin') dashboardLink = '/admin/dashboard';
 
     const handleLogout = () => {
-        localStorage.clear();
+        [
+            'token',
+            'role',
+            'user',
+            'shopToken',
+            'shopRole',
+            'shop',
+        ].forEach((key) => localStorage.removeItem(key));
         navigate('/login');
         toast.success('You have been logged out.', {
             icon: '👋',
@@ -288,9 +295,9 @@ const Header = () => {
                     </Link>
 
                     {/* Desktop Navigation - Hidden on Mobile */}
-                    <div className="hidden md:flex items-center gap-1 lg:gap-2 xl:gap-3 flex-wrap">
+                    <div className="hidden md:flex items-center gap-1 lg:gap-2 xl:gap-3 flex-wrap" data-guide-id="worker-navbar-area" data-guide-id-client="client-navbar-area">
                         {/* Home with Active Indicator */}
-                        <Link to="/" className={navLinkClass('/')}>
+                        <Link to="/" className={navLinkClass('/')} data-guide-id="worker-navbar-home" data-guide-id-client="client-navbar-home">
                             <motion.span
                                 initial={false}
                                 animate={{ scaleX: isActive('/') ? 1 : 0 }}
@@ -301,6 +308,20 @@ const Header = () => {
                                 <span>Home</span>
                             </div>
                         </Link>
+
+                        {!isLoggedIn && (
+                            <Link to="/faq" className={navLinkClass('/faq')}>
+                                <motion.span
+                                    initial={false}
+                                    animate={{ scaleX: isActive('/faq') ? 1 : 0 }}
+                                    className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
+                                />
+                                <div className="flex items-center gap-1">
+                                    <HelpCircle size={16} className={isActive('/faq') ? 'text-orange-500' : ''} />
+                                    <span>FAQ</span>
+                                </div>
+                            </Link>
+                        )}
 
                         {!isLoggedIn && (
                             <>
@@ -327,7 +348,7 @@ const Header = () => {
                         {isLoggedIn ? (
                             <>
                                 {/* Dashboard */}
-                                <Link to={dashboardLink} className={navLinkClass(dashboardLink)}>
+                                <Link to={dashboardLink} className={navLinkClass(dashboardLink)} data-guide-id="worker-navbar-dashboard" data-guide-id-client="client-navbar-dashboard">
                                     <motion.span
                                         initial={false}
                                         animate={{ scaleX: isActive(dashboardLink) ? 1 : 0 }}
@@ -396,7 +417,9 @@ const Header = () => {
                                 )}
 
                                 {/* Language Switcher */}
-                                <LanguageSwitcher />
+                                <div data-guide-id="worker-navbar-language" data-guide-id-client="client-navbar-language">
+                                    <LanguageSwitcher />
+                                </div>
 
                                 {/* Enhanced Profile Dropdown */}
                                 <div className="relative profile-menu">
@@ -600,7 +623,9 @@ const Header = () => {
                             </>
                         ) : (
                             <>
-                                <LanguageSwitcher />
+                                <div data-guide-id="worker-navbar-language" data-guide-id-client="client-navbar-language">
+                                    <LanguageSwitcher />
+                                </div>
                                 
                                 <Link
                                     to="/login"
@@ -625,11 +650,13 @@ const Header = () => {
                     </div>
 
                     {/* Mobile Controls - Only visible on mobile/tablet */}
-                    <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
+                    <div className="flex md:hidden items-center gap-1.5 sm:gap-2" data-guide-id="worker-navbar-area-mobile" data-guide-id-client="client-navbar-area-mobile">
                         {isLoggedIn && (currentRole === 'worker' || currentRole === 'client' || currentRole === 'admin') && (
                             <NotificationBell role={currentRole} />
                         )}
-                        <LanguageSwitcher />
+                        <div data-guide-id="worker-navbar-language" data-guide-id-client="client-navbar-language">
+                            <LanguageSwitcher />
+                        </div>
                         <motion.button
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -658,6 +685,15 @@ const Header = () => {
                                 to="/" 
                                 onClick={() => setMobileMenuOpen(false)} 
                             />
+
+                            {!isLoggedIn && (
+                                <MobileMenuItem 
+                                    icon={HelpCircle} 
+                                    title="FAQ" 
+                                    to="/faq" 
+                                    onClick={() => setMobileMenuOpen(false)} 
+                                />
+                            )}
 
                             {!isLoggedIn && (
                                 <>

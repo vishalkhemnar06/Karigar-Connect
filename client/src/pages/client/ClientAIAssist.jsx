@@ -128,6 +128,37 @@ const isValidJobStartTime = (value = '') => {
     return minutes >= minMinutes && minutes <= maxMinutes;
 };
 
+const TIME_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const TIME_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, '0'));
+
+const formatTimeSelection = (value = '') => {
+    const [hourPart, minutePart] = String(value || '').split(':');
+    const hour = Number(hourPart);
+    const minute = Number(minutePart);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+        return { hour: '09', minute: '00', period: 'AM' };
+    }
+
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return {
+        hour: String(hour12).padStart(2, '0'),
+        minute: String(minute).padStart(2, '0'),
+        period,
+    };
+};
+
+const buildTimeFromSelection = (hour, minute, period) => {
+    const safeHour = Number(hour);
+    const safeMinute = Number(minute);
+    if (!Number.isFinite(safeHour) || !Number.isFinite(safeMinute)) return '';
+
+    let normalizedHour = safeHour % 12;
+    if (String(period).toUpperCase() === 'PM') normalizedHour += 12;
+    if (String(period).toUpperCase() === 'AM' && safeHour === 12) normalizedHour = 0;
+    return `${String(normalizedHour).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+};
+
 const openWorkerMap = (worker = {}) => {
     const lat = Number(worker.latitude);
     const lng = Number(worker.longitude);
@@ -273,19 +304,19 @@ const PhaseIndicator = ({ currentPhase }) => {
     const visiblePhases = PHASES.slice(0, 6);
 
     return (
-        <div className="mb-8">
+        <div className="mb-8 rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 via-white to-amber-50 p-4 sm:p-5 shadow-sm">
             <div className="flex items-center justify-between">
                 {visiblePhases.map((phase, index) => (
                     <div key={phase} className="flex-1 relative">
                         <div className="flex flex-col items-center">
                             <div className={`
-                                w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold
-                                transition-all duration-300
+                                w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold
+                                transition-all duration-300 border
                                 ${index < currentIndex 
-                                    ? 'bg-orange-500 text-white' 
+                                    ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-200' 
                                     : index === currentIndex 
-                                        ? 'bg-orange-500 text-white ring-4 ring-orange-100' 
-                                        : 'bg-gray-100 text-gray-400'
+                                        ? 'bg-orange-500 text-white ring-4 ring-orange-100 border-orange-500' 
+                                        : 'bg-white text-gray-400 border-gray-200'
                                 }
                             `}>
                                 {index < currentIndex ? (
@@ -295,8 +326,8 @@ const PhaseIndicator = ({ currentPhase }) => {
                                 )}
                             </div>
                             <span className={`
-                                text-xs mt-2 font-medium text-center
-                                ${index <= currentIndex ? 'text-gray-700' : 'text-gray-400'}
+                                text-[11px] mt-2 font-semibold text-center
+                                ${index <= currentIndex ? 'text-gray-800' : 'text-gray-400'}
                             `}>
                                 {PHASE_LABELS[phase]}
                             </span>
@@ -304,7 +335,7 @@ const PhaseIndicator = ({ currentPhase }) => {
                         {index < visiblePhases.length - 1 && (
                             <div className={`
                                 absolute top-4 left-1/2 w-full h-0.5 -translate-y-1/2
-                                ${index < currentIndex ? 'bg-orange-400' : 'bg-gray-200'}
+                                ${index < currentIndex ? 'bg-orange-400' : 'bg-orange-100'}
                             `} />
                         )}
                     </div>
@@ -395,16 +426,16 @@ const ReportSection = ({ title, icon: Icon, children, defaultOpen = true, badge 
     const [isOpen, setIsOpen] = useState(defaultOpen);
 
     return (
-        <div className="bg-white border border-orange-100 rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-white/95 border border-orange-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full px-5 py-4 flex items-center justify-between hover:bg-orange-50/50 transition-colors"
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-orange-50/60 transition-colors"
             >
                 <div className="flex items-center gap-3">
                     {Icon && <Icon size={20} className="text-orange-500" />}
-                    <span className="font-semibold text-gray-900">{title}</span>
+                    <span className="font-semibold text-gray-900 tracking-tight">{title}</span>
                     {badge && (
-                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full">
+                        <span className="px-2.5 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold">
                             {badge}
                         </span>
                     )}
@@ -420,7 +451,7 @@ const ReportSection = ({ title, icon: Icon, children, defaultOpen = true, badge 
                         transition={{ duration: 0.2 }}
                         className="border-t border-orange-100"
                     >
-                        <div className="px-5 py-4 bg-orange-50/30">
+                        <div className="px-5 py-4 bg-gradient-to-b from-orange-50/50 to-white">
                             {children}
                         </div>
                     </motion.div>
@@ -1844,26 +1875,34 @@ export default function ClientAIAssist() {
     // Render
     // ─────────────────────────────────────────────────────────────────────────
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="client-ai-pro min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(251,146,60,0.18),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(245,158,11,0.14),_transparent_38%),linear-gradient(120deg,_#fff7ed_0%,_#ffffff_45%,_#fffbeb_100%)]">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
                 {/* Header */}
-                <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 mb-8">
-                    <div className="flex items-center justify-between">
+                <div className="relative overflow-hidden rounded-3xl shadow-xl border border-orange-200/70 bg-gradient-to-r from-orange-600 via-amber-500 to-orange-500 p-6 sm:p-8 mb-8 text-white">
+                    <div className="absolute -top-20 -right-20 h-52 w-52 rounded-full bg-white/20 blur-2xl" aria-hidden="true" />
+                    <div className="absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-amber-200/30 blur-3xl" aria-hidden="true" />
+                    <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">AI Advisor</h1>
-                            <p className="text-orange-600 mt-1">Get professional analysis for your renovation or repair project</p>
+                            <p className="text-xs uppercase tracking-[0.2em] font-semibold text-white/80">Client AI Workspace</p>
+                            <h1 className="text-3xl sm:text-4xl font-black tracking-tight mt-1" data-guide-id="client-page-ai-assist">AI Advisor</h1>
+                            <p className="text-orange-50/95 mt-2 max-w-xl">Get a polished project estimate with clear timelines, cost reasoning, and worker recommendations in one place.</p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                <span className="text-xs bg-white/20 border border-white/30 rounded-full px-3 py-1">Cost intelligence</span>
+                                <span className="text-xs bg-white/20 border border-white/30 rounded-full px-3 py-1">Timeline forecast</span>
+                                <span className="text-xs bg-white/20 border border-white/30 rounded-full px-3 py-1">Verified workers</span>
+                            </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="inline-flex rounded-2xl bg-white/15 border border-white/25 p-1.5 backdrop-blur-md">
                             <button
                                 onClick={() => {
                                     handleReset();
                                     setActiveTab('advisor');
                                 }}
                                 className={`
-                                    px-4 py-2 rounded-lg font-medium transition-all
+                                    px-4 py-2 rounded-xl font-semibold transition-all text-sm
                                     ${activeTab === 'advisor'
-                                        ? 'bg-orange-500 text-white shadow-sm'
-                                        : 'text-gray-600 hover:bg-orange-50'
+                                        ? 'bg-white text-orange-700 shadow-md'
+                                        : 'text-white hover:bg-white/15'
                                     }
                                 `}
                             >
@@ -1872,10 +1911,10 @@ export default function ClientAIAssist() {
                             <button
                                 onClick={() => setActiveTab('history')}
                                 className={`
-                                    px-4 py-2 rounded-lg font-medium transition-all
+                                    px-4 py-2 rounded-xl font-semibold transition-all text-sm
                                     ${activeTab === 'history'
-                                        ? 'bg-orange-500 text-white shadow-sm'
-                                        : 'text-gray-600 hover:bg-orange-50'
+                                        ? 'bg-white text-orange-700 shadow-md'
+                                        : 'text-white hover:bg-white/15'
                                     }
                                 `}
                             >
@@ -1889,7 +1928,7 @@ export default function ClientAIAssist() {
                     {/* Main Content */}
                     <div className="lg:col-span-2">
                         {activeTab === 'advisor' ? (
-                            <div key={`advisor-${phase}`} className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6" translate="yes">
+                            <div key={`advisor-${phase}`} className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-orange-100 p-6 sm:p-7" translate="yes">
                                 {phase !== 'report' && phase !== 'loading' && (
                                     <PhaseIndicator currentPhase={phase} />
                                 )}
@@ -2001,14 +2040,39 @@ export default function ClientAIAssist() {
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                                     Start Time <span className="text-gray-400">(Optional)</span>
                                                 </label>
-                                                <input
-                                                    type="time"
-                                                    value={jobStartTime}
-                                                    onChange={(e) => setJobStartTime(e.target.value)}
-                                                    min="07:00"
-                                                    max="19:00"
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
-                                                />
+                                                {(() => {
+                                                    const { hour, minute, period } = formatTimeSelection(jobStartTime);
+                                                    return (
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            <select
+                                                                value={hour}
+                                                                onChange={(e) => setJobStartTime(buildTimeFromSelection(e.target.value, minute, period))}
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
+                                                            >
+                                                                {TIME_HOUR_OPTIONS.map((option) => (
+                                                                    <option key={option} value={option}>{option}</option>
+                                                                ))}
+                                                            </select>
+                                                            <select
+                                                                value={minute}
+                                                                onChange={(e) => setJobStartTime(buildTimeFromSelection(hour, e.target.value, period))}
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
+                                                            >
+                                                                {TIME_MINUTE_OPTIONS.map((option) => (
+                                                                    <option key={option} value={option}>{option}</option>
+                                                                ))}
+                                                            </select>
+                                                            <select
+                                                                value={period}
+                                                                onChange={(e) => setJobStartTime(buildTimeFromSelection(hour, minute, e.target.value))}
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all bg-white"
+                                                            >
+                                                                <option value="AM">AM</option>
+                                                                <option value="PM">PM</option>
+                                                            </select>
+                                                        </div>
+                                                    );
+                                                })()}
                                                 {jobStartTime ? (
                                                     <p className="text-xs text-gray-500 mt-1">
                                                         Selected: {selectedTimeLabel} ({selectedPeriodLabel})
@@ -2647,20 +2711,20 @@ export default function ClientAIAssist() {
                                         <div className="flex gap-3 pt-4">
                                             <button
                                                 onClick={handleReAnalyze}
-                                                className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium flex items-center justify-center gap-2"
+                                                className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-xl hover:bg-orange-50 font-semibold flex items-center justify-center gap-2 transition-all hover:shadow-sm"
                                             >
                                                 <Sparkles size={18} />
                                                 Re-analysis
                                             </button>
                                             <button
                                                 onClick={handleReset}
-                                                className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 font-medium"
+                                                className="flex-1 py-2.5 border border-orange-300 text-orange-600 rounded-xl hover:bg-orange-50 font-semibold transition-all hover:shadow-sm"
                                             >
                                                 New Analysis
                                             </button>
                                             <button
                                                 onClick={handlePrint}
-                                                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                                                className="flex-1 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 shadow-md shadow-orange-200"
                                             >
                                                 <Download size={18} />
                                                 Export Report
@@ -2671,7 +2735,7 @@ export default function ClientAIAssist() {
                             </div>
                         ) : (
                             // History Tab
-                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+                            <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-orange-100 p-6">
                                 <div className="flex items-center justify-between mb-6">
                                     <h2 className="text-lg font-semibold text-gray-900">Analysis History</h2>
                                     {historyItems.length > 0 && (
@@ -2701,13 +2765,13 @@ export default function ClientAIAssist() {
                                                 key={item._id}
                                                 onClick={() => handleLoadHistory(item._id)}
                                                 className={`
-                                                    bg-white border rounded-xl p-4 cursor-pointer transition-all
-                                                    ${savedId === item._id ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200 hover:bg-orange-50/30'}
+                                                    group bg-white border rounded-2xl p-4 cursor-pointer transition-all
+                                                    ${savedId === item._id ? 'border-orange-400 bg-orange-50 shadow-sm shadow-orange-100' : 'border-gray-200 hover:border-orange-200 hover:bg-orange-50/30 hover:shadow-sm'}
                                                 `}
                                             >
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="flex-1 min-w-0">
-                                                        <h4 className="font-medium text-gray-900 truncate">
+                                                        <h4 className="font-semibold text-gray-900 truncate group-hover:text-orange-700 transition-colors">
                                                             {item.title || item.report?.jobTitle || 'Untitled Analysis'}
                                                         </h4>
                                                         <div className="flex items-center gap-3 mt-1">
@@ -2761,7 +2825,7 @@ export default function ClientAIAssist() {
                     {/* Sidebar - Tips / Worker Recommendations */}
                     {activeTab === 'advisor' && phase !== 'report' && phase !== 'loading' && (
                         <div className="lg:col-span-1">
-                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6 sticky top-8">
+                            <div className="bg-white/95 rounded-3xl shadow-lg border border-orange-100 p-6 sticky top-8">
                                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                                     <Sparkles size={18} className="text-orange-500" />
                                     Tips for Better Results
@@ -2802,7 +2866,7 @@ export default function ClientAIAssist() {
 
                     {activeTab === 'advisor' && phase === 'report' && report && (
                         <div className="lg:col-span-1">
-                            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-4 sticky top-8">
+                            <div className="bg-white/95 rounded-3xl shadow-lg border border-orange-100 p-4 sticky top-8">
                                 <div className="mb-3">
                                     <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                                         <Users size={18} className="text-orange-500" />
@@ -3015,6 +3079,10 @@ export default function ClientAIAssist() {
 
             {/* Print styles */}
             <style>{`
+                .client-ai-pro {
+                    font-family: Poppins, "Nunito Sans", "Segoe UI", sans-serif;
+                }
+
                 @media print {
                     .print\\:hidden {
                         display: none !important;

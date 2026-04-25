@@ -55,13 +55,18 @@ const deleteCloudinaryFolder = async (folderPrefix) => {
 
 const getUploadFolderForReq = (req, baseFolder) => {
     const fallback = 'anonymous';
-    let owner = fallback;
+    const ownerMobile = req?.body?.mobile
+        || req?.body?.phone
+        || req?.body?.ownerMobile
+        || req?.body?.shopMobile
+        || req?.user?.mobile
+        || req?.shop?.mobile;
 
-    if (req?.user?.mobile) owner = req.user.mobile;
-    else if (req?.body?.mobile) owner = req.body.mobile;
-    else if (req?.body?.phone) owner = req.body.phone;
+    const safeKey = String(ownerMobile || fallback).replace(/\D/g, '') || fallback;
 
-    const safeKey = String(owner).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || fallback;
+    if (ownerMobile) {
+        return safeKey;
+    }
 
     return `${baseFolder}/${safeKey}`;
 };
@@ -92,23 +97,35 @@ const createUploader = (folder, allowed = ['image']) => {
                 .replace(/^-|-$/g, '') || 'file';
 
             const isImage = file.mimetype.startsWith('image');
+            const isVideo = file.mimetype.startsWith('video');
             const isPdf = file.mimetype === 'application/pdf';
 
             const allowedImageFormats = ['jpg', 'jpeg', 'png', 'webp'];
+            const allowedVideoFormats = ['mp4', 'mov', 'avi', 'webm', 'mkv'];
             const imageFormat = allowedImageFormats.includes(originalExt) ? originalExt : 'jpg';
-            const fileExt = isPdf ? 'pdf' : (isImage ? imageFormat : originalExt || 'bin');
+            const videoFormat = allowedVideoFormats.includes(originalExt) ? originalExt : 'mp4';
+            const fileExt = isPdf ? 'pdf' : (isImage ? imageFormat : isVideo ? videoFormat : originalExt || 'bin');
+
+            const allowedFormats = [
+                ...allowedImageFormats,
+                ...allowedVideoFormats,
+                'pdf',
+            ];
 
             const cloudinaryParams = {
                 folder: targetFolder,
                 // Store PDFs as raw resources to avoid restricted PDF delivery on image endpoints.
-                resource_type: isImage ? 'image' : 'raw',
+                resource_type: isVideo ? 'video' : (isImage ? 'image' : 'raw'),
                 // Restrict supported output formats for safety and consistency
-                allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+                allowed_formats: isVideo ? allowedFormats : (isPdf ? ['pdf'] : ['jpg', 'jpeg', 'png', 'webp', 'pdf']),
                 public_id: `${Date.now()}-${safeBaseName}${isImage ? '' : `.${fileExt}`}`,
             };
 
             if (isImage) {
                 cloudinaryParams.format = imageFormat;
+            }
+            if (isVideo) {
+                cloudinaryParams.format = videoFormat;
             }
             if (isPdf) {
                 cloudinaryParams.format = 'pdf';

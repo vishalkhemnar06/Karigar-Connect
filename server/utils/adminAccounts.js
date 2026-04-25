@@ -83,7 +83,7 @@ const ensureAdminAccounts = async () => {
             role: 'admin',
             name: acc.name,
             mobile: acc.mobile,
-            password: acc.password, // (plain for now)
+            password: acc.password,
             verificationStatus: 'approved',
         });
 

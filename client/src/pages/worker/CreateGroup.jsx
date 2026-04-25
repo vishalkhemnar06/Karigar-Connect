@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, UserPlus, ArrowLeft, AlertCircle,
   CheckCircle, Sparkles, Hash, FileText, User,
-  Info, Shield, Loader2, X
+  Info, Shield, Loader2, X, Crown, Users2,
+  Briefcase, Building2, Target, Heart, TrendingUp,
+  Star, Gift, Zap, Calendar
 } from 'lucide-react';
 import { createGroupAPI } from '../../api';
 
@@ -20,27 +22,31 @@ const useToast = () => {
 };
 
 const ToastList = ({ toasts }) => (
-  <div className="fixed top-3 left-3 right-3 sm:left-auto sm:right-5 sm:top-5 z-[9999] flex flex-col gap-2 pointer-events-none">
+  <AnimatePresence>
     {toasts.map(t => (
-      <div 
-        key={t.id} 
-        className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm text-white shadow-xl animate-in slide-in-from-top duration-300 ${
-          t.type === 'error' ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-green-500 to-emerald-600'
+      <motion.div
+        key={t.id}
+        initial={{ opacity: 0, x: 100 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 100 }}
+        className={`flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm text-white shadow-xl ${
+          t.type === 'error' ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-gradient-to-r from-emerald-500 to-green-600'
         }`}
       >
         {t.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
         {t.msg}
-      </div>
+      </motion.div>
     ))}
-  </div>
+  </AnimatePresence>
 );
 
-const Field = ({ label, required, error, hint, children, icon: Icon }) => (
+const Field = ({ label, required, error, hint, children, icon: Icon, optional }) => (
   <div className="flex flex-col gap-1.5 sm:gap-2">
-    <label className="text-xs sm:text-sm font-bold text-gray-700 flex items-center gap-1">
+    <label className="text-xs sm:text-sm font-bold text-gray-700 flex items-center gap-1.5">
       {Icon && <Icon size={12} className="text-orange-500" />}
       {label}
       {required && <span className="text-red-500 text-sm">*</span>}
+      {optional && <span className="text-[10px] text-gray-400 font-normal ml-1">(Optional)</span>}
     </label>
     {children}
     {hint && !error && (
@@ -49,9 +55,13 @@ const Field = ({ label, required, error, hint, children, icon: Icon }) => (
       </p>
     )}
     {error && (
-      <p className="text-[10px] sm:text-[11px] text-red-500 font-semibold flex items-center gap-1 animate-in fade-in slide-in-from-left">
+      <motion.p
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="text-[10px] sm:text-[11px] text-red-500 font-semibold flex items-center gap-1"
+      >
         <AlertCircle size={10} /> {error}
-      </p>
+      </motion.p>
     )}
   </div>
 );
@@ -94,7 +104,6 @@ export default function CreateGroup() {
     const errs = validate();
     if (Object.keys(errs).length) {
       setErrors(errs);
-      // Scroll to first error
       const firstError = document.querySelector('.border-red-300');
       if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -104,7 +113,7 @@ export default function CreateGroup() {
       await createGroupAPI(form);
       setSuccess(true);
       toast.success('Group created successfully! 🎉');
-      setTimeout(() => navigate('/worker/my-groups'), 1800);
+      setTimeout(() => navigate('/worker/my-groups'), 2000);
     } catch (err) {
       toast.error(err.response?.data?.msg || 'Error creating group. Please try again.');
     } finally {
@@ -116,84 +125,132 @@ export default function CreateGroup() {
   const isUserIdValid = form.memberUserId && /^K\d+$/i.test(form.memberUserId.trim());
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50/40 via-white to-orange-50/20 p-3 sm:p-4 pb-24 sm:pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10 pb-16">
       <ToastList toasts={toast.toasts} />
 
       {/* Success Overlay */}
-      {success && (
-        <div className="fixed inset-0 bg-orange-50/95 backdrop-blur-sm z-[1000] flex flex-col items-center justify-center animate-in fade-in">
-          <div className="text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', damping: 12 }}
-              className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mx-auto mb-4 shadow-xl"
-            >
-              <CheckCircle size={38} className="text-white" />
-            </motion.div>
-            <h2 className="text-xl sm:text-2xl font-black text-gray-900 mb-2">Group Created!</h2>
-            <p className="text-sm text-gray-500">Redirecting to My Groups...</p>
-            <div className="mt-4 w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-3xl mx-auto">
-        {/* Header - Mobile Optimized */}
-        <div className="flex items-center gap-3 mb-6 sm:mb-8">
-          <button
-            onClick={() => navigate('/worker/my-groups')}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border-2 border-orange-200 bg-white flex items-center justify-center text-gray-500 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-500 transition-all active:scale-95 flex-shrink-0"
-            aria-label="Go back"
+      <AnimatePresence>
+        {success && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-orange-50/95 backdrop-blur-sm z-[1000] flex flex-col items-center justify-center"
           >
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h1 className="text-lg sm:text-xl md:text-2xl font-black bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
-              Create Group
-            </h1>
-            <p className="text-xs text-gray-400 mt-0.5 font-medium">Form a work team with other karigars</p>
-          </div>
-        </div>
+            <div className="text-center p-4">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', damping: 12, stiffness: 200 }}
+                className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center mx-auto mb-4 shadow-xl"
+              >
+                <CheckCircle size={38} className="text-white" />
+              </motion.div>
+              <motion.h2
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-xl sm:text-2xl font-bold text-gray-900 mb-2"
+              >
+                Group Created!
+              </motion.h2>
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="text-sm text-gray-500"
+              >
+                Redirecting to My Groups...
+              </motion.p>
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.4 }}
+                className="mt-4 w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5 sm:gap-7">
-          {/* Card 1: Group Details */}
-          <div className="bg-white rounded-3xl border-2 border-orange-100 overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-5 sm:px-8 py-4 sm:py-5 border-b border-orange-100 flex items-center gap-4">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
-                <Users size={16} className="text-white" />
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-5 pb-8">
+        
+        {/* Hero Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+                    animate={{ opacity: 1, y: 0 }}
+          data-guide-id="worker-page-create-group"
+          className="mb-6"
+        >
+          <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                  <Users2 size="24" className="text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black">Create Work Group</h1>
+                  <p className="text-white/90 text-sm mt-0.5">Form a team with other karigars</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm sm:text-base font-bold text-gray-900">Group Details</p>
-                <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Name and describe your group</p>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate('/worker/my-groups')}
+                className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-xl text-sm font-semibold hover:bg-white/30 transition-all"
+              >
+                <ArrowLeft size="14" /> Back to My Groups
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          
+          {/* Card 1: Group Details */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-lg transition-all overflow-hidden"
+          >
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-5 py-4 border-b border-orange-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center shadow-sm">
+                  <Briefcase size="14" className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-800">Group Information</h2>
+                  <p className="text-[10px] text-gray-500">Basic details about your team</p>
+                </div>
               </div>
             </div>
             
-            <div className="p-6 sm:p-8 flex flex-col gap-5 sm:gap-6">
+            <div className="p-5 space-y-4">
               <Field 
                 label="Group Name" 
                 required 
                 error={errors.name} 
                 icon={Hash}
-                hint="Choose a unique name for your team"
+                hint="Choose a unique name that represents your team"
               >
                 <div className="relative">
-                  <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400 pointer-events-none" />
+                  <Hash size="14" className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400" />
                   <input
                     name="name"
                     value={form.name}
                     onChange={handleChange}
                     onFocus={() => setFocusedField('name')}
                     onBlur={() => setFocusedField(null)}
-                    placeholder="e.g., Elite Painters Team"
+                    placeholder="e.g., Elite Painters & Decorators"
                     maxLength={60}
                     autoCapitalize="words"
-                    className={`w-full pl-9 pr-3 py-3 border-2 rounded-xl text-sm font-medium transition-all min-h-[48px] ${
+                    className={`w-full pl-9 pr-3 py-3 border rounded-xl text-sm font-medium transition-all ${
                       errors.name 
-                        ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-50' 
+                        ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-2 focus:ring-red-100' 
                         : focusedField === 'name'
-                          ? 'border-orange-400 bg-white ring-4 ring-orange-50'
-                          : 'border-orange-200 bg-orange-50 focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-50'
+                          ? 'border-orange-400 bg-white ring-2 ring-orange-100'
+                          : 'border-gray-200 bg-gray-50 focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-100'
                     }`}
                   />
                 </div>
@@ -202,62 +259,70 @@ export default function CreateGroup() {
                     {form.name?.length || 0}/60 characters
                   </p>
                   {form.name && form.name.length >= 50 && (
-                    <p className="text-[10px] text-orange-500">Getting long</p>
+                    <p className="text-[10px] text-amber-600 flex items-center gap-1">
+                      <AlertCircle size="8" /> Getting long
+                    </p>
                   )}
                 </div>
               </Field>
 
               <Field 
                 label="Description" 
-                hint="Optional — describe what your group specialises in" 
+                hint="Describe what your group specialises in" 
+                optional
                 error={errors.description}
                 icon={FileText}
               >
                 <div className="relative">
-                  <FileText size={14} className="absolute left-3 top-3 text-orange-400 pointer-events-none" />
+                  <FileText size="14" className="absolute left-3 top-3 text-orange-400" />
                   <textarea
                     name="description"
                     value={form.description}
                     onChange={handleChange}
                     rows={3}
                     maxLength={200}
-                    placeholder="e.g., We specialise in interior painting, waterproofing, and wall finishes..."
-                    className="w-full pl-9 pr-3 py-3 border-2 border-orange-200 rounded-xl text-sm font-medium bg-orange-50 focus:bg-white focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50 transition-all resize-none"
+                    placeholder="e.g., We specialise in interior painting, waterproofing, wall finishes, and home renovation..."
+                    className="w-full pl-9 pr-3 py-3 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50 focus:bg-white focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
                   />
                 </div>
                 <div className="flex justify-between items-center">
-                  <p className={`text-[10px] font-medium ${charLeft < 30 ? 'text-orange-500' : 'text-gray-400'}`}>
+                  <p className={`text-[10px] font-medium ${charLeft < 30 ? 'text-amber-600' : 'text-gray-400'}`}>
                     {charLeft} characters remaining
                   </p>
                   {form.description && charLeft < 50 && (
-                    <p className="text-[10px] text-orange-500">Keep it concise</p>
+                    <p className="text-[10px] text-amber-600">Keep it concise</p>
                   )}
                 </div>
               </Field>
             </div>
-          </div>
+          </motion.div>
 
           {/* Card 2: Add Member */}
-          <div className="bg-white rounded-3xl border-2 border-orange-100 overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-5 sm:px-8 py-4 sm:py-5 border-b border-orange-100 flex items-center gap-4">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
-                <UserPlus size={16} className="text-white" />
-              </div>
-              <div>
-                <p className="text-sm sm:text-base font-bold text-gray-900">Add Initial Member</p>
-                <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Groups need at least 2 members</p>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-lg transition-all overflow-hidden"
+          >
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-5 py-4 border-b border-orange-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center shadow-sm">
+                  <UserPlus size="14" className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-800">Add Initial Member</h2>
+                  <p className="text-[10px] text-gray-500">Groups need at least 2 members to start</p>
+                </div>
               </div>
             </div>
             
-            <div className="p-6 sm:p-8 flex flex-col gap-5">
+            <div className="p-5 space-y-4">
               {/* Info Banner */}
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 sm:p-4 flex items-start gap-2 sm:gap-3">
-                <Shield size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2">
+                <Shield size="14" className="text-blue-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-xs sm:text-sm text-blue-700 font-medium leading-relaxed">
-                    Enter the <strong>User ID</strong> of the second member
-                  </p>
-                  <code className="inline-block mt-1 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono">
+                  <p className="text-xs text-blue-700 font-medium">Enter the <strong>User ID</strong> of the second member</p>
+                  <code className="inline-block mt-1.5 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-mono font-semibold">
                     K531792
                   </code>
                 </div>
@@ -268,10 +333,10 @@ export default function CreateGroup() {
                 required 
                 error={errors.memberUserId}
                 icon={User}
-                hint="Format: K followed by 6+ digits"
+                hint="Format: K followed by 6+ digits (e.g., K123456)"
               >
                 <div className="relative">
-                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400 pointer-events-none" />
+                  <User size="14" className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-400" />
                   <input
                     name="memberUserId"
                     value={form.memberUserId}
@@ -280,178 +345,139 @@ export default function CreateGroup() {
                     onBlur={() => setFocusedField(null)}
                     placeholder="K123456"
                     autoCapitalize="characters"
-                    inputMode="text"
-                    className={`w-full pl-9 pr-3 py-3 border-2 rounded-xl text-sm font-mono font-semibold tracking-wider uppercase transition-all min-h-[48px] ${
+                    className={`w-full pl-9 pr-3 py-3 border rounded-xl text-sm font-mono font-semibold tracking-wider uppercase transition-all ${
                       errors.memberUserId 
-                        ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-50'
+                        ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-2 focus:ring-red-100'
                         : focusedField === 'userId'
-                          ? 'border-orange-400 bg-white ring-4 ring-orange-50'
-                          : 'border-orange-200 bg-orange-50 focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-50'
+                          ? 'border-orange-400 bg-white ring-2 ring-orange-100'
+                          : 'border-gray-200 bg-gray-50 focus:bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-100'
                     }`}
                   />
                 </div>
               </Field>
 
               {/* Valid Format Indicator */}
-              {form.memberUserId && !errors.memberUserId && isUserIdValid && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <CheckCircle size={14} className="text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs sm:text-sm font-bold text-green-800">{form.memberUserId.toUpperCase()}</p>
-                    <p className="text-[10px] sm:text-[11px] text-green-600 font-medium">Valid format ✓</p>
-                  </div>
-                </div>
-              )}
+              <AnimatePresence>
+                {form.memberUserId && !errors.memberUserId && isUserIdValid && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-3"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-sm">
+                      <CheckCircle size="12" className="text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-emerald-800">{form.memberUserId.toUpperCase()}</p>
+                      <p className="text-[10px] text-emerald-600">Valid user ID format ✓</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Invalid Format Warning */}
-              {form.memberUserId && !errors.memberUserId && !isUserIdValid && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left">
-                  <AlertCircle size={14} className="text-amber-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs sm:text-sm font-medium text-amber-800">Invalid format</p>
-                    <p className="text-[10px] sm:text-[11px] text-amber-600">User ID should start with K followed by digits</p>
-                  </div>
-                </div>
-              )}
+              <AnimatePresence>
+                {form.memberUserId && !errors.memberUserId && !isUserIdValid && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3"
+                  >
+                    <AlertCircle size="14" className="text-amber-600 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-amber-800">Invalid Format</p>
+                      <p className="text-[10px] text-amber-600">User ID should start with 'K' followed by digits</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Preview Section - Mobile Optimized */}
-          {(form.name.trim() || form.memberUserId.trim()) && (
-            <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-3xl border-2 border-orange-100 p-6 sm:p-8 shadow-md animate-in fade-in slide-in-from-bottom">
-              <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1">
-                <Sparkles size={10} /> Group Preview
-              </p>
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center flex-shrink-0 shadow-md">
-                  <Users size={20} className="text-white" />
+          {/* Preview Section */}
+          <AnimatePresence>
+            {(form.name.trim() || form.memberUserId.trim()) && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-100 p-5 shadow-md"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size="12" className="text-orange-500" />
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Group Preview</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-gray-900 text-sm sm:text-base truncate">
-                    {form.name.trim() || <span className="text-gray-300">Group name...</span>}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    <span className="text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-orange-500 to-amber-500 text-white px-2 py-0.5 rounded-full shadow-sm">
-                      You (Admin)
-                    </span>
-                    {form.memberUserId.trim() && isUserIdValid && (
-                      <span className="text-[8px] sm:text-[9px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full shadow-sm">
-                        {form.memberUserId.toUpperCase()}
-                      </span>
-                    )}
-                    {form.memberUserId.trim() && !isUserIdValid && (
-                      <span className="text-[8px] sm:text-[9px] font-bold bg-red-400 text-white px-2 py-0.5 rounded-full shadow-sm">
-                        Invalid ID
-                      </span>
-                    )}
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-400 to-amber-400 flex items-center justify-center shadow-md">
+                    <Users size="18" className="text-white" />
                   </div>
-                  {form.description && (
-                    <p className="text-[10px] sm:text-[11px] text-gray-500 mt-2 line-clamp-2">
-                      {form.description}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-gray-800 text-sm truncate">
+                      {form.name.trim() || <span className="text-gray-300">Group name...</span>}
                     </p>
-                  )}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      <span className="text-[9px] font-bold bg-gradient-to-r from-orange-500 to-amber-500 text-white px-2 py-0.5 rounded-full shadow-sm flex items-center gap-0.5">
+                        <Crown size="8" /> You (Admin)
+                      </span>
+                      {form.memberUserId.trim() && isUserIdValid && (
+                        <span className="text-[9px] font-bold bg-emerald-500 text-white px-2 py-0.5 rounded-full shadow-sm">
+                          {form.memberUserId.toUpperCase()}
+                        </span>
+                      )}
+                      {form.memberUserId.trim() && !isUserIdValid && (
+                        <span className="text-[9px] font-bold bg-red-400 text-white px-2 py-0.5 rounded-full shadow-sm">
+                          Invalid ID
+                        </span>
+                      )}
+                    </div>
+                    {form.description && (
+                      <p className="text-[10px] text-gray-500 mt-2 line-clamp-2">
+                        {form.description}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {/* Submit Button - Touch Optimized */}
-          <button
+          {/* Submit Button */}
+          <motion.button
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={loading || success}
-            className="w-full py-4 sm:py-5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-2 shadow-lg shadow-orange-200 hover:shadow-orange-300 disabled:opacity-60 transition-all min-h-[56px] active:scale-[0.98] hover:scale-[1.01]"
+            className="w-full py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-60 transition-all"
           >
             {loading ? (
               <>
-                <Loader2 size={18} className="animate-spin" />
+                <Loader2 size="18" className="animate-spin" />
                 Creating Group...
               </>
             ) : (
               <>
-                <Users size={18} />
-                Create Group
+                <Users2 size="18" />
+                Create Work Group
               </>
             )}
-          </button>
+          </motion.button>
 
-          {/* Cancel Button */}
-          <button
-            type="button"
-            onClick={() => navigate('/worker/my-groups')}
-            className="text-gray-400 text-xs sm:text-sm font-semibold py-2 hover:text-orange-500 transition-colors active:scale-95"
-          >
-            Cancel — go back to My Groups
-          </button>
+          {/* Cancel Link */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => navigate('/worker/my-groups')}
+              className="text-xs text-gray-400 font-medium hover:text-orange-500 transition-colors"
+            >
+              Cancel — return to My Groups
+            </button>
+          </div>
         </form>
       </div>
-
-      {/* Add custom styles for animations */}
-      <style>{`
-        @keyframes slide-in-from-top {
-          from {
-            transform: translateY(-100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes slide-in-from-left {
-          from {
-            transform: translateX(-20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes slide-in-from-bottom {
-          from {
-            transform: translateY(20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-        
-        .animate-in {
-          animation-duration: 0.3s;
-          animation-fill-mode: both;
-        }
-        
-        .slide-in-from-top {
-          animation-name: slide-in-from-top;
-        }
-        
-        .slide-in-from-left {
-          animation-name: slide-in-from-left;
-        }
-        
-        .slide-in-from-bottom {
-          animation-name: slide-in-from-bottom;
-        }
-        
-        .fade-in {
-          animation-name: fade-in;
-        }
-        
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

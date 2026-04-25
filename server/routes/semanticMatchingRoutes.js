@@ -8,8 +8,8 @@ router.get('/health', ctrl.health);
 // Rebuild semantic index (requires admin)
 router.post('/admin/rebuild', protect, admin, ctrl.rebuildIndex);
 
-// Quick rebuild without auth (for development/testing) - REMOVE IN PRODUCTION
-router.post('/rebuild-now', ctrl.rebuildIndex);
+// Quick rebuild is admin-only to avoid exposing an expensive maintenance path.
+router.post('/rebuild-now', protect, admin, ctrl.rebuildIndex);
 router.post('/admin/workers/:workerId/sync', protect, admin, ctrl.syncWorker);
 router.post('/admin/jobs/:jobId/sync', protect, admin, ctrl.syncJob);
 router.delete('/admin/workers/:workerId', protect, admin, ctrl.deleteIndexedWorker);

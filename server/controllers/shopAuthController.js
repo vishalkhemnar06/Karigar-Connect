@@ -1,17 +1,11 @@
 // server/controllers/shopAuthController.js
-// FIXED:
-//   - normPath() converts absolute disk paths → relative forward-slash paths
-//     e.g. "C:\project\server\uploads\file.jpg"  →  "uploads/file.jpg"
-//          "/home/user/server/uploads/file.jpg"   →  "uploads/file.jpg"
-//   - All file fields (ownerPhoto, idProof, shopLogo) stored as "uploads/filename"
-//   - These paths are then served by Express at GET /uploads/filename  ✅
 
 const Shop       = require('../models/shopModel');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
 const nodemailer = require('nodemailer');
-const twilio     = require('twilio');
-const path       = require('path');
+const { sendOtpSms } = require('../utils/smsHelper');
+const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 // ── JWT helper ────────────────────────────────────────────────────────────────
@@ -32,42 +26,10 @@ const sendEmail = async (to, subject, text) => {
     }
 };
 
-// ── Twilio SMS ────────────────────────────────────────────────────────────────
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-const sendSms = async (to, body) => {
-    if (!to || !body) return;
-    try {
-        await twilioClient.messages.create({
-            body,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: to.startsWith('+') ? to : `+91${to}`,
-        });
-    } catch (err) {
-        console.error('SMS error:', err.message);
-    }
-};
-
-// ── PATH NORMALISATION ────────────────────────────────────────────────────────
-// Converts an absolute multer disk path to a relative "uploads/filename" path.
-// This is what gets stored in MongoDB and later resolved by the frontend's
-// getImageUrl() as:  http://localhost:5000/uploads/filename
-//
-// Input examples:
-//   "C:\\project\\server\\uploads\\1234-photo.jpg"
-//   "/home/user/server/uploads/1234-photo.jpg"
-//   "uploads/1234-photo.jpg"   (already relative — returned as-is)
-//
-const normPath = (filePath) => {
-    if (!filePath) return null;
-    // Normalise separators
-    const normalised = filePath.replace(/\\/g, '/');
-    // Find the uploads/ segment and return everything from there
-    const idx = normalised.indexOf('uploads/');
-    if (idx !== -1) return normalised.slice(idx);   // e.g. "uploads/1234-photo.jpg"
-    // If for some reason uploads/ isn't in the path, return the basename only
-    return `uploads/${path.basename(normalised)}`;
-};
+// ── MEDIA PATH HELPERS ───────────────────────────────────────────────────────
+// Cloudinary upload middleware returns a fully qualified URL in req.file.path.
+// Keep that value as-is so updates and fetches resolve to the same Cloudinary URL.
+const resolveMediaPath = (file) => file?.path || file?.secure_url || file?.url || null;
 
 // ── STEP 1: Send Mobile OTP ───────────────────────────────────────────────────
 exports.sendMobileOtp = async (req, res) => {
@@ -85,6 +47,15 @@ exports.sendMobileOtp = async (req, res) => {
             });
         }
 
+        const cooldownKey = `shop:mobile-otp:${mobile}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
@@ -95,7 +66,12 @@ exports.sendMobileOtp = async (req, res) => {
             { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: false }
         );
 
-        await sendSms(mobile, `KarigarConnect Shop: Your OTP is ${otp}. Valid for 10 minutes. Do not share.`);
+        const smsResult = await sendOtpSms(mobile, otp);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
         return res.json({ message: 'OTP sent to mobile.' });
     } catch (err) {
         console.error('sendMobileOtp:', err);
@@ -108,6 +84,15 @@ exports.sendEmailOtp = async (req, res) => {
     try {
         const { email, mobile } = req.body;
         if (!email) return res.status(400).json({ message: 'Email required.' });
+
+        const cooldownKey = `shop:email-otp:${mobile || email}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
 
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
@@ -126,6 +111,7 @@ exports.sendEmailOtp = async (req, res) => {
             'KarigarConnect Shop — Email Verification OTP',
             `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`
         );
+        markOtpCooldown(cooldownKey);
         return res.json({ message: 'OTP sent to email.' });
     } catch (err) {
         console.error('sendEmailOtp:', err);
@@ -206,6 +192,15 @@ exports.sendLoginOtp = async (req, res) => {
             });
         }
 
+        const cooldownKey = `shop:login-otp:${mobile}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
         // Send OTP for login
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
@@ -215,7 +210,12 @@ exports.sendLoginOtp = async (req, res) => {
         shop.loginOtpExpiry = expiry;
         await shop.save({ validateBeforeSave: false });
 
-        await sendSms(mobile, `KarigarConnect Shop Login: Your OTP is ${otp}. Valid for 10 minutes. Do not share.`);
+        const smsResult = await sendOtpSms(mobile, otp);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
         return res.json({ message: 'OTP sent to mobile.' });
     } catch (err) {
         console.error('sendLoginOtp:', err);
@@ -293,11 +293,11 @@ exports.registerShop = async (req, res) => {
         // multer.path on Windows:  "C:\...\uploads\1234-photo.jpg"
         // normPath converts to:    "uploads/1234-photo.jpg"
         // Express serves at:       GET /uploads/1234-photo.jpg  ✅
-        const ownerPhotoPath = normPath(files.ownerPhoto?.[0]?.path);
-        const idProofPath    = normPath(files.idProof?.[0]?.path);
-        const shopLogoPath   = normPath(files.shopLogo?.[0]?.path);
-        const shopPhotoPath  = normPath(files.shopPhoto?.[0]?.path);
-        const gstnCertPath   = normPath(files.gstnCertificate?.[0]?.path);
+        const ownerPhotoPath = resolveMediaPath(files.ownerPhoto?.[0]);
+        const idProofPath    = resolveMediaPath(files.idProof?.[0]);
+        const shopLogoPath   = resolveMediaPath(files.shopLogo?.[0]);
+        const shopPhotoPath  = resolveMediaPath(files.shopPhoto?.[0]);
+        const gstnCertPath   = resolveMediaPath(files.gstnCertificate?.[0]);
 
         shop.ownerName  = ownerName;
         shop.email      = email;

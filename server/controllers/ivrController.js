@@ -5,7 +5,7 @@ const User = require('../models/userModel');
 const Job = require('../models/jobModel');
 const IvrSession = require('../models/ivrSessionModel');
 const IvrUnregisteredLead = require('../models/ivrUnregisteredLeadModel');
-const { sendCustomSms } = require('../utils/smsHelper');
+const { sendCustomSms, buildIvrJobDetailsSms, buildIvrRegistrationSms, formatDateTime, formatAddress } = require('../utils/smsHelper');
 const {
     applyForJobByWorker,
     cancelPendingApplicationByWorker,
@@ -24,6 +24,28 @@ const twilio = require('twilio');
 
 const REGISTRATION_LINK = process.env.REGISTRATION_URL || 'https://www.karigarconnect.in/register';
 const VOICE_ACTION_URL = `${process.env.NODE_BASE_URL || 'http://localhost:5000'}/api/ivr/twilio/state`;
+
+const getWebhookUrl = (req) => {
+    if (process.env.TWILIO_WEBHOOK_URL) {
+        return process.env.TWILIO_WEBHOOK_URL;
+    }
+
+    const baseUrl = process.env.NODE_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    return `${baseUrl}${req.originalUrl}`;
+};
+
+const isValidTwilioRequest = (req) => {
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const signature = req.headers['x-twilio-signature'];
+    if (!authToken || !signature) return false;
+    return twilio.validateRequest(authToken, signature, getWebhookUrl(req), req.body);
+};
+
+const maskPhoneNumber = (value = '') => {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (digits.length <= 4) return '****';
+    return `***${digits.slice(-4)}`;
+};
 
 const SKILL_MENU = {
     '1': 'plumber',
@@ -506,13 +528,14 @@ const jobPrompt = (job, lang = 'hi') => {
 };
 
 const sendJobSms = async (phone, job) => {
-    const text = [
-        `Job: ${job.title}`,
-        `Skill: ${job.workerSlots?.find((s) => s.status === 'open')?.skill || job.skills?.[0] || 'general'}`,
-        `Location: ${job.location?.city || ''}`,
-        `Budget: Rs ${job.payment || job.totalEstimatedCost || 0}`,
-        `Client: ${job.postedBy?.mobile || 'N/A'}`,
-    ].join('\n');
+    const text = buildIvrJobDetailsSms({
+        jobTitle: job.title,
+        clientName: job.postedBy?.name || 'N/A',
+        clientMobile: job.postedBy?.mobile || 'N/A',
+        amount: job.payment || job.totalEstimatedCost || 0,
+        dateTime: formatDateTime(job.scheduledDate || job.createdAt, job.scheduledTime || ''),
+        address: formatAddress(job),
+    });
     await sendCustomSms(phone, text);
 };
 
@@ -626,7 +649,7 @@ const handleUnregisteredState = async (session, digits) => {
     if (digits === '2') {
         pushEvent(session, 'menu_selected', 'unregistered_registration_info');
         
-        const registrationSmsText = `KarigarConnect Registration: ${REGISTRATION_LINK}\n\nRegister now to start earning! Documents needed: Aadhar, ID proof, Bank details, Certificate, and Portfolio photo.\n\nSupport: +91 9876543210 (WhatsApp)\nEmail: support@karigarconnect.in`;
+        const registrationSmsText = buildIvrRegistrationSms({ registrationLink: REGISTRATION_LINK });
         
         await sendCustomSms(session.phone, registrationSmsText);
         await markLeadSmsSent(session.phone);
@@ -975,10 +998,14 @@ const handleRegisteredFlow = async (session, worker, digits, speech) => {
 
 exports.twilioVoiceWebhook = async (req, res) => {
     try {
+        if (!isValidTwilioRequest(req)) {
+            return res.status(403).send('Forbidden');
+        }
+
         console.log('[IVR] twilioVoiceWebhook START');
         const callSid = req.body.CallSid || `call-${Date.now()}`;
         const phoneRaw = req.body.From;
-        console.log('[IVR] Phone:', phoneRaw, 'CallSid:', callSid);
+        console.log('[IVR] Phone:', maskPhoneNumber(phoneRaw), 'CallSid:', String(callSid || '').slice(-8));
         const phone = normalizePhone(phoneRaw);
         console.log('[IVR] Normalized phone:', phone);
         
@@ -1048,6 +1075,10 @@ exports.twilioVoiceWebhook = async (req, res) => {
 
 exports.twilioStateHandler = async (req, res) => {
     try {
+        if (!isValidTwilioRequest(req)) {
+            return res.status(403).send('Forbidden');
+        }
+
         const sidFromQuery = String(req.query.sid || '').trim();
         const callSid = sidFromQuery || req.body.CallSid || `call-${Date.now()}`;
         const phone = normalizePhone(req.body.From);

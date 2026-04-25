@@ -1,5 +1,5 @@
 // server/routes/communityRoutes.js — FIXED
-// Uses communityUpload middleware which saves to Cloudinary (or local disk)
+// Uses communityUpload middleware which saves to Cloudinary
 // and produces a real public URL stored in post.mediaUrl
 
 const express = require('express');

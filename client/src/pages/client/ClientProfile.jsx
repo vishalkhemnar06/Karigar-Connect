@@ -163,10 +163,11 @@ const ClientProfile = () => {
                     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                     const d   = await res.json();
                     const a   = d?.address || {};
+                    const districtName = a.county || a.city || a.town || a.state_district || '';
                     setFormData(prev => ({
                         ...prev,
                         fullAddress:  [a.house_number, a.road || a.street].filter(Boolean).join(', ') || prev.fullAddress,
-                        city:         a.city || a.town || a.county || prev.city,
+                        city:         districtName || prev.city,
                         village:      a.village || a.hamlet || a.suburb || prev.village,
                         locality:     a.village || a.hamlet || a.suburb || prev.locality,
                         pincode:      a.postcode || prev.pincode,
@@ -422,7 +423,7 @@ const ClientProfile = () => {
                         <div className="sm:col-span-2"><EditInput label="Full Address" name="fullAddress" value={formData.fullAddress} onChange={handleChange} /></div>
                         <EditInput label="Home Location / Area" name="homeLocation" value={formData.homeLocation} onChange={handleChange} />
                         <EditInput label="House Number (Optional)" name="houseNumber" value={formData.houseNumber} onChange={handleChange} />
-                        <EditInput label="City" name="city" value={formData.city} onChange={handleChange} />
+                        <EditInput label="District" name="city" value={formData.city} onChange={handleChange} />
                         <EditInput label="Village" name="village" value={formData.village} onChange={handleChange} />
                         <EditInput label="Locality (Optional)" name="locality" value={formData.locality} onChange={handleChange} />
                         <EditInput label="Pincode" name="pincode" value={formData.pincode} onChange={handleChange} />
@@ -530,7 +531,7 @@ const ClientProfile = () => {
     // ── VIEW MODE ────────────────────────────────────────────────────────────
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50">
+        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50" data-guide-id="client-page-profile">
             <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-24">
 
                 {/* Header */}
@@ -622,7 +623,7 @@ const ClientProfile = () => {
                                 <SectionHeading icon={MapPin} title="Address Details" />
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                                     <DetailItem label="Full Address"  value={profile.address?.fullAddress}   icon={MapPin} />
-                                    <DetailItem label="City"          value={profile.address?.city}          icon={Building2} />
+                                    <DetailItem label="District"       value={profile.address?.city}          icon={Building2} />
                                     <DetailItem label="Village / Area" value={profile.address?.village}      icon={Home} />
                                     <DetailItem label="Locality"      value={profile.address?.locality}      icon={Home} />
                                     <DetailItem label="Home Location" value={profile.address?.homeLocation}  icon={MapPin} />

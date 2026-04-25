@@ -44,6 +44,37 @@ const detectShift = (t) => {
     return '';
 };
 
+const TIME_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const TIME_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, '0'));
+
+const formatTimeSelection = (value = '') => {
+    const [hourPart, minutePart] = String(value || '').split(':');
+    const hour = Number(hourPart);
+    const minute = Number(minutePart);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+        return { hour: '09', minute: '00', period: 'AM' };
+    }
+
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return {
+        hour: String(hour12).padStart(2, '0'),
+        minute: String(minute).padStart(2, '0'),
+        period,
+    };
+};
+
+const buildTimeFromSelection = (hour, minute, period) => {
+    const safeHour = Number(hour);
+    const safeMinute = Number(minute);
+    if (!Number.isFinite(safeHour) || !Number.isFinite(safeMinute)) return '';
+
+    let normalizedHour = safeHour % 12;
+    if (String(period).toUpperCase() === 'PM') normalizedHour += 12;
+    if (String(period).toUpperCase() === 'AM' && safeHour === 12) normalizedHour = 0;
+    return `${String(normalizedHour).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+};
+
 const todayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1733,15 +1764,15 @@ export default function ClientJobPost() {
             const stateName = a.state || '';
             const countryName = a.country || '';
             const pincode = a.postcode || '';
-            const fetchedCity = a.city || a.town || a.county || '';
-            const fullAddress = [area, talukha, fetchedCity, stateName, countryName, pincode].filter(Boolean).join(', ');
+            const fetchedDistrict = a.county || a.city || a.town || a.state_district || '';
+            const fullAddress = [area, talukha, fetchedDistrict, stateName, countryName, pincode].filter(Boolean).join(', ');
             const validation = validateAddressAgainstDescribe(fullAddress);
 
             setLocation((prev) => ({
                 ...prev,
                 lat,
                 lng,
-                city: city || prev.city,
+                city: fetchedDistrict || prev.city,
                 locality: prev.locality,
                 state: stateName,
                 pincode,
@@ -1782,7 +1813,7 @@ export default function ClientJobPost() {
     // Step transitions
     const go0to1 = async () => {
         if (!description.trim()) return toast.error('Please describe the work.');
-        if (!city.trim()) return toast.error('City is required for accurate budget calculation.');
+        if (!city.trim()) return toast.error('District is required for accurate budget calculation.');
         if (!resolvedLocality) return toast.error('Locality is required for locality-based dynamic pricing.');
         if (!validateScheduleFields(true)) return;
         if (description.trim().length < MIN_AI_DESC_CHARS) {
@@ -1813,7 +1844,7 @@ export default function ClientJobPost() {
 
     const go1to2 = async () => {
         try {
-            if (!city.trim()) return toast.error('City is required for accurate budget calculation.');
+            if (!city.trim()) return toast.error('District is required for accurate budget calculation.');
             if (!resolvedLocality) return toast.error('Locality is required for locality-based dynamic pricing.');
             if (!validateScheduleFields(true)) return;
             const unansweredRequired = questions.filter((q) => {
@@ -2032,7 +2063,7 @@ export default function ClientJobPost() {
     return (
         <div className="max-w-5xl mx-auto px-4 py-6 pb-28">
             <div className="mb-6 bg-gradient-to-r from-orange-500 to-amber-500 rounded-3xl px-6 py-6 shadow-lg">
-                <h1 className="text-3xl sm:text-4xl font-black text-white">Post Job</h1>
+                <h1 className="text-3xl sm:text-4xl font-black text-white" data-guide-id="client-page-job-post">Post Job</h1>
                 <p className="text-sm text-orange-100 mt-1">Create and publish a professional job listing</p>
                 <p className="text-sm text-orange-50 mt-2">Step {step + 1} of {STEPS.length}: {STEPS[step].label}</p>
             </div>
@@ -2104,14 +2135,49 @@ export default function ClientJobPost() {
                         </div>
                         <div>
                             <label className="block text-base font-semibold text-gray-700 mb-2">Start Time <span className="text-red-500">*</span></label>
-                            <input
-                                type="time"
-                                min="06:00"
-                                max="21:00"
-                                value={scheduledTime}
-                                onChange={e => { setScheduledTime(e.target.value); setScheduleError(''); }}
-                                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-orange-400 transition-colors"
-                            />
+                            {(() => {
+                                const { hour, minute, period } = formatTimeSelection(scheduledTime);
+                                return (
+                                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                                        <select
+                                            value={hour}
+                                            onChange={(event) => {
+                                                setScheduledTime(buildTimeFromSelection(event.target.value, minute, period));
+                                                setScheduleError('');
+                                            }}
+                                            className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-orange-400 transition-colors bg-white"
+                                        >
+                                            {TIME_HOUR_OPTIONS.map((option) => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={minute}
+                                            onChange={(event) => {
+                                                setScheduledTime(buildTimeFromSelection(hour, event.target.value, period));
+                                                setScheduleError('');
+                                            }}
+                                            className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-orange-400 transition-colors bg-white"
+                                        >
+                                            {TIME_MINUTE_OPTIONS.map((option) => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={period}
+                                            onChange={(event) => {
+                                                setScheduledTime(buildTimeFromSelection(hour, minute, event.target.value));
+                                                setScheduleError('');
+                                            }}
+                                            className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-orange-400 transition-colors bg-white"
+                                        >
+                                            <option value="AM">AM</option>
+                                            <option value="PM">PM</option>
+                                        </select>
+                                    </div>
+                                );
+                            })()}
+                            <p className="text-xs text-gray-500 mt-1">Choose the time in 12-hour format; it is stored in the existing schedule format.</p>
                         </div>
                     </div>
 
@@ -2608,7 +2674,7 @@ export default function ClientJobPost() {
                             <PRow label="Date" value={scheduledDate ? new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''} />
                             <PRow label="Start Time" value={scheduledTime} />
                             <PRow label="Shift" value={shift} />
-                            <PRow label="City" value={location.city} />
+                            <PRow label="District" value={location.city} />
                             <PRow label="Address" value={[location.locality, location.city, location.pincode].filter(Boolean).join(', ')} />
                             <PRow label="Building / Home" value={location.buildingName} />
                             <PRow label="Flat / Home No." value={location.unitNumber} />

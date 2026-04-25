@@ -1,666 +1,1059 @@
 // src/pages/worker/ViewIdCard.jsx
-// Professional ID Card — Government-style design with security features
-// Print dimensions: 105mm × 74mm (A7 landscape) at 300 DPI
-// Fixes all previous bugs (address object, Cloudinary URLs, auth token)
-// FULLY MOBILE RESPONSIVE with proper photo loading
+// KarigarConnect — Professional ID Card (White + Orange Theme)
+// Clean layout: NO overlapping elements. QR is isolated in its own column.
+// Print dimensions: A6 landscape (148mm × 105mm) at 300 DPI
+// Dependencies: react-qr-code, html2canvas, jspdf, react-hot-toast
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import QRCode from "react-qr-code";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import * as api from "../../api";
 
-// ── Google Fonts loader ───────────────────────────────────────────────────────
+// ─── Google Font loader ────────────────────────────────────────────────────────
 const loadFonts = () => {
-    if (document.getElementById('idcard-fonts')) return;
-    const link = document.createElement('link');
-    link.id   = 'idcard-fonts';
-    link.rel  = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap';
-    document.head.appendChild(link);
+  if (document.getElementById("kc-fonts")) return;
+  const link = document.createElement("link");
+  link.id = "kc-fonts";
+  link.rel = "stylesheet";
+  link.href =
+    "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800;900&display=swap";
+  document.head.appendChild(link);
 };
 
-// ── Micro-pattern SVG (security background) ──────────────────────────────────
-const MICRO_PATTERN = `data:image/svg+xml;base64,${btoa(`
-<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60">
-  <defs>
-    <pattern id="p" width="20" height="20" patternUnits="userSpaceOnUse">
-      <circle cx="10" cy="10" r="0.8" fill="rgba(255,255,255,0.07)"/>
-      <line x1="0" y1="10" x2="20" y2="10" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
-      <line x1="10" y1="0" x2="10" y2="20" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
-    </pattern>
-  </defs>
-  <rect width="60" height="60" fill="url(#p)"/>
-</svg>
-`)}`;
+// ─── Fake barcode (deterministic from ID string) ──────────────────────────────
+const FakeBarcode = ({ value = "", width = 180, height = 30 }) => {
+  const bars = useMemo(() => {
+    const seed = value.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+    const rng = (n) => {
+      const x = Math.sin(seed * n + n) * 10000;
+      return x - Math.floor(x);
+    };
+    const result = [];
+    let x = 0;
+    let i = 0;
+    while (x < width) {
+      const w = Math.max(1, Math.floor(rng(i + 1) * 4));
+      if (i % 3 !== 2) result.push({ x, w });
+      x += w;
+      i++;
+    }
+    return result;
+  }, [value, width]);
 
-const DIAGONAL_LINES = `data:image/svg+xml;base64,${btoa(`
-<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">
-  <defs>
-    <pattern id="d" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="10" stroke="rgba(255,255,255,0.035)" stroke-width="3"/>
-    </pattern>
-  </defs>
-  <rect width="40" height="40" fill="url(#d)"/>
-</svg>
-`)}`;
-
-// ── Star/seal SVG ─────────────────────────────────────────────────────────────
-const Emblem = ({ size = 56 }) => (
-    <svg width={size} height={size} viewBox="0 0 56 56" fill="none">
-        <circle cx="28" cy="28" r="27" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3 2"/>
-        <circle cx="28" cy="28" r="22" stroke="#f59e0b" strokeWidth="0.8" opacity="0.5"/>
-        <circle cx="28" cy="28" r="16" fill="rgba(245,158,11,0.08)" stroke="#f59e0b" strokeWidth="0.8"/>
-        {/* Gear-like outer ring */}
-        {Array.from({ length: 16 }).map((_, i) => {
-            const angle = (i * 360) / 16;
-            const rad   = (angle * Math.PI) / 180;
-            const x1    = 28 + 24 * Math.cos(rad);
-            const y1    = 28 + 24 * Math.sin(rad);
-            const x2    = 28 + 26 * Math.cos(rad);
-            const y2    = 28 + 26 * Math.sin(rad);
-            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f59e0b" strokeWidth="1.5" opacity="0.7"/>;
-        })}
-        {/* KC letters */}
-        <text x="28" y="25" textAnchor="middle" fill="#f59e0b" fontSize="9" fontWeight="bold" fontFamily="Inter, sans-serif" letterSpacing="1">KC</text>
-        <text x="28" y="35" textAnchor="middle" fill="#f59e0b" fontSize="5" fontFamily="Inter, sans-serif" letterSpacing="2" opacity="0.8">VERIFIED</text>
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {bars.map((b, i) => (
+        <rect key={i} x={b.x} y={0} width={b.w} height={height} fill="#222" />
+      ))}
     </svg>
+  );
+};
+
+// ─── Inline styles (plain objects, no styled-components needed) ───────────────
+const S = {
+  // Page wrapper
+  page: {
+    minHeight: "100vh",
+    background: "#F3F4F6",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    padding: "40px 16px 60px",
+    fontFamily: "'Barlow', sans-serif",
+  },
+
+  // Page title area
+  pageTitle: {
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  pageTitleH1: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 28,
+    fontWeight: 900,
+    letterSpacing: 6,
+    color: "#E85D04",
+    margin: 0,
+    textTransform: "uppercase",
+  },
+  pageTitleSub: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    letterSpacing: 3,
+    textTransform: "uppercase",
+    marginTop: 4,
+  },
+
+  // ── FRONT CARD ──────────────────────────────────────────────────────────────
+  cardOuter: {
+    background: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    width: 760,
+    boxShadow:
+      "0 24px 64px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+    position: "relative",
+    marginBottom: 20,
+  },
+
+  // Orange header
+  header: {
+    background: "linear-gradient(105deg, #C84B00 0%, #E85D04 40%, #F48C06 75%, #FAA307 100%)",
+    padding: "20px 28px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    position: "relative",
+    overflow: "hidden",
+    minHeight: 90,
+  },
+  headerBg: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundImage:
+      "repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 12px)",
+    pointerEvents: "none",
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    zIndex: 1,
+  },
+  logoCircle: {
+    width: 48,
+    height: 48,
+    background: "rgba(255,255,255,0.2)",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1.5px solid rgba(255,255,255,0.4)",
+    flexShrink: 0,
+  },
+  orgBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+  },
+  orgName: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 28,
+    fontWeight: 900,
+    color: "#fff",
+    letterSpacing: 3,
+    lineHeight: 1,
+    textTransform: "uppercase",
+  },
+  orgTagline: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.75)",
+    letterSpacing: 2.5,
+    textTransform: "uppercase",
+    fontWeight: 500,
+  },
+  headerRight: {
+    zIndex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  idTypeBadge: {
+    background: "rgba(255,255,255,0.2)",
+    border: "1px solid rgba(255,255,255,0.45)",
+    borderRadius: 6,
+    padding: "5px 14px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  idTypeBadgeLabel: {
+    fontSize: 8,
+    color: "rgba(255,255,255,0.75)",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+  },
+  idTypeBadgeValue: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: "#fff",
+    letterSpacing: 1,
+    fontFamily: "'Barlow Condensed', sans-serif",
+  },
+
+  // Body of front card
+  body: {
+    padding: "24px 28px 0 28px",
+    display: "flex",
+    gap: 28,
+  },
+
+  // LEFT: Photo column
+  photoCol: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 0,
+    width: 120,
+  },
+  photoFrame: {
+    width: 112,
+    height: 136,
+    borderRadius: 10,
+    border: "3px solid #E85D04",
+    overflow: "hidden",
+    background: "#FFF3E0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxShadow: "0 4px 16px rgba(232,93,4,0.18)",
+  },
+  photoInitials: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 44,
+    fontWeight: 900,
+    color: "#E85D04",
+    lineHeight: 1,
+  },
+  verifyBadge: (passed) => ({
+    background: passed ? "#DCFCE7" : "#FFF3E0",
+    border: `1px solid ${passed ? "#86EFAC" : "#FECBA1"}`,
+    borderRadius: 20,
+    padding: "4px 10px",
+    fontSize: 9,
+    fontWeight: 700,
+    color: passed ? "#15803D" : "#C2410C",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+  }),
+  emblemBox: {
+    marginTop: 4,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 2,
+  },
+  emblemLabel: {
+    fontSize: 8,
+    color: "#9CA3AF",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+  },
+
+  // CENTER: Main info column
+  infoCol: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    minWidth: 0,
+  },
+  workerName: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 36,
+    fontWeight: 900,
+    color: "#111827",
+    letterSpacing: 1,
+    lineHeight: 1,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  workerRole: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#E85D04",
+    letterSpacing: 3,
+    textTransform: "uppercase",
+    marginBottom: 14,
+  },
+  divider: {
+    height: 1,
+    background:
+      "linear-gradient(90deg, #E85D04 0%, #FAA307 50%, transparent 100%)",
+    opacity: 0.3,
+    marginBottom: 14,
+  },
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "12px 20px",
+    marginBottom: 16,
+  },
+  infoCell: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  infoLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    fontWeight: 500,
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#111827",
+    letterSpacing: 0.3,
+  },
+  infoValueOrange: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#E85D04",
+    fontFamily: "'Barlow Condensed', sans-serif",
+    letterSpacing: 2,
+  },
+  skillsSection: {
+    marginTop: "auto",
+    paddingTop: 14,
+    borderTop: "1px solid #F3F4F6",
+  },
+  skillsLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  skillPills: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 5,
+  },
+  pill: (primary) => ({
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    padding: "4px 11px",
+    borderRadius: 4,
+    background: primary ? "#1F2937" : "#FFF3E0",
+    color: primary ? "#FAA307" : "#C2410C",
+    border: `1px solid ${primary ? "#374151" : "#FECBA1"}`,
+  }),
+
+  // RIGHT: QR column
+  qrCol: {
+    flexShrink: 0,
+    width: 110,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    paddingTop: 4,
+  },
+  qrBox: {
+    background: "#fff",
+    border: "1.5px solid #E5E7EB",
+    borderRadius: 10,
+    padding: 8,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  },
+  qrLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    textAlign: "center",
+    fontWeight: 600,
+  },
+  expSection: {
+    marginTop: 8,
+    background: "#FFF3E0",
+    border: "1px solid #FECBA1",
+    borderRadius: 8,
+    padding: "8px 12px",
+    textAlign: "center",
+    width: "100%",
+  },
+  expLabel: {
+    fontSize: 8,
+    color: "#92400E",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  expValue: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#E85D04",
+    letterSpacing: 1,
+  },
+
+  // Footer of front card
+  cardFooter: {
+    marginTop: 20,
+    background: "#111827",
+    padding: "10px 28px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  footerLeft: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+  },
+  footerAddress: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    letterSpacing: 0.3,
+  },
+  footerUrl: {
+    fontSize: 9,
+    color: "#6B7280",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  footerCenter: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+  },
+  footerRight: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 3,
+  },
+  footerIssued: {
+    fontSize: 9,
+    color: "#6B7280",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  footerIdBig: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 16,
+    fontWeight: 800,
+    color: "#FAA307",
+    letterSpacing: 3,
+  },
+
+  // Holographic strip
+  holoStrip: {
+    height: 4,
+    background:
+      "linear-gradient(90deg, #3B82F6, #8B5CF6, #E85D04, #F59E0B, #10B981, #3B82F6)",
+  },
+
+  // ── BACK CARD ───────────────────────────────────────────────────────────────
+  backCard: {
+    background: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    width: 760,
+    boxShadow:
+      "0 24px 64px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+    marginBottom: 32,
+  },
+  backStripe: {
+    height: 48,
+    background: "#111827",
+  },
+  backBody: {
+    padding: "20px 28px 0 28px",
+    display: "flex",
+    gap: 28,
+  },
+  backLeft: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+  sigBox: {
+    border: "1px solid #E5E7EB",
+    borderRadius: 8,
+    padding: "12px 16px",
+    minHeight: 64,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+  },
+  sigLine: {
+    height: 1,
+    background: "#D1D5DB",
+    marginBottom: 6,
+  },
+  sigLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+  },
+  termsBox: {
+    background: "#F9FAFB",
+    borderRadius: 8,
+    padding: "12px 14px",
+    border: "1px solid #F3F4F6",
+  },
+  termsText: {
+    fontSize: 10,
+    color: "#6B7280",
+    lineHeight: 1.7,
+    letterSpacing: 0.2,
+  },
+  barcodeSection: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+    paddingBottom: 8,
+  },
+  barcodeId: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 11,
+    color: "#6B7280",
+    letterSpacing: 3,
+    fontWeight: 700,
+  },
+  backRight: {
+    flexShrink: 0,
+    width: 140,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+  },
+  backQrBox: {
+    background: "#fff",
+    border: "1.5px solid #E5E7EB",
+    borderRadius: 10,
+    padding: 8,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  },
+  backQrId: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 17,
+    fontWeight: 800,
+    color: "#E85D04",
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  backQrLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+  backFooter: {
+    marginTop: 20,
+    background: "linear-gradient(105deg, #C84B00, #E85D04 50%, #FAA307)",
+    padding: "10px 28px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  backFooterText: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    fontWeight: 500,
+  },
+
+  // Download button
+  downloadBtn: {
+    padding: "14px 48px",
+    background: "linear-gradient(105deg, #C84B00, #E85D04 50%, #F48C06)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 18,
+    fontWeight: 800,
+    letterSpacing: 4,
+    textTransform: "uppercase",
+    cursor: "pointer",
+    boxShadow: "0 8px 28px rgba(232,93,4,0.35)",
+    transition: "transform 0.15s, box-shadow 0.15s",
+  },
+  printNote: {
+    marginTop: 10,
+    fontSize: 11,
+    color: "#9CA3AF",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+
+  // Loading / error screens
+  centered: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#F3F4F6",
+    fontFamily: "'Barlow', sans-serif",
+  },
+};
+
+// ─── Logo SVG (handshake simplified) ─────────────────────────────────────────
+const HandshakeLogo = ({ size = 30 }) => (
+  <svg width={size} height={size} viewBox="0 0 30 30" fill="none">
+    <path
+      d="M5 18 C8 14, 12 12, 16 14 L20 16.5 C22.5 17.5, 24 16, 23 14"
+      stroke="white"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      fill="none"
+    />
+    <path
+      d="M7 20.5 L11 16.5"
+      stroke="white"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+    <path
+      d="M23 14 L25.5 17.5"
+      stroke="white"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+    <circle cx="7" cy="21" r="1.5" fill="rgba(255,255,255,0.6)" />
+    <circle cx="25" cy="18" r="1.5" fill="rgba(255,255,255,0.6)" />
+  </svg>
 );
 
-// ── Barcode simulation ────────────────────────────────────────────────────────
-const FakeBarcode = ({ value = '', width = 160, height = 28 }) => {
-    const bars = React.useMemo(() => {
-        const seed = value.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-        const rng  = (n) => {
-            let x = Math.sin(seed * n + n) * 10000;
-            return x - Math.floor(x);
-        };
-        const result = [];
-        let x = 0;
-        let i = 0;
-        while (x < width) {
-            const w = Math.max(1, Math.floor(rng(i + 1) * 4));
-            const isBar = i % 3 !== 2;
-            result.push({ x, w, fill: isBar });
-            x += w;
-            i++;
-        }
-        return result;
-    }, [value, width]);
+// ─── Emblem / seal ────────────────────────────────────────────────────────────
+const Emblem = ({ size = 44 }) => (
+  <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+    <circle cx="22" cy="22" r="20" stroke="#E85D04" strokeWidth="1.2" strokeDasharray="3 2" />
+    <circle cx="22" cy="22" r="15" stroke="#E85D04" strokeWidth="0.7" opacity="0.5" />
+    <circle cx="22" cy="22" r="10" fill="rgba(232,93,4,0.08)" stroke="#E85D04" strokeWidth="0.7" />
+    {Array.from({ length: 12 }).map((_, i) => {
+      const angle = (i * 360) / 12;
+      const rad = (angle * Math.PI) / 180;
+      const x1 = 22 + 17 * Math.cos(rad);
+      const y1 = 22 + 17 * Math.sin(rad);
+      const x2 = 22 + 19.5 * Math.cos(rad);
+      const y2 = 22 + 19.5 * Math.sin(rad);
+      return (
+        <line
+          key={i}
+          x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke="#E85D04"
+          strokeWidth="1.5"
+          opacity="0.7"
+        />
+      );
+    })}
+    <text
+      x="22" y="19"
+      textAnchor="middle"
+      fill="#E85D04"
+      fontSize="8"
+      fontWeight="bold"
+      fontFamily="'Barlow Condensed', sans-serif"
+      letterSpacing="1"
+    >
+      KC
+    </text>
+    <text
+      x="22" y="27"
+      textAnchor="middle"
+      fill="#E85D04"
+      fontSize="4.5"
+      fontFamily="'Barlow', sans-serif"
+      letterSpacing="1.5"
+      opacity="0.8"
+    >
+      VERIFIED
+    </text>
+  </svg>
+);
 
-    return (
-        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-            {bars.map((b, i) =>
-                b.fill
-                    ? <rect key={i} x={b.x} y={0} width={b.w} height={height} fill="#ffffff" opacity="0.9"/>
-                    : null
-            )}
-        </svg>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 const ViewIdCard = () => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
-    const [photoError, setPhotoError] = useState(false);
-    const idCardRef = useRef(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [photoError, setPhotoError] = useState(false);
+  const [btnHover, setBtnHover] = useState(false);
+  const frontRef = useRef(null);
+  const backRef = useRef(null);
 
-    useEffect(() => {
-        loadFonts();
-        fetchUser();
-        
-        // Add resize listener for responsive scaling
-        const handleResize = () => {
-            setWindowWidth(window.innerWidth);
-        };
-        
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+  useEffect(() => {
+    loadFonts();
+    fetchUser();
+  }, []);
 
-    const fetchUser = async () => {
-        try {
-            const local = JSON.parse(localStorage.getItem('user') || '{}');
-            const id    = local?.karigarId || local?._id || local?.id;
-            if (!id) { toast.error('User not found'); return; }
-            const { data } = await api.getPublicWorkerProfile(id);
-            setUser(data);
-        } catch (err) {
-            console.error(err);
-            toast.error('Failed to load profile');
-        } finally { setLoading(false); }
-    };
-
-   const downloadPDF = async () => {
-    if (!idCardRef.current) return;
-
-    const toastId = toast.loading('Generating PDF…');
-
+  const fetchUser = async () => {
     try {
-        // ✅ Wait for images to load
-        const images = idCardRef.current.querySelectorAll("img");
-        await Promise.all(
-            Array.from(images).map(img => {
-                if (img.complete) return Promise.resolve();
-                return new Promise(resolve => {
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                });
-            })
-        );
-
-        // ✅ Mobile optimized canvas
-        const canvas = await html2canvas(idCardRef.current, {
-            scale: window.innerWidth < 768 ? 1.5 : 2,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            logging: false,
-        });
-
-        const img = canvas.toDataURL('image/jpeg', 0.9);
-
-        const pdf = new jsPDF('l', 'mm', [148, 105]);
-
-        const pw = pdf.internal.pageSize.getWidth();
-        const ph = pdf.internal.pageSize.getHeight();
-
-        const ratio = Math.min(pw / canvas.width, ph / canvas.height);
-
-        pdf.addImage(
-            img,
-            'JPEG',
-            (pw - canvas.width * ratio) / 2,
-            (ph - canvas.height * ratio) / 2,
-            canvas.width * ratio,
-            canvas.height * ratio
-        );
-
-        // ✅ Mobile-safe download
-        const blob = pdf.output('blob');
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Karigar_ID_${user.karigarId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        // ✅ fallback for mobile browsers
-        window.open(url, "_blank");
-
-        toast.success('Downloaded!', { id: toastId });
-
-    } catch (e) {
-        console.error(e);
-        toast.error('Download failed', { id: toastId });
+      const local = JSON.parse(localStorage.getItem("user") || "{}");
+      const id = local?.karigarId || local?._id || local?.id;
+      if (!id) { toast.error("User not found"); return; }
+      const { data } = await api.getPublicWorkerProfile(id);
+      setUser(data);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load profile");
+    } finally {
+      setLoading(false);
     }
-};
+  };
 
-    // Calculate responsive scale for the card - MORE AGRESSIVE SCALING FOR MOBILE
-    const getCardScale = () => {
-        if (windowWidth >= 1024) return 1;
-        if (windowWidth >= 768) return 0.7;
-        if (windowWidth >= 640) return 0.55;
-        if (windowWidth >= 480) return 0.45;
-        return 0.38; // For very small phones
-    };
+  const getPhotoUrl = () => {
+    if (photoError || !user?.photo) {
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        user?.name || "Worker"
+      )}&background=FFF3E0&color=E85D04&bold=true&size=200&format=png`;
+    }
+    if (user.photo.startsWith("http")) return user.photo;
+    const BASE = import.meta.env.VITE_API_URL || "http://192.168.0.101:5000";
+    return `${BASE}/${user.photo.replace(/\\/g, "/")}`;
+  };
 
-    const cardScale = getCardScale();
-    const cardWidth = 760 * cardScale;
-    const cardHeight = 460 * cardScale;
+  const downloadPDF = async () => {
+    if (!frontRef.current || !backRef.current) return;
+    const toastId = toast.loading("Generating PDF…");
+    try {
+      const opts = { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false };
 
-    // Get photo URL with better error handling
-    const getPhotoUrl = () => {
-        if (photoError) {
-            return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Worker')}&background=ea580c&color=fff&bold=true&size=200`;
-        }
-        
-        if (!user?.photo) {
-            return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'Worker')}&background=ea580c&color=fff&bold=true&size=200`;
-        }
-        
-        if (user.photo.startsWith('http')) {
-            return user.photo;
-        }
-        
-        // Handle local file path
-        // Handle local file path
-const BASE_URL = import.meta.env.VITE_API_URL || "http://192.168.0.101:5000";
+      const canvasFront = await html2canvas(frontRef.current, opts);
+      const canvasBack = await html2canvas(backRef.current, opts);
 
-return `${BASE_URL}/${user.photo.replace(/\\/g, '/')}`;
-    };
+      const pdf = new jsPDF("l", "mm", [148, 105]);
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
 
-    const photoUrl = getPhotoUrl();
+      const addPage = (canvas, addNew = false) => {
+        if (addNew) pdf.addPage([148, 105], "l");
+        const ratio = Math.min(pw / canvas.width, ph / canvas.height);
+        const x = (pw - canvas.width * ratio) / 2;
+        const y = (ph - canvas.height * ratio) / 2;
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, y, canvas.width * ratio, canvas.height * ratio);
+      };
 
-    const handlePhotoError = () => {
-        setPhotoError(true);
-    };
+      addPage(canvasFront);
+      addPage(canvasBack, true);
 
-    if (loading) return (
-        <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#0d1117' }}>
-            <div style={{ textAlign:'center', color:'#f59e0b', fontFamily:'Rajdhani, sans-serif' }}>
-                <div style={{ width:48, height:48, border:'3px solid rgba(245,158,11,0.3)', borderTopColor:'#f59e0b', borderRadius:'50%', animation:'spin 1s linear infinite', margin:'0 auto 12px' }}/>
-                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-                <p>Loading Profile…</p>
-            </div>
-        </div>
-    );
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `KarigarConnect_ID_${user.karigarId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-    if (!user) return (
-        <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#0d1117' }}>
-            <p style={{ color:'#ef4444', fontFamily:'Rajdhani, sans-serif', fontSize:18 }}>Failed to load profile.</p>
-        </div>
-    );
+      toast.success("PDF Downloaded!", { id: toastId });
+    } catch (e) {
+      console.error(e);
+      toast.error("Download failed", { id: toastId });
+    }
+  };
 
-    // Derived data
-    const city     = user.address?.city     || user.city     || '';
-    const pincode  = user.address?.pincode  || user.pincode  || '';
-    const locality = user.address?.locality || user.locality || '';
-    const fullAddr = [locality, city, pincode].filter(Boolean).join(', ');
-    const skills   = (user.skills || []).map(s => s.name || s).filter(Boolean);
-    const publicURL= `${window.location.origin}/profile/public/${user.karigarId}`;
-    const issueDate= new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-    const expYear  = new Date().getFullYear() + 3;
-
-    // Face verification badge
-    const fvStatus  = user.faceVerificationStatus;
-    const fvPassed  = fvStatus === 'passed';
-
-    return (
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (loading) return (
+    <div style={S.centered}>
+      <div style={{ textAlign: "center", color: "#E85D04" }}>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         <div style={{
-            minHeight: '100vh',
-            background: 'linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%)',
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center',
-            justifyContent: 'center', 
-            padding: windowWidth < 640 ? '1rem' : '2rem 1rem',
-            fontFamily: 'Inter, sans-serif',
-            overflowX: 'auto',
-        }}>
-            {/* Title - Responsive */}
-            <div style={{ textAlign:'center', marginBottom: windowWidth < 640 ? '1rem' : '2rem' }}>
-                <h1 style={{ 
-                    color:'#f59e0b', 
-                    fontFamily:'Inter, sans-serif', 
-                    fontSize: windowWidth < 480 ? 16 : (windowWidth < 640 ? 20 : 28), 
-                    letterSpacing: windowWidth < 640 ? 2 : 6, 
-                    margin:0 
-                }}>
-                    KARIGARCONNECT
-                </h1>
-                <p style={{ 
-                    color:'#64748b', 
-                    fontSize: windowWidth < 640 ? 9 : 13, 
-                    marginTop: 4, 
-                    letterSpacing: windowWidth < 640 ? 1 : 3, 
-                    textTransform:'uppercase' 
-                }}>
-                    Official Identity Card
-                </p>
+          width: 44, height: 44,
+          border: "3px solid #FDE8CC",
+          borderTopColor: "#E85D04",
+          borderRadius: "50%",
+          animation: "spin 0.9s linear infinite",
+          margin: "0 auto 12px",
+        }} />
+        <p style={{ fontFamily: "'Barlow', sans-serif", fontSize: 14, color: "#9CA3AF", letterSpacing: 2 }}>
+          Loading Profile…
+        </p>
+      </div>
+    </div>
+  );
+
+  if (!user) return (
+    <div style={S.centered}>
+      <p style={{ color: "#EF4444", fontSize: 16 }}>Failed to load profile.</p>
+    </div>
+  );
+
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const city     = user.address?.city     || user.city     || "";
+  const pincode  = user.address?.pincode  || user.pincode  || "";
+  const locality = user.address?.locality || user.locality || "";
+  const fullAddr = [locality, city, pincode].filter(Boolean).join(", ");
+  const skills   = (user.skills || []).map((s) => s.name || s).filter(Boolean);
+  const publicURL = `${window.location.origin}/profile/public/${user.karigarId}`;
+  const issueDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const expYear  = new Date().getFullYear() + 3;
+  const fvPassed = user.faceVerificationStatus === "passed";
+  const initials = (user.name || "KC")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return (
+    <div style={S.page}>
+      {/* ── Page title ── */}
+      <div style={S.pageTitle}>
+        <h1 style={S.pageTitleH1}>KarigarConnect</h1>
+        <p style={S.pageTitleSub}>Official Identity Card</p>
+      </div>
+
+      {/* ══════════════════════════════════════════════
+          FRONT CARD
+      ══════════════════════════════════════════════ */}
+      <div ref={frontRef} style={S.cardOuter}>
+
+        {/* Orange header */}
+        <div style={S.header}>
+          <div style={S.headerBg} />
+          <div style={S.headerLeft}>
+            <div style={S.logoCircle}>
+              <HandshakeLogo size={28} />
             </div>
-
-            {/* Card Container with Responsive Scaling */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                width: '100%',
-                overflowX: 'auto',
-                padding: '10px 0',
-            }}>
-                <div style={{
-                    width: cardWidth,
-                    height: cardHeight,
-                    position: 'relative',
-                    flexShrink: 0,
-                }}>
-                    {/* Inner card content remains exactly the same dimensions but scaled */}
-                    <div style={{
-                        transform: `scale(${cardScale})`,
-                        transformOrigin: 'top left',
-                        width: 760,
-                        height: 460,
-                        position: 'relative',
-                    }}>
-                        <div ref={idCardRef} style={{
-                            width: 760, 
-                            height: 460,
-                            borderRadius: 16,
-                            overflow: 'hidden',
-                            position: 'relative',
-                            boxShadow: '0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(245,158,11,0.3)',
-                            fontFamily: 'Inter, sans-serif',
-                        }}>
-
-                            {/* ── BASE BACKGROUND ── */}
-                            <div style={{
-                                position: 'absolute', inset: 0,
-                                background: 'linear-gradient(135deg, #0c1220 0%, #111827 40%, #0f172a 70%, #0c1220 100%)',
-                            }}/>
-
-                            {/* ── MICRO PATTERN ── */}
-                            <div style={{
-                                position:'absolute', inset:0,
-                                backgroundImage: `url("${MICRO_PATTERN}")`,
-                                backgroundSize: '60px 60px',
-                                opacity: 0.6,
-                            }}/>
-                            <div style={{
-                                position:'absolute', inset:0,
-                                backgroundImage: `url("${DIAGONAL_LINES}")`,
-                                backgroundSize: '40px 40px',
-                            }}/>
-
-                            {/* ── ORANGE ACCENT BAND (top) ── */}
-                            <div style={{
-                                position: 'absolute', top: 0, left: 0, right: 0, height: 6,
-                                background: 'linear-gradient(90deg, #ea580c, #f59e0b, #ea580c)',
-                            }}/>
-
-                            {/* ── LARGE WATERMARK ── */}
-                            <div style={{
-                                position: 'absolute', top: '50%', left: '50%',
-                                transform: 'translate(-50%, -50%) rotate(-20deg)',
-                                fontFamily: 'Inter, sans-serif',
-                                fontSize: 130, color: 'rgba(245,158,11,0.03)',
-                                letterSpacing: 10, whiteSpace: 'nowrap',
-                                pointerEvents: 'none', userSelect: 'none',
-                            }}>
-                                KARIGARCONNECT
-                            </div>
-
-                            {/* ── LEFT SIDEBAR ── */}
-                            <div style={{
-                                position: 'absolute', left: 0, top: 0, bottom: 0, width: 220,
-                                background: 'linear-gradient(180deg, rgba(234,88,12,0.18) 0%, rgba(234,88,12,0.08) 100%)',
-                                borderRight: '1px solid rgba(234,88,12,0.25)',
-                                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                padding: '0 16px',
-                                paddingTop: 20,
-                            }}>
-
-                                {/* Org name */}
-                                <div style={{ textAlign:'center', marginBottom:14 }}>
-                                    <div style={{ fontFamily:'Inter, sans-serif', fontSize:22, color:'#f59e0b', letterSpacing:3, lineHeight:1 }}>KARIGAR</div>
-                                    <div style={{ fontFamily:'Inter, sans-serif', fontSize:22, color:'#ea580c', letterSpacing:3, lineHeight:1 }}>CONNECT</div>
-                                    <div style={{ fontSize:8, color:'rgba(255,255,255,0.4)', letterSpacing:3, marginTop:2, textTransform:'uppercase' }}>Platform ID Card</div>
-                                </div>
-
-                                {/* Photo frame with error handling */}
-                                <div style={{
-                                    width: 110, height: 130,
-                                    border: '2px solid #f59e0b',
-                                    borderRadius: 8,
-                                    overflow: 'hidden',
-                                    position: 'relative',
-                                    boxShadow: '0 0 20px rgba(245,158,11,0.3), inset 0 0 20px rgba(0,0,0,0.5)',
-                                    marginBottom: 12,
-                                    background: '#1a2035',
-                                    flexShrink: 0,
-                                }}>
-                                    <img 
-                                        src={photoUrl} 
-                                        alt={user.name}
-                                        style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
-                                        crossOrigin="anonymous"
-                                        onError={handlePhotoError}
-                                    />
-                                    {/* Corner accents */}
-                                    {[{t:0,l:0},{t:0,r:0},{b:0,l:0},{b:0,r:0}].map((p,i)=>(
-                                        <div key={i} style={{
-                                            position:'absolute', ...p, width:12, height:12,
-                                            borderTop: (p.t===0)?'2px solid #f59e0b':'none',
-                                            borderBottom: (p.b===0)?'2px solid #f59e0b':'none',
-                                            borderLeft: (p.l===0)?'2px solid #f59e0b':'none',
-                                            borderRight: (p.r===0)?'2px solid #f59e0b':'none',
-                                        }}/>
-                                    ))}
-                                </div>
-
-                                {/* Verification status */}
-                                <div style={{
-                                    background: fvPassed ? 'rgba(34,197,94,0.15)' : 'rgba(234,88,12,0.15)',
-                                    border: `1px solid ${fvPassed ? 'rgba(34,197,94,0.5)' : 'rgba(234,88,12,0.4)'}`,
-                                    borderRadius: 20, padding: '4px 10px',
-                                    fontSize: 9, color: fvPassed ? '#4ade80' : '#fbbf24',
-                                    letterSpacing: 2, textTransform:'uppercase', fontWeight:700,
-                                    marginBottom: 10,
-                                }}>
-                                    {fvPassed ? '✓ FACE VERIFIED' : user.verificationStatus === 'approved' ? '✓ APPROVED' : '⏳ PENDING'}
-                                </div>
-
-                                {/* Emblem */}
-                                <div style={{ marginTop: 'auto', marginBottom: 12, opacity: 0.8 }}>
-                                    <Emblem size={46}/>
-                                </div>
-
-                                {/* Issue / Expiry */}
-                                <div style={{ textAlign:'center', marginBottom:10 }}>
-                                    <div style={{ fontSize:8, color:'rgba(255,255,255,0.3)', letterSpacing:2, textTransform:'uppercase' }}>VALID UNTIL</div>
-                                    <div style={{ fontSize:11, color:'#f59e0b', fontWeight:700, letterSpacing:1 }}>DEC {expYear}</div>
-                                </div>
-                            </div>
-
-                            {/* ── RIGHT CONTENT AREA ── */}
-                            <div style={{
-                                position: 'absolute', left: 220, right: 0, top: 0, bottom: 0,
-                                padding: '20px 22px',
-                                display: 'flex', flexDirection: 'column',
-                            }}>
-                                {/* TOP ROW: name + QR */}
-                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
-                                    <div style={{ flex:1, marginRight:16 }}>
-                                        {/* Role badge */}
-                                        <div style={{
-                                            display:'inline-block',
-                                            background:'linear-gradient(90deg, rgba(234,88,12,0.3), rgba(245,158,11,0.15))',
-                                            border:'1px solid rgba(234,88,12,0.5)',
-                                            borderRadius:3, padding:'2px 10px',
-                                            fontSize:9, color:'#fbbf24',
-                                            letterSpacing:3, textTransform:'uppercase', fontWeight:700,
-                                            marginBottom:8,
-                                        }}>
-                                            Karigar / Skilled Worker
-                                        </div>
-
-                                        {/* Name */}
-                                        <div style={{
-                                            fontFamily:'Inter, sans-serif',
-                                            fontSize:32, color:'#ffffff', letterSpacing:2,
-                                            lineHeight:1, marginBottom:6,
-                                            textShadow:'0 0 30px rgba(245,158,11,0.3)',
-                                        }}>
-                                            {user.name}
-                                        </div>
-
-                                        {/* Karigar ID */}
-                                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                                            <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)', letterSpacing:2, textTransform:'uppercase' }}>ID:</span>
-                                            <span style={{
-                                                fontFamily:'Inter, sans-serif',
-                                                fontSize:15, color:'#f59e0b', letterSpacing:3, fontWeight:700,
-                                            }}>
-                                                {user.karigarId}
-                                            </span>
-                                        </div>
-
-                                        {/* Experience badge */}
-                                        {user.overallExperience && (
-                                            <div style={{
-                                                display:'inline-flex', alignItems:'center', gap:5,
-                                                background:'rgba(245,158,11,0.12)',
-                                                border:'1px solid rgba(245,158,11,0.3)',
-                                                borderRadius:4, padding:'3px 10px', marginTop:4,
-                                            }}>
-                                                <span style={{ fontSize:10, color:'#fbbf24', letterSpacing:2 }}>
-                                                    ★ {user.overallExperience.toUpperCase()}
-                                                </span>
-                                                {user.experience && (
-                                                    <span style={{ fontSize:9, color:'rgba(255,255,255,0.4)', marginLeft:4 }}>
-                                                        {user.experience} YRS
-                                                    </span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* QR Code */}
-                                    <div style={{
-                                        background:'white', padding:8, borderRadius:8,
-                                        boxShadow:'0 0 20px rgba(245,158,11,0.2)',
-                                        flexShrink:0,
-                                    }}>
-                                        <QRCode value={publicURL} size={72}/>
-                                        <div style={{ textAlign:'center', fontSize:7, color:'#374151', marginTop:4, letterSpacing:1, fontFamily:'Inter, sans-serif', fontWeight:700 }}>
-                                            SCAN TO VERIFY
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* DIVIDER */}
-                                <div style={{ height:1, background:'linear-gradient(90deg, rgba(234,88,12,0.6), rgba(245,158,11,0.3), transparent)', marginBottom:14 }}/>
-
-                                {/* INFO GRID */}
-                                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'10px 16px', marginBottom:14 }}>
-                                    {[
-                                        { label:'Mobile', value: user.mobile || '—' },
-                                        { label:'Gender', value: user.gender || '—' },
-                                        { label:'Location', value: city || '—' },
-                                    ].map(({ label, value }) => (
-                                        <div key={label}>
-                                            <div style={{ fontSize:8, color:'rgba(255,255,255,0.35)', letterSpacing:2, textTransform:'uppercase', marginBottom:2 }}>{label}</div>
-                                            <div style={{ fontSize:12, color:'#e2e8f0', fontWeight:600, letterSpacing:0.5 }}>{value}</div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* SKILLS */}
-                                {skills.length > 0 && (
-                                    <div style={{ marginBottom:14 }}>
-                                        <div style={{ fontSize:8, color:'rgba(255,255,255,0.35)', letterSpacing:2, textTransform:'uppercase', marginBottom:6 }}>Skills</div>
-                                        <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                                            {skills.slice(0,5).map((sk,i) => (
-                                                <span key={i} style={{
-                                                    fontSize:9, padding:'3px 10px', borderRadius:3,
-                                                    background:i<3 ? 'rgba(234,88,12,0.25)' : 'rgba(255,255,255,0.07)',
-                                                    border:`1px solid ${i<3 ? 'rgba(234,88,12,0.5)' : 'rgba(255,255,255,0.12)'}`,
-                                                    color:i<3 ? '#fbbf24' : 'rgba(255,255,255,0.6)',
-                                                    letterSpacing:1, textTransform:'uppercase', fontWeight:600,
-                                                }}>
-                                                    {sk}
-                                                </span>
-                                            ))}
-                                            {skills.length > 5 && (
-                                                <span style={{ fontSize:9, padding:'3px 8px', borderRadius:3, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.35)', letterSpacing:1 }}>
-                                                    +{skills.length-5}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* ADDRESS + BARCODE ROW */}
-                                <div style={{ marginTop:'auto', display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
-                                    <div style={{ flex:1, marginRight:16 }}>
-                                        {fullAddr && (
-                                            <div style={{ marginBottom:8 }}>
-                                                <div style={{ fontSize:8, color:'rgba(255,255,255,0.3)', letterSpacing:2, textTransform:'uppercase', marginBottom:2 }}>Address</div>
-                                                <div style={{ fontSize:10, color:'rgba(255,255,255,0.5)', letterSpacing:0.3, lineHeight:1.4 }}>{fullAddr}</div>
-                                            </div>
-                                        )}
-                                        <div style={{ fontSize:8, color:'rgba(255,255,255,0.2)', letterSpacing:1 }}>
-                                            ISSUED: {issueDate} · www.karigarconnect.in
-                                        </div>
-                                    </div>
-
-                                    {/* Barcode */}
-                                    <div style={{ flexShrink:0 }}>
-                                        <FakeBarcode value={user.karigarId} width={150} height={26}/>
-                                        <div style={{
-                                            fontFamily:'Inter, sans-serif',
-                                            fontSize:7, color:'rgba(255,255,255,0.3)',
-                                            textAlign:'center', marginTop:3, letterSpacing:2,
-                                        }}>
-                                            {user.karigarId}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* ── HOLOGRAPHIC STRIP (bottom accent) ── */}
-                            <div style={{
-                                position:'absolute', bottom:0, left:0, right:0, height:4,
-                                background:'linear-gradient(90deg, #1e40af, #7c3aed, #ea580c, #f59e0b, #ea580c, #7c3aed, #1e40af)',
-                                backgroundSize:'400% 100%',
-                            }}/>
-
-                            {/* ── CORNER SECURITY NUMBER ── */}
-                            <div style={{
-                                position:'absolute', top:10, right:14,
-                                fontFamily:'Inter, sans-serif',
-                                fontSize:8, color:'rgba(255,255,255,0.2)', letterSpacing:2,
-                            }}>
-                                {user.karigarId}-{new Date().getFullYear()}
-                            </div>
-
-                            {/* ── MRZ ZONE (bottom-left, inside sidebar) ── */}
-                            <div style={{
-                                position:'absolute', bottom:16, left:10, right: 'auto',
-                                width:190,
-                                fontFamily:'Inter, sans-serif',
-                                fontSize:7, color:'rgba(255,255,255,0.15)',
-                                letterSpacing:1.5, lineHeight:1.8, wordBreak:'break-all',
-                                overflow:'hidden',
-                            }}>
-                                {'KC'.padEnd(6,'<')}{(user.karigarId||'').replace('-','').padEnd(12,'<')}<br/>
-                                {(user.name||'').replace(/\s+/g,'<').toUpperCase().slice(0,20).padEnd(20,'<')}
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
+            <div style={S.orgBlock}>
+              <div style={S.orgName}>KarigarConnect</div>
+              <div style={S.orgTagline}>Bridging Skills with Community</div>
             </div>
-
-            {/* Download button - Responsive */}
-            <button onClick={downloadPDF} style={{
-                marginTop: '1.5rem',
-                padding: windowWidth < 640 ? '10px 24px' : '14px 40px',
-                background: 'linear-gradient(90deg, #ea580c, #f59e0b)',
-                color: 'white',
-                border: 'none',
-                borderRadius: 10,
-                fontFamily: 'Inter, sans-serif',
-                fontSize: windowWidth < 640 ? 12 : 18,
-                letterSpacing: windowWidth < 640 ? 2 : 4,
-                cursor: 'pointer',
-                boxShadow: '0 8px 30px rgba(234,88,12,0.4)',
-                transition: 'all 0.2s',
-                zIndex: 10,
-            }}
-            onMouseOver={e => { e.target.style.transform='translateY(-2px)'; e.target.style.boxShadow='0 12px 40px rgba(234,88,12,0.6)'; }}
-            onMouseOut={e  => { e.target.style.transform='translateY(0)'; e.target.style.boxShadow='0 8px 30px rgba(234,88,12,0.4)'; }}>
-                ↓ DOWNLOAD PDF
-            </button>
-
-            <p style={{ 
-                marginTop: 12, 
-                fontSize: windowWidth < 640 ? 8 : 12, 
-                color: '#374151', 
-                letterSpacing: windowWidth < 640 ? 0.5 : 1, 
-                textTransform: 'uppercase',
-                textAlign: 'center'
-            }}>
-                A6 Landscape · 300 DPI Print Ready
-            </p>
+          </div>
+          <div style={S.headerRight}>
+            <div style={S.idTypeBadge}>
+              <div style={S.idTypeBadgeLabel}>Document Type</div>
+              <div style={S.idTypeBadgeValue}>WORKER ID</div>
+            </div>
+          </div>
         </div>
-    );
+
+        {/* ── Body: 3 columns [Photo | Info | QR] ── */}
+        <div style={S.body}>
+
+          {/* Column 1 — Photo */}
+          <div style={S.photoCol}>
+            <div style={S.photoFrame}>
+              <img
+                src={getPhotoUrl()}
+                alt={user.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                crossOrigin="anonymous"
+                onError={() => setPhotoError(true)}
+              />
+            </div>
+            <div style={S.verifyBadge(fvPassed)}>
+              {fvPassed
+                ? "✓ Face Verified"
+                : user.verificationStatus === "approved"
+                ? "✓ Approved"
+                : "⏳ Pending"}
+            </div>
+            <div style={S.emblemBox}>
+              <Emblem size={44} />
+              <div style={S.emblemLabel}>Platform Seal</div>
+            </div>
+          </div>
+
+          {/* Column 2 — Worker info */}
+          <div style={S.infoCol}>
+            <div style={S.workerName}>{user.name}</div>
+            <div style={S.workerRole}>Karigar · Skilled Worker</div>
+            <div style={S.divider} />
+
+            {/* Info grid — 3 cols × 2 rows */}
+            <div style={S.infoGrid}>
+              <div style={S.infoCell}>
+                <div style={S.infoLabel}>ID Number</div>
+                <div style={S.infoValueOrange}>{user.karigarId}</div>
+              </div>
+              <div style={S.infoCell}>
+                <div style={S.infoLabel}>Mobile</div>
+                <div style={S.infoValue}>{user.mobile || "—"}</div>
+              </div>
+              <div style={S.infoCell}>
+                <div style={S.infoLabel}>Gender</div>
+                <div style={S.infoValue}>{user.gender || "—"}</div>
+              </div>
+              <div style={S.infoCell}>
+                <div style={S.infoLabel}>City</div>
+                <div style={S.infoValue}>{city || "—"}</div>
+              </div>
+              <div style={S.infoCell}>
+                <div style={S.infoLabel}>Experience</div>
+                <div style={S.infoValue}>
+                  {user.experience ? `${user.experience} Years` : "—"}
+                  {user.overallExperience ? ` · ${user.overallExperience}` : ""}
+                </div>
+              </div>
+              <div style={S.infoCell}>
+                <div style={S.infoLabel}>Valid Until</div>
+                <div style={S.infoValue}>Dec {expYear}</div>
+              </div>
+            </div>
+
+            {/* Skills */}
+            {skills.length > 0 && (
+              <div style={S.skillsSection}>
+                <div style={S.skillsLabel}>Skills</div>
+                <div style={S.skillPills}>
+                  {skills.slice(0, 6).map((sk, i) => (
+                    <span key={i} style={S.pill(i < 3)}>
+                      {sk}
+                    </span>
+                  ))}
+                  {skills.length > 6 && (
+                    <span style={S.pill(false)}>+{skills.length - 6}</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Column 3 — QR code (completely isolated, no overlap) */}
+          <div style={S.qrCol}>
+            <div style={{ fontSize: 9, color: "#9CA3AF", letterSpacing: 2, textTransform: "uppercase", fontWeight: 600, textAlign: "center" }}>
+              Scan to Verify
+            </div>
+            <div style={S.qrBox}>
+              <QRCode value={publicURL} size={86} />
+            </div>
+            <div style={{ fontSize: 8, color: "#9CA3AF", letterSpacing: 1, textAlign: "center", lineHeight: 1.5 }}>
+              karigarconnect.in
+            </div>
+
+            {/* Validity block */}
+            <div style={S.expSection}>
+              <div style={S.expLabel}>Issue Date</div>
+              <div style={{ ...S.expValue, fontSize: 12 }}>{issueDate}</div>
+              <div style={{ ...S.expLabel, marginTop: 6 }}>Expires</div>
+              <div style={S.expValue}>Dec {expYear}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Holographic strip */}
+        <div style={{ ...S.holoStrip, marginTop: 20 }} />
+
+        {/* Dark footer bar */}
+        <div style={S.cardFooter}>
+          <div style={S.footerLeft}>
+            {fullAddr && (
+              <div style={S.footerAddress}>{fullAddr}</div>
+            )}
+            <div style={S.footerUrl}>www.karigarconnect.in</div>
+          </div>
+          <div style={S.footerCenter}>
+            <FakeBarcode value={user.karigarId} width={160} height={22} />
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, color: "#6B7280", letterSpacing: 3, marginTop: 2 }}>
+              {user.karigarId}
+            </div>
+          </div>
+          <div style={S.footerRight}>
+            <div style={S.footerIssued}>Issued: {issueDate}</div>
+            <div style={S.footerIdBig}>{user.karigarId}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════
+          BACK CARD
+      ══════════════════════════════════════════════ */}
+      <div ref={backRef} style={S.backCard}>
+
+        {/* Black magnetic stripe */}
+        <div style={S.backStripe} />
+
+        {/* Body: left info + right QR */}
+        <div style={S.backBody}>
+
+          {/* Left section */}
+          <div style={S.backLeft}>
+
+            {/* Signature box */}
+            <div style={S.sigBox}>
+              <div style={S.sigLine} />
+              <div style={S.sigLabel}>Authorized Signature / Worker Signature</div>
+            </div>
+
+            {/* Terms */}
+            <div style={S.termsBox}>
+              <div style={{ ...S.infoLabel, marginBottom: 6 }}>Terms & Conditions</div>
+              <div style={S.termsText}>
+                This card is the property of KarigarConnect. If found, please
+                return to the nearest KarigarConnect office or contact our
+                helpline. Misuse of this card is a punishable offense under
+                applicable law. This card is valid only with the holographic seal
+                visible. Employment is temporary and subject to assignment
+                availability.
+              </div>
+            </div>
+
+            {/* Barcode */}
+            <div style={S.barcodeSection}>
+              <div style={{ ...S.infoLabel, marginBottom: 4 }}>Scan Barcode</div>
+              <FakeBarcode value={user.karigarId} width={200} height={32} />
+              <div style={S.barcodeId}>{user.karigarId}-W</div>
+            </div>
+          </div>
+
+          {/* Right section — QR isolated */}
+          <div style={S.backRight}>
+            <div style={{ ...S.backQrLabel, marginBottom: 4 }}>Profile QR</div>
+            <div style={S.backQrBox}>
+              <QRCode value={publicURL} size={116} />
+            </div>
+            <div style={S.backQrId}>{user.karigarId}</div>
+            <div style={S.backQrLabel}>karigarconnect.in/profile</div>
+
+            {/* Worker category pill */}
+            <div style={{
+              marginTop: 8,
+              background: "#FFF3E0",
+              border: "1px solid #FECBA1",
+              borderRadius: 6,
+              padding: "6px 12px",
+              textAlign: "center",
+              width: "100%",
+            }}>
+              <div style={{ fontSize: 8, color: "#92400E", letterSpacing: 2, textTransform: "uppercase", marginBottom: 2 }}>Category</div>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color: "#E85D04", letterSpacing: 1 }}>
+                {user.overallExperience || "SKILLED WORKER"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Orange footer */}
+        <div style={S.backFooter}>
+          <div style={S.backFooterText}>Employment · Temporary Services · Skilled Workers</div>
+          <div style={S.backFooterText}>© {new Date().getFullYear()} KarigarConnect</div>
+        </div>
+      </div>
+
+      {/* ── Download button ── */}
+      <button
+        onClick={downloadPDF}
+        style={{
+          ...S.downloadBtn,
+          transform: btnHover ? "translateY(-2px)" : "translateY(0)",
+          boxShadow: btnHover
+            ? "0 14px 40px rgba(232,93,4,0.45)"
+            : "0 8px 28px rgba(232,93,4,0.35)",
+        }}
+        onMouseEnter={() => setBtnHover(true)}
+        onMouseLeave={() => setBtnHover(false)}
+      >
+        ↓ Download PDF
+      </button>
+      <p style={S.printNote}>A6 Landscape · Front & Back · 300 DPI Print Ready</p>
+    </div>
+  );
 };
 
 export default ViewIdCard;

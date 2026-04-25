@@ -13,10 +13,11 @@ const referenceSchema = new mongoose.Schema({
 
 const skillSchema = new mongoose.Schema({
     name: { type: String, required: true },
+    isPrimary: { type: Boolean, default: false },
     proficiency: {
         type: String,
         enum: ['Beginner', 'Intermediate', 'Expert', 'Good', 'Medium', 'High'],
-        required: true,
+        default: undefined,
     },
 });
 
@@ -86,6 +87,8 @@ const userSchema = new mongoose.Schema({
         enum: ['pending', 'approved', 'rejected', 'blocked'],
         default: 'pending',
     },
+    blockedAt: { type: Date, default: null },
+    blockReason: { type: String, default: null, trim: true },
     reviewLock: {
         lockedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         lockedAt: { type: Date, default: null },

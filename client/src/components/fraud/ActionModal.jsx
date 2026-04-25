@@ -3,8 +3,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { motion, AnimatePresence } from 'framer-motion';
 import { takeAdminAction } from '../../store/slices/fraudSlice';
 import toast from 'react-hot-toast';
+import { AlertTriangle, Shield, Trash2, Send, X, Loader2 } from 'lucide-react';
 
 const BLOCK_MSG = (name, role, reason) =>
     `Hi ${name}, your ${role} account on our platform has been temporarily blocked due to suspicious activity.\n\nReason: ${reason || 'Violation of platform terms and conditions'}.\n\nPlease contact our support team to restore your account access.`;
@@ -13,15 +15,15 @@ const DELETE_MSG = (name, role, reason) =>
     `Dear ${name}, your ${role} account has been permanently removed from our platform.\n\nReason: ${reason || 'Fraudulent activity detected on your account'}.\n\nIf you believe this is an error, please contact support within 7 days.`;
 
 export function ActionModal({ alert, action, onClose }) {
-    const dispatch          = useDispatch();
+    const dispatch = useDispatch();
     const { actionLoading } = useSelector(s => s.fraud);
-    const inputRef          = useRef(null);
-    const isDelete          = action === 'delete';
-    const topReason         = alert?.top_reasons?.[0]?.label || '';
+    const inputRef = useRef(null);
+    const isDelete = action === 'delete';
+    const topReason = alert?.top_reasons?.[0]?.label || '';
 
-    const [message,   setMessage]   = useState('');
+    const [message, setMessage] = useState('');
     const [confirmed, setConfirmed] = useState('');
-    const [error,     setError]     = useState('');
+    const [error, setError] = useState('');
 
     useEffect(() => {
         setMessage(isDelete ? DELETE_MSG(alert?.name, alert?.user_role, topReason) : BLOCK_MSG(alert?.name, alert?.user_role, topReason));
@@ -38,9 +40,9 @@ export function ActionModal({ alert, action, onClose }) {
         if (isDelete && confirmed !== 'DELETE') return setError('Type DELETE to confirm permanent removal.');
 
         const result = await dispatch(takeAdminAction({
-            user_id: alert.user_id, 
+            user_id: alert.user_id,
             user_role: alert.user_role,
-            action, 
+            action,
             reason: message.trim(),
         }));
 
@@ -55,132 +57,127 @@ export function ActionModal({ alert, action, onClose }) {
     if (!alert || !action) return null;
 
     return (
-        <div onClick={onClose} style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-            zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }}>
-            <div onClick={e => e.stopPropagation()} style={{
-                background: '#fff', borderRadius: 14, padding: 28,
-                width: '100%', maxWidth: 520,
-                boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-                animation: 'modalIn 0.2s ease',
-            }}>
-                {/* Header */}
-                <div style={{ display: 'flex', gap: 14, marginBottom: 20 }}>
-                    <div style={{
-                        width: 42, height: 42, borderRadius: 10, flexShrink: 0, fontSize: 20,
-                        background: isDelete ? '#fef2f2' : '#fff7ed',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                        {isDelete ? '🗑️' : '🔒'}
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                    className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* Header */}
+                    <div className={`p-5 ${isDelete ? 'bg-gradient-to-r from-red-500 to-rose-500' : 'bg-gradient-to-r from-orange-500 to-amber-500'} text-white`}>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                                {isDelete ? <Trash2 size="18" className="text-white" /> : <Shield size="18" className="text-white" />}
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg">{isDelete ? 'Delete Account' : 'Block Account'}</h3>
+                                <p className="text-white/80 text-xs">{isDelete ? 'This action is permanent and cannot be undone.' : 'User will receive SMS and in-app notification.'}</p>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
-                            {isDelete ? 'Delete Account' : 'Block Account'}
-                        </h3>
-                        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>
-                            {isDelete ? 'This is permanent and cannot be undone.' : 'User will receive SMS and in-app notification.'}
+
+                    {/* User Summary */}
+                    <div className="p-5 border-b border-gray-100 bg-gray-50">
+                        <div className="grid grid-cols-3 gap-3">
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Name</p>
+                                <p className="text-sm font-semibold text-gray-800 mt-1">{alert.name || '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Role</p>
+                                <p className="text-sm font-semibold text-gray-800 capitalize mt-1">{alert.user_role}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Risk</p>
+                                <p className={`text-sm font-bold mt-1 ${
+                                    alert.risk_level === 'HIGH' ? 'text-red-600' :
+                                    alert.risk_level === 'MEDIUM' ? 'text-orange-600' : 'text-yellow-600'
+                                }`}>
+                                    {alert.risk_level} — {Math.round((alert.fraud_probability || 0) * 100)}%
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Message Textarea */}
+                    <div className="p-5">
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                            Message to User
+                        </label>
+                        <textarea
+                            value={message}
+                            onChange={e => setMessage(e.target.value)}
+                            rows={5}
+                            className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
+                            placeholder="Message content..."
+                        />
+                        <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+                            <Send size="10" /> Sent via SMS + In-app notification
                         </p>
                     </div>
-                </div>
 
-                {/* User summary */}
-                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', marginBottom: 18, display: 'flex', gap: 20 }}>
-                    {[
-                        ['Name',   alert.name || '—'],
-                        ['Role',   alert.user_role],
-                        ['Risk',   `${alert.risk_level} — ${Math.round((alert.fraud_probability||0)*100)}%`],
-                    ].map(([lbl, val]) => (
-                        <div key={lbl}>
-                            <div style={{ fontSize: 11, color: '#9ca3af' }}>{lbl}</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', textTransform: 'capitalize' }}>{val}</div>
+                    {/* Delete Confirmation */}
+                    {isDelete && (
+                        <div className="px-5 pb-3">
+                            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                                Type <span className="text-red-600 bg-red-50 px-1.5 py-0.5 rounded">DELETE</span> to confirm
+                            </label>
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={confirmed}
+                                onChange={e => { setConfirmed(e.target.value.toUpperCase()); setError(''); }}
+                                placeholder="Type DELETE here"
+                                className={`w-full border-2 rounded-xl p-3 text-sm focus:outline-none transition-all ${
+                                    confirmed === 'DELETE' 
+                                        ? 'border-green-400 bg-green-50' 
+                                        : 'border-gray-200 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                                }`}
+                            />
                         </div>
-                    ))}
-                </div>
+                    )}
 
-                {/* Message */}
-                <label style={{ display: 'block', marginBottom: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Message sent to user</span>
-                        <span style={{ color: '#9ca3af', fontWeight: 400 }}>Sent via SMS + in-app</span>
+                    {/* Error Message */}
+                    {error && (
+                        <div className="mx-5 mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
+                            <AlertTriangle size="14" className="text-red-600" />
+                            <p className="text-xs text-red-600">{error}</p>
+                        </div>
+                    )}
+
+                    {/* Footer Buttons */}
+                    <div className="p-5 border-t border-gray-100 flex gap-3">
+                        <button
+                            onClick={onClose}
+                            disabled={actionLoading}
+                            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={actionLoading || (isDelete && confirmed !== 'DELETE')}
+                            className={`flex-1 px-4 py-2.5 rounded-xl text-white font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                                isDelete 
+                                    ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600' 
+                                    : 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                            {actionLoading ? <Loader2 size="14" className="animate-spin" /> : isDelete ? <Trash2 size="14" /> : <Shield size="14" />}
+                            {isDelete ? 'Delete Account' : 'Block Account'}
+                        </button>
                     </div>
-                    <textarea
-                        value={message}
-                        onChange={e => setMessage(e.target.value)}
-                        rows={6}
-                        style={{
-                            width: '100%', padding: '10px 12px',
-                            border: '1px solid #d1d5db', borderRadius: 8,
-                            fontSize: 13, color: '#111827', lineHeight: 1.6,
-                            resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif',
-                            boxSizing: 'border-box', background: '#fff',
-                        }}
-                        onFocus={e => e.target.style.borderColor = '#6366f1'}
-                        onBlur={e => e.target.style.borderColor = '#d1d5db'}
-                    />
-                </label>
-
-                {/* Delete confirmation */}
-                {isDelete && (
-                    <div style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                            Type <span style={{ fontFamily: 'Inter, sans-serif', background: '#fef2f2', color: '#dc2626', padding: '1px 5px', borderRadius: 3 }}>DELETE</span> to confirm
-                        </label>
-                        <input
-                            ref={inputRef}
-                            value={confirmed}
-                            onChange={e => { setConfirmed(e.target.value); setError(''); }}
-                            placeholder="Type DELETE"
-                            style={{
-                                width: '100%', padding: '9px 12px',
-                                border: `1px solid ${confirmed === 'DELETE' ? '#16a34a' : '#d1d5db'}`,
-                                borderRadius: 8, fontSize: 13, outline: 'none',
-                                fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
-                                color: '#111827', background: '#fff',
-                            }}
-                        />
-                    </div>
-                )}
-
-                {/* Error */}
-                {error && (
-                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#dc2626', marginBottom: 14 }}>
-                        {error}
-                    </div>
-                )}
-
-                {/* Footer */}
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                    <button onClick={onClose} disabled={actionLoading}
-                        style={{ padding: '9px 20px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={actionLoading || (isDelete && confirmed !== 'DELETE')}
-                        style={{
-                            padding: '9px 20px', border: 'none', borderRadius: 8,
-                            background: actionLoading ? '#e5e7eb' : isDelete ? '#dc2626' : '#d97706',
-                            color: actionLoading ? '#9ca3af' : '#fff',
-                            fontSize: 13, fontWeight: 700,
-                            cursor: actionLoading ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            opacity: (isDelete && confirmed !== 'DELETE' && !actionLoading) ? 0.5 : 1,
-                            transition: 'opacity 0.15s',
-                        }}
-                    >
-                        {actionLoading && <SpinIcon />}
-                        {isDelete ? '🗑️ Delete Account' : '🔒 Block Account'}
-                    </button>
-                </div>
-            </div>
-            <style>{`@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
-        </div>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
     );
 }
-
-const SpinIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: 'fraud-spin 0.8s linear infinite' }}>
-        <path d="M21 12a9 9 0 1 1-9-9"/>
-    </svg>
-);

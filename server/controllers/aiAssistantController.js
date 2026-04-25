@@ -1235,6 +1235,63 @@ const getRateTableCities = async () => {
     }
 };
 
+const getRateSummaryByCity = async (cityKey = '') => {
+    if (!cityKey) return null;
+    const normalizedCity = String(cityKey || '').trim().toLowerCase();
+    if (!normalizedCity) return null;
+
+    const rows = await BaseRate.find({ isActive: true, cityKey: normalizedCity }).lean();
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const values = {
+        hours: [],
+        days: [],
+        visits: [],
+    };
+
+    for (const row of rows) {
+        const hourlyCandidates = [row.platformHourlyMin, row.platformHourlyMax, row.localHourlyMin, row.localHourlyMax]
+            .filter((value) => Number.isFinite(Number(value)) && Number(value) > 0)
+            .map(Number);
+        if (hourlyCandidates.length) {
+            values.hours.push(hourlyCandidates.reduce((sum, value) => sum + value, 0) / hourlyCandidates.length);
+        }
+
+        const dailyCandidates = [row.platformDayMin, row.platformDayMax, row.localDayMin, row.localDayMax]
+            .filter((value) => Number.isFinite(Number(value)) && Number(value) > 0)
+            .map(Number);
+        if (dailyCandidates.length) {
+            values.days.push(dailyCandidates.reduce((sum, value) => sum + value, 0) / dailyCandidates.length);
+        }
+
+        const visitCandidates = [];
+        if (Number.isFinite(row.platformCostMin) && row.platformCostMin > 0) visitCandidates.push(Number(row.platformCostMin));
+        if (Number.isFinite(row.platformCostMax) && row.platformCostMax > 0) visitCandidates.push(Number(row.platformCostMax));
+        if (Number.isFinite(row.localDayMin) && row.localDayMin > 0) visitCandidates.push(Number(row.localDayMin));
+        if (Number.isFinite(row.localDayMax) && row.localDayMax > 0) visitCandidates.push(Number(row.localDayMax));
+        if (visitCandidates.length) {
+            values.visits.push(visitCandidates.reduce((sum, value) => sum + value, 0) / visitCandidates.length);
+        }
+    }
+
+    const average = (list) => {
+        if (!list.length) return 0;
+        return Math.round(list.reduce((sum, value) => sum + value, 0) / list.length);
+    };
+
+    const skills = new Set(rows.map((row) => normalizeText(row.skillKey || row.skill || '')).filter(Boolean));
+
+    return {
+        city: titleCase(rows[0].city || rows[0].cityKey || cityKey),
+        cityKey: normalizedCity,
+        averageHourlyRate: average(values.hours),
+        averageDailyRate: average(values.days),
+        averageVisitRate: average(values.visits) || average(values.days),
+        skillCount: skills.size,
+        source: 'baseRate',
+    };
+};
+
 const MIN_WORK_QUESTIONS = 6;
 
 const ensureQuestionShape = (q, index) => ({
@@ -2820,6 +2877,12 @@ exports.generateQuestions = async (req, res) => {
 exports.getRateTableCities = async (_req, res) => {
     const cities = await getRateTableCities();
     return res.status(200).json({ cities });
+};
+
+exports.getRateSummaryByCity = async (req, res) => {
+    const { cityKey, city } = req.query;
+    const summary = await getRateSummaryByCity(cityKey || city || '');
+    return res.status(200).json({ summary });
 };
 
 // ══════════════════════════════════════════════════════════════════════════════

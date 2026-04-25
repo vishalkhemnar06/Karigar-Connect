@@ -1,15 +1,9 @@
 // client/src/pages/auth/FaceVerification.jsx
-// Liveness detection using MediaPipe Face Mesh (loaded from CDN — no Vite issues).
-// Challenges: LOOK_STRAIGHT → BLINK → LOOK_FINAL (auto-capture)
-//
-// Props:
-//   onComplete(result) — called when all challenges pass
-//     result: { photoDataUrl: string, livenessScore: number }
-//   onCancel() — user dismissed
-//   title — heading text (default "Identity Verification")
-//   subtitle — subheading text
+// PREMIUM VERSION - Liveness detection using MediaPipe Face Mesh
+// Enhanced UI with modern design, animations, and better user feedback
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // ── MediaPipe eye landmark indices (Face Mesh 468 points) ────────────────────
 const LEFT_EYE  = [362, 385, 387, 263, 373, 380]; // outer,top-out,top-in,inner,bot-in,bot-out
@@ -25,7 +19,7 @@ const CHALLENGES = [
         label:       'Look straight at the camera',
         instruction: 'Position your face in the oval and look directly at the camera',
         icon:        '👁️',
-        durationMs:  2000,   // must hold for 2s
+        durationMs:  2000,
         type:        'hold',
     },
     {
@@ -46,9 +40,9 @@ const CHALLENGES = [
     },
 ];
 
-const CHALLENGE_TIMEOUT_MS = 15_000; // 15 seconds per challenge
+const CHALLENGE_TIMEOUT_MS = 15_000;
 const EAR_BLINK_THRESHOLD  = 0.20;
-const HEAD_TURN_THRESHOLD  = 0.05; // normalised nose offset
+const HEAD_TURN_THRESHOLD  = 0.05;
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -75,9 +69,20 @@ export const dataURLtoBlob = (dataUrl) => {
     return new Blob([arr], { type: mime });
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Load MediaPipe face_mesh from CDN ────────────────────────────────────────
+function loadMediaPipeFaceMesh() {
+    return new Promise((resolve, reject) => {
+        if (window.FaceMesh) { resolve(); return; }
+        const script = document.createElement('script');
+        script.src         = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
+        script.crossOrigin = 'anonymous';
+        script.onload  = resolve;
+        script.onerror = () => reject(new Error('Failed to load MediaPipe face_mesh'));
+        document.head.appendChild(script);
+    });
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
 export default function FaceVerification({
     onComplete,
     onCancel,
@@ -87,16 +92,16 @@ export default function FaceVerification({
     const videoRef    = useRef(null);
     const canvasRef   = useRef(null);
     const streamRef   = useRef(null);
-    const fmRef       = useRef(null);   // FaceMesh instance
-    const rafRef      = useRef(null);   // requestAnimationFrame id
-    const timerRef    = useRef(null);   // per-challenge timeout
-    const captureRef  = useRef(null);   // always-current captureAndFinish fn
+    const fmRef       = useRef(null);
+    const rafRef      = useRef(null);
+    const timerRef    = useRef(null);
+    const captureRef  = useRef(null);
 
-    const [status,           setStatus]          = useState('loading');   // loading|running|done|error
+    const [status,           setStatus]          = useState('loading');
     const [challengeIdx,     setChallengeIdx]     = useState(0);
-    const [progress,         setProgress]         = useState([]);         // completed challenge ids
+    const [progress,         setProgress]         = useState([]);
     const [faceDetected,     setFaceDetected]     = useState(false);
-    const [holdStart,        setHoldStart]        = useState(null);       // ms timestamp
+    const [holdStart,        setHoldStart]        = useState(null);
     const [holdPct,          setHoldPct]          = useState(0);
     const [errorMsg,         setErrorMsg]         = useState('');
     const [capturedPhoto,    setCapturedPhoto]    = useState(null);
@@ -106,12 +111,10 @@ export default function FaceVerification({
     const holdStartRef    = useRef(null);
     const progressRef     = useRef([]);
 
-    // Keep refs in sync with state
     useEffect(() => { challengeIdxRef.current = challengeIdx; }, [challengeIdx]);
     useEffect(() => { holdStartRef.current    = holdStart;    }, [holdStart]);
     useEffect(() => { progressRef.current     = progress;     }, [progress]);
 
-    // ── Cleanup on unmount ────────────────────────────────────────────────────
     useEffect(() => {
         return () => {
             cancelAnimationFrame(rafRef.current);
@@ -125,17 +128,14 @@ export default function FaceVerification({
         streamRef.current = null;
     };
 
-    // ── Load MediaPipe + start camera ─────────────────────────────────────────
     useEffect(() => {
         let alive = true;
 
         const init = async () => {
             try {
-                // 1. Load MediaPipe face_mesh from CDN (safe for all bundlers)
                 await loadMediaPipeFaceMesh();
                 if (!alive) return;
 
-                // 2. Start camera
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 640, height: 480, facingMode: 'user' },
                     audio: false,
@@ -148,7 +148,6 @@ export default function FaceVerification({
                     await videoRef.current.play();
                 }
 
-                // 3. Create FaceMesh instance
                 const faceMesh = new window.FaceMesh({
                     locateFile: (file) =>
                         `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
@@ -183,7 +182,6 @@ export default function FaceVerification({
         return () => { alive = false; };
     }, [restartTick]);
 
-    // ── Animation loop: send video frames to MediaPipe ────────────────────────
     const processLoop = useCallback(() => {
         const tick = async () => {
             if (fmRef.current && videoRef.current && videoRef.current.readyState >= 2) {
@@ -198,7 +196,6 @@ export default function FaceVerification({
         rafRef.current = requestAnimationFrame(tick);
     }, []);
 
-    // ── MediaPipe results handler ─────────────────────────────────────────────
     const handleResults = useCallback((results) => {
         const canvas = canvasRef.current;
         const video  = videoRef.current;
@@ -208,7 +205,6 @@ export default function FaceVerification({
         canvas.width  = video.videoWidth  || 640;
         canvas.height = video.videoHeight || 480;
 
-        // Draw mirrored video
         ctx.save();
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
@@ -266,7 +262,6 @@ export default function FaceVerification({
                 advanceChallenge(idx);
             }
         } else {
-            // Reset hold for this challenge (unless it was an event-type already fired)
             holdStartRef.current = null;
             setHoldStart(null);
             setHoldPct(0);
@@ -275,7 +270,6 @@ export default function FaceVerification({
         drawOverlay(ctx, canvas, true, noseOff, avgEAR);
     }, [status]);
 
-    // ── Advance to next challenge / finish ────────────────────────────────────
     const advanceChallenge = useCallback((completedIdx) => {
         clearTimeout(timerRef.current);
 
@@ -288,7 +282,6 @@ export default function FaceVerification({
 
         const next = completedIdx + 1;
         if (next >= CHALLENGES.length) {
-            // All challenges passed — auto-capture immediately
             captureRef.current?.();
         } else {
             setChallengeIdx(next);
@@ -305,7 +298,6 @@ export default function FaceVerification({
         }, CHALLENGE_TIMEOUT_MS);
     };
 
-    // ── Capture final photo (called automatically after all challenges pass) ──
     const captureAndFinish = () => {
         cancelAnimationFrame(rafRef.current);
         clearTimeout(timerRef.current);
@@ -317,19 +309,15 @@ export default function FaceVerification({
         cap.width  = v.videoWidth  || 640;
         cap.height = v.videoHeight || 480;
         const ctx  = cap.getContext('2d');
-        // Capture actual (non-mirrored) frame for backend
         ctx.drawImage(v, 0, 0, cap.width, cap.height);
         const dataUrl = cap.toDataURL('image/jpeg', 0.92);
         setCapturedPhoto(dataUrl);
         stopCamera();
         onComplete({ photoDataUrl: dataUrl, livenessScore: 1.0 });
     };
-    // Keep ref current so stable callbacks (advanceChallenge) can call it
     captureRef.current = captureAndFinish;
 
-    // ── Overlay drawing ───────────────────────────────────────────────────────
     const drawOverlay = (ctx, canvas, detected, noseOff, ear) => {
-        // Oval guide
         const cx = canvas.width  / 2;
         const cy = canvas.height / 2;
         const rx = canvas.width  * 0.27;
@@ -341,7 +329,6 @@ export default function FaceVerification({
         ctx.lineWidth   = 3;
         ctx.stroke();
 
-        // Semi-transparent outside oval
         ctx.save();
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.beginPath();
@@ -352,7 +339,6 @@ export default function FaceVerification({
         ctx.restore();
     };
 
-    // ── Retry ─────────────────────────────────────────────────────────────────
     const retry = () => {
         stopCamera();
         setStatus('loading');
@@ -368,129 +354,200 @@ export default function FaceVerification({
         setRestartTick((v) => v + 1);
     };
 
-    // ── Render ────────────────────────────────────────────────────────────────
     const currentChallenge = CHALLENGES[challengeIdx];
+    const completedCount = progress.length;
 
     return (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        >
+            <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
                 {/* Header */}
                 <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-5 text-white">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-xl font-black">{title}</h2>
-                            <p className="text-sm opacity-80 mt-0.5">{subtitle}</p>
+                            <h2 className="text-xl font-bold">{title}</h2>
+                            <p className="text-sm text-orange-100 mt-0.5">{subtitle}</p>
                         </div>
-                        <button onClick={onCancel} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold text-white transition-colors">✕</button>
+                        <button
+                            onClick={onCancel}
+                            className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all"
+                        >
+                            ✕
+                        </button>
                     </div>
                 </div>
 
-                {/* Progress chips */}
-                <div className="flex gap-2 px-5 py-3 border-b border-gray-100 overflow-x-auto">
-                    {CHALLENGES.map((c, i) => {
-                        const done   = progress.includes(c.id);
-                        const active = i === challengeIdx && status === 'running';
-                        return (
-                            <div key={c.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border-2 flex-shrink-0 transition-all ${
-                                done   ? 'border-green-400 bg-green-50 text-green-700' :
-                                active ? 'border-orange-400 bg-orange-50 text-orange-700 animate-pulse' :
-                                'border-gray-200 text-gray-400'
-                            }`}>
-                                {done ? '✓' : <span>{c.icon}</span>}
-                                {c.label}
-                            </div>
-                        );
-                    })}
+                {/* Progress Steps */}
+                <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
+                    <div className="flex items-center justify-between gap-2">
+                        {CHALLENGES.map((c, i) => {
+                            const done = progress.includes(c.id);
+                            const active = i === challengeIdx && status === 'running';
+                            return (
+                                <div key={c.id} className="flex-1 text-center">
+                                    <div className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                                        done ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-md' :
+                                        active ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md animate-pulse' :
+                                        'bg-gray-200 text-gray-400'
+                                    }`}>
+                                        {done ? '✓' : i + 1}
+                                    </div>
+                                    <p className={`text-[10px] font-semibold mt-1 ${active ? 'text-orange-600' : done ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                        {c.label.split(' ')[0]}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                {/* Camera view */}
+                {/* Camera View */}
                 <div className="relative bg-black" style={{ height: 380 }}>
                     <video ref={videoRef} className="hidden" playsInline muted />
                     <canvas ref={canvasRef} className="w-full h-full object-cover" style={{ transform: 'none' }} />
 
-                    {/* Loading overlay */}
-                    {status === 'loading' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900">
-                            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3"/>
-                            <p className="text-white text-sm font-medium">Starting camera…</p>
-                        </div>
-                    )}
+                    {/* Loading Overlay */}
+                    <AnimatePresence>
+                        {status === 'loading' && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90"
+                            >
+                                <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3" />
+                                <p className="text-white text-sm font-medium">Starting camera...</p>
+                                <p className="text-white/60 text-xs mt-1">Please allow camera access</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                    {/* Success overlay */}
-                    {status === 'done' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-green-900/80">
-                            <div className="text-6xl mb-3">✅</div>
-                            <p className="text-white font-bold text-xl">Verification Complete!</p>
-                            <p className="text-green-200 text-sm mt-1">All challenges passed</p>
-                        </div>
-                    )}
+                    {/* Success Overlay */}
+                    <AnimatePresence>
+                        {status === 'done' && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                className="absolute inset-0 flex flex-col items-center justify-center bg-emerald-900/90"
+                            >
+                                <div className="w-16 h-16 rounded-full bg-gradient-to-r from-emerald-500 to-green-500 flex items-center justify-center shadow-lg mb-3">
+                                    <span className="text-3xl">✅</span>
+                                </div>
+                                <p className="text-white font-bold text-xl">Verification Complete!</p>
+                                <p className="text-emerald-200 text-sm mt-1">All challenges passed successfully</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
+                    {/* Error Overlay */}
+                    <AnimatePresence>
+                        {status === 'error' && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 flex flex-col items-center justify-center bg-red-900/90 px-6 text-center"
+                            >
+                                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-3">
+                                    <span className="text-4xl">⚠️</span>
+                                </div>
+                                <p className="text-white font-bold text-base">{errorMsg || 'Verification failed'}</p>
+                                <button
+                                    onClick={retry}
+                                    className="mt-4 px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-bold text-sm transition-all"
+                                >
+                                    Try Again
+                                </button>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-
-                    {/* Error overlay */}
-                    {status === 'error' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-900/80 px-6 text-center">
-                            <div className="text-5xl mb-3">⚠️</div>
-                            <p className="text-white font-bold text-base">{errorMsg || 'Verification failed'}</p>
-                            <button onClick={retry} className="mt-4 px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors">Try Again</button>
-                        </div>
-                    )}
-
-                    {/* No face detected warning */}
-                    {status === 'running' && !faceDetected && (
-                        <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-                            <div className="bg-black/70 text-white text-xs px-4 py-2 rounded-full animate-pulse">
-                                👤 No face detected — move into the oval
-                            </div>
-                        </div>
-                    )}
+                    {/* No Face Detected Warning */}
+                    <AnimatePresence>
+                        {status === 'running' && !faceDetected && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 20 }}
+                                className="absolute bottom-4 left-0 right-0 flex justify-center"
+                            >
+                                <div className="bg-black/80 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full flex items-center gap-2 animate-pulse">
+                                    <span className="w-2 h-2 bg-orange-500 rounded-full" />
+                                    No face detected — move into the oval
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
-                {/* Challenge instructions */}
-                {status === 'running' && currentChallenge && (
-                    <div className="px-5 py-4 border-t border-gray-100">
-                        <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0">
-                                {currentChallenge.icon}
+                {/* Challenge Instructions */}
+                <AnimatePresence>
+                    {status === 'running' && currentChallenge && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="px-5 py-4 border-t border-gray-100"
+                        >
+                            <div className="flex items-start gap-3">
+                                <div className="w-12 h-12 bg-gradient-to-r from-orange-100 to-amber-100 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                                    {currentChallenge.icon}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-bold text-gray-800 text-sm">{currentChallenge.label}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">{currentChallenge.instruction}</p>
+                                    {holdPct > 0 && holdPct < 100 && (
+                                        <div className="mt-2">
+                                            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                <motion.div
+                                                    className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full"
+                                                    style={{ width: `${holdPct}%` }}
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${holdPct}%` }}
+                                                    transition={{ duration: 0.1 }}
+                                                />
+                                            </div>
+                                            <p className="text-[10px] text-orange-600 mt-1 text-right">{Math.round(holdPct)}%</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                    <span className="text-xs text-gray-400">{challengeIdx + 1}/{CHALLENGES.length}</span>
+                                    <p className="text-[10px] text-orange-500 font-semibold mt-1">
+                                        {completedCount} completed
+                                    </p>
+                                </div>
                             </div>
-                            <div className="flex-1">
-                                <p className="font-bold text-gray-800 text-sm">{currentChallenge.label}</p>
-                                <p className="text-xs text-gray-500 mt-0.5">{currentChallenge.instruction}</p>
-                                {holdPct > 0 && holdPct < 100 && (
-                                    <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                        <div className="h-full bg-orange-500 rounded-full transition-all duration-75" style={{ width: `${holdPct}%` }} />
-                                    </div>
-                                )}
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                                <span className="text-xs text-gray-400">{challengeIdx + 1}/{CHALLENGES.length}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
-                {/* Tips */}
+                {/* Tips Section */}
                 {status === 'running' && (
-                    <div className="px-5 pb-4">
-                        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
-                            <p className="text-xs text-blue-700">💡 Tips: Good lighting, face the camera directly, keep your face inside the oval</p>
+                    <div className="px-5 pb-5">
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl px-4 py-3">
+                            <div className="flex items-start gap-2">
+                                <span className="text-base">💡</span>
+                                <div>
+                                    <p className="text-xs font-semibold text-blue-800">Tips for best results:</p>
+                                    <p className="text-[10px] text-blue-700 mt-0.5">• Good lighting on your face</p>
+                                    <p className="text-[10px] text-blue-700">• Face the camera directly</p>
+                                    <p className="text-[10px] text-blue-700">• Keep your face inside the oval</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
-}
-
-// ── Load MediaPipe face_mesh from CDN (avoids Vite/webpack bundle issues) ────
-function loadMediaPipeFaceMesh() {
-    return new Promise((resolve, reject) => {
-        if (window.FaceMesh) { resolve(); return; }
-        const script = document.createElement('script');
-        script.src         = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
-        script.crossOrigin = 'anonymous';
-        script.onload  = resolve;
-        script.onerror = () => reject(new Error('Failed to load MediaPipe face_mesh'));
-        document.head.appendChild(script);
-    });
 }

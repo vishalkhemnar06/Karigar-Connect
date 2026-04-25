@@ -27,6 +27,7 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 
 // General Pages
 import Home from './pages/Home';
+import FAQ from './pages/FAQ';
 import Notification from './pages/Notification';
 import PublicProfile from './pages/PublicProfile';
 
@@ -77,6 +78,7 @@ import WorkerShops          from './pages/worker/WorkerShops';
 
 // Client Pages
 import ClientDashboard    from './pages/client/ClientDashboard';
+import ClientNearbyShops  from './pages/client/ClientNearbyShops';
 import ClientJobPost      from './pages/client/ClientJobPost';
 import ClientAIAssist     from './pages/client/ClientAIAssist';
 import ClientProfile      from './pages/client/ClientProfile';
@@ -155,6 +157,7 @@ function App() {
                 {/* ── Header layout routes ── */}
                 <Route element={<MainLayout />}>
                     <Route path="/home"             element={<Home />} />
+                    <Route path="/faq"             element={<FAQ />} />
                     <Route path="/login"            element={<Login />} />
                     <Route path="/check-status"     element={<CheckStatus />} />
                     <Route path="/register"         element={<Register />} />
@@ -168,6 +171,7 @@ function App() {
                     }>
                         <Route index element={<Navigate to="dashboard" replace />} />
                         <Route path="dashboard"            element={<ClientDashboard />} />
+                        <Route path="nearby-shops"         element={<ClientNearbyShops />} />
                         <Route path="ai-assist"            element={<ClientAIAssist />} />
                         <Route path="job-manage"           element={<ClientJobManage />} />
                         <Route path="history"              element={<ClientHistory />} />

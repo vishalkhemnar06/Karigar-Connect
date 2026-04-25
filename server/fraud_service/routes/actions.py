@@ -139,10 +139,12 @@ def take_action():
     action    = (body.get('action')    or '').strip()
     reason    = (body.get('reason')    or '').strip()
 
-    if not all([user_id, user_role, action, reason]):
-        return jsonify({'error': 'user_id, user_role, action, reason all required'}), 400
-    if action not in ('block', 'delete'):
-        return jsonify({'error': "action must be 'block' or 'delete'"}), 400
+    if not all([user_id, user_role, action]):
+        return jsonify({'error': 'user_id, user_role, action all required'}), 400
+    if action not in ('block', 'delete', 'unblock'):
+        return jsonify({'error': "action must be 'block', 'unblock', or 'delete'"}), 400
+    if action in ('block', 'delete') and not reason:
+        return jsonify({'error': 'reason is required for block or delete'}), 400
 
     db       = current_app.config['MONGO_DB']
     socketio = current_app.config['SOCKETIO']
@@ -171,6 +173,20 @@ def take_action():
                 f'Hi {name}, your {user_role} account has been temporarily blocked '
                 f'due to suspicious activity. Reason: {reason}. '
                 f'Please contact our support team to resolve this.'
+            )
+        elif action == 'unblock':
+            db.users.update_one(
+                {'_id': uid},
+                {'$set': {
+                    'verificationStatus': 'approved',
+                    'blockedAt':          None,
+                    'blockReason':        None,
+                }},
+            )
+            notif_title   = 'Account Restored'
+            notif_message = (
+                f'Hi {name}, your {user_role} account has been restored and is now active. '
+                f'You can log in again now.'
             )
         else:  # delete
             db.users.delete_one({'_id': uid})
@@ -212,6 +228,8 @@ def take_action():
                 {'userId': uid},
                 {'$set': {'actioned': True, 'actionedAt': _utcnow(), 'actionTaken': action}},
             )
+        elif action == 'unblock':
+            db.fraudqueue.delete_one({'userId': uid})
 
         # ── 5. Emit socket → remove card from all admin dashboards ────────────
         emit_action_taken(socketio, {

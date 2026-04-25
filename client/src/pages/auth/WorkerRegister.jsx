@@ -8,17 +8,12 @@ import * as api from '../../api';
 import toast from 'react-hot-toast';
 import FaceVerification, { dataURLtoBlob } from './FaceVerification';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
+import skillList from '../../constants/skillList';
 import {
     Calendar, Smartphone, User, Shield, Mail, MapPin, Award, Users,
     ArrowLeft, CheckCircle, FileText, Camera, Upload, Clock, Image as ImageIcon, Eye, EyeOff, X,
 } from 'lucide-react';
 
-const skillList = [
-    "Plumber","Electrician","Carpenter","Painter","Mason","Welder","Mechanic",
-    "Cook","Driver","Gardener","AC Technician","Appliance Repair","Roofer",
-    "Flooring Installer","Tiler","Landscaper","Pest Control","Housekeeper",
-    "Mover","Security Guard","Handyman","Other",
-];
 const documentTypes = ["Aadhar Card","PAN Card","Voter ID","Driving License","Passport"];
 const travelMethods = [
     { value: 'cycle', label: 'Cycle' },
@@ -27,6 +22,8 @@ const travelMethods = [
     { value: 'other', label: 'Other' },
 ];
 const DRAFT_KEY = 'worker_register_draft_v1';
+const MAX_WORKER_SKILLS = 4;
+const WORKER_TERMS_GATE_KEY = 'kc_worker_terms_gate_v1';
 
 const getIdNumberMeta = (idType) => {
     if (idType === 'PAN Card') {
@@ -69,8 +66,8 @@ const calculateAgeFromDob = (dob) => {
 const WorkerRegister = () => {
     const [formData, setFormData] = useState({
         name:'', dob:'', phoneType:'Smartphone', mobile:'', email:'', password:'', confirmPassword:'',
-        city:'', pincode:'', locality:'', fullAddress:'', village:'', latitude:'', longitude:'', overallExperience:'Beginner', experience:'',
-        idNumber:'', gender:'Male', eShramNumber:'', otherSkill:'',
+        city:'', pincode:'', locality:'', fullAddress:'', village:'', latitude:'', longitude:'', experience:'',
+        idNumber:'', gender:'Male', eShramNumber:'', otherSkill:'', otherSkillSecondary:'',
         emergencyContactName:'', emergencyContactMobile:'', idDocumentType:'Aadhar Card', travelMethod: 'other',
     });
     const [files, setFiles] = useState({
@@ -90,14 +87,14 @@ const WorkerRegister = () => {
     const [showFaceVerification, setShowFaceVerification] = useState(false);
     const [livePhotoData,        setLivePhotoData]        = useState(null); // dataURL
     const [checkingSimilarity,   setCheckingSimilarity]   = useState(false);
-    const [similarity,           setSimilarity]           = useState(null);
-    const [similarityThreshold,  setSimilarityThreshold]  = useState(0.5);
     const [faceMatchPassed,      setFaceMatchPassed]      = useState(false);
     const [faceMessage,          setFaceMessage]          = useState('');
     const [showPassword,         setShowPassword]         = useState(false);
     const [showConfirmPassword,  setShowConfirmPassword]  = useState(false);
     const [locationError,        setLocationError]        = useState('');
     const [legalPreview,         setLegalPreview]         = useState({ open: false, title: '', path: '' });
+    const [showTermsGate,        setShowTermsGate]        = useState(false);
+    const [termsGateAccepted,    setTermsGateAccepted]    = useState(false);
 
     const navigate = useNavigate();
     const strength = getPasswordStrength(formData.password);
@@ -109,6 +106,14 @@ const WorkerRegister = () => {
         if (otpTimer > 0) interval = setInterval(() => setOtpTimer(p => p - 1), 1000);
         return () => clearInterval(interval);
     }, [otpTimer]);
+
+    useEffect(() => {
+        const accepted = localStorage.getItem(WORKER_TERMS_GATE_KEY) === 'accepted';
+        if (!accepted) {
+            setShowTermsGate(true);
+            openLegalPreview('Terms and Conditions', '/terms-and-conditions');
+        }
+    }, []);
 
     useEffect(() => {
         try {
@@ -125,8 +130,6 @@ const WorkerRegister = () => {
             if (typeof draft.agreedToTerms === 'boolean') setAgreedToTerms(draft.agreedToTerms);
             if (typeof draft.ageConsent === 'boolean') setAgeConsent(draft.ageConsent);
             if (draft.livePhotoData) setLivePhotoData(draft.livePhotoData);
-            if (typeof draft.similarity === 'number') setSimilarity(draft.similarity);
-            if (typeof draft.similarityThreshold === 'number') setSimilarityThreshold(draft.similarityThreshold);
             if (typeof draft.faceMatchPassed === 'boolean') setFaceMatchPassed(draft.faceMatchPassed);
             if (draft.faceMessage) setFaceMessage(draft.faceMessage);
         } catch {
@@ -145,8 +148,6 @@ const WorkerRegister = () => {
             agreedToTerms,
             ageConsent,
             livePhotoData,
-            similarity,
-            similarityThreshold,
             faceMatchPassed,
             faceMessage,
         };
@@ -161,8 +162,6 @@ const WorkerRegister = () => {
         agreedToTerms,
         ageConsent,
         livePhotoData,
-        similarity,
-        similarityThreshold,
         faceMatchPassed,
         faceMessage,
     ]);
@@ -213,7 +212,6 @@ const WorkerRegister = () => {
         }
 
         if (name === 'idProof') {
-            setSimilarity(null);
             setFaceMatchPassed(false);
             setFaceMessage('ID proof changed. Please run face verification again.');
         }
@@ -221,10 +219,43 @@ const WorkerRegister = () => {
 
     const handleSkillCheckbox = e => {
         const { name, checked } = e.target;
-        if (checked) setSkills(p => ({ ...p, [name]: { name, proficiency: 'Medium' } }));
-        else         setSkills(p => { const n = { ...p }; delete n[name]; return n; });
+        if (checked) {
+            setSkills((prev) => {
+                if (prev[name]) return prev;
+                const selectedCount = Object.keys(prev).length;
+                if (selectedCount >= MAX_WORKER_SKILLS) {
+                    toast.error(`You can select maximum ${MAX_WORKER_SKILLS} skills.`);
+                    return prev;
+                }
+                return { ...prev, [name]: { name, isPrimary: selectedCount === 0 } };
+            });
+            return;
+        }
+
+        setSkills((prev) => {
+            if (!prev[name]) return prev;
+            const next = { ...prev };
+            const wasPrimary = !!next[name]?.isPrimary;
+            delete next[name];
+
+            if (wasPrimary) {
+                const firstRemaining = Object.keys(next)[0];
+                if (firstRemaining) {
+                    next[firstRemaining] = { ...next[firstRemaining], isPrimary: true };
+                }
+            }
+            return next;
+        });
     };
-    const handleSkillProficiency = (sk, prof) => setSkills(p => ({ ...p, [sk]: { ...p[sk], proficiency: prof } }));
+    const handlePrimarySkill = (skillName) => {
+        setSkills((prev) => {
+            const next = { ...prev };
+            Object.keys(next).forEach((key) => {
+                next[key] = { ...next[key], isPrimary: key === skillName };
+            });
+            return next;
+        });
+    };
 
     const handleReferenceChange = (i, e) => {
         const v = [...references]; v[i][e.target.name] = e.target.value; setReferences(v);
@@ -256,6 +287,16 @@ const WorkerRegister = () => {
         setLegalPreview({ open: false, title: '', path: '' });
     };
 
+    const acceptTermsGate = () => {
+        if (!termsGateAccepted) {
+            toast.error('Please confirm after reviewing terms and privacy policy.');
+            return;
+        }
+        localStorage.setItem(WORKER_TERMS_GATE_KEY, 'accepted');
+        setShowTermsGate(false);
+        closeLegalPreview();
+    };
+
     const captureLocation = async () => {
         setLocationError('');
         if (!navigator.geolocation) {
@@ -284,14 +325,14 @@ const WorkerRegister = () => {
                     const houseNum = addr.house_number || '';
                     const roadName = addr.road || addr.street || '';
                     const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
-                    const cityName = addr.city || addr.town || addr.county || '';
+                    const districtName = addr.county || addr.city || addr.town || addr.state_district || '';
                     const villageName = addr.village || addr.hamlet || addr.suburb || '';
                     const pincode = addr.postcode || '';
 
                     setFormData((prev) => ({
                         ...prev,
                         fullAddress: fullAddress || prev.fullAddress,
-                        city: cityName || prev.city,
+                        city: districtName || prev.city,
                         village: villageName || prev.village,
                         locality: villageName || prev.locality,
                         pincode: pincode || prev.pincode,
@@ -318,7 +359,7 @@ const WorkerRegister = () => {
         if (!files.idProof || !photoDataUrl) return;
 
         setCheckingSimilarity(true);
-        setFaceMessage('Checking similarity with your uploaded ID...');
+        setFaceMessage('Checking face match with your uploaded ID...');
         setFaceMatchPassed(false);
 
         try {
@@ -327,15 +368,13 @@ const WorkerRegister = () => {
             fd.append('livePhoto', dataURLtoBlob(photoDataUrl), 'live_face.jpg');
 
             const { data } = await api.previewFaceSimilarity(fd);
-            setSimilarity(typeof data.similarity === 'number' ? data.similarity : null);
-            setSimilarityThreshold(typeof data.threshold === 'number' ? data.threshold : 0.5);
             setFaceMatchPassed(!!data.passed);
-            setFaceMessage(data.message || (data.passed ? 'Face match passed.' : 'Face match failed.'));
-            if (data.passed) toast.success('Face match passed. You can submit now.');
-            else toast.error('Face match below threshold. Please retry verification.');
+            setFaceMessage(data.message || (data.passed ? 'Congratulations, face match.' : 'Face not match with ID.'));
+            if (data.passed) toast.success('Congratulations, face match.');
+            else toast.error('Face not match with ID. Please retry verification.');
         } catch (err) {
-            setFaceMessage(err.response?.data?.message || 'Could not check face similarity right now.');
-            toast.error(err.response?.data?.message || 'Failed to check face similarity.');
+            setFaceMessage(err.response?.data?.message || 'Could not verify face match right now.');
+            toast.error(err.response?.data?.message || 'Failed to verify face match.');
             setFaceMatchPassed(false);
         } finally {
             setCheckingSimilarity(false);
@@ -356,7 +395,7 @@ const WorkerRegister = () => {
         if (!agreedToTerms)     return toast.error('Agree to Terms and Conditions');
         if (!ageConsent)        return toast.error('Please confirm you are 18+ and provide consent');
         if (!livePhotoData)     return toast.error('Complete face verification first');
-        if (!faceMatchPassed)   return toast.error('Face similarity is below threshold. Please retry face verification.');
+        if (!faceMatchPassed)   return toast.error('Face not match with ID. Please retry face verification.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
         if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
         if (computedAge === null || computedAge < 18)
@@ -369,10 +408,54 @@ const WorkerRegister = () => {
             return toast.error('Enter a valid PAN number (example: ABCDE1234F)');
         }
 
+        const selectedSkills = Object.values(skills || {}).filter((row) => row?.name);
+        if (!selectedSkills.length) return toast.error('Please select at least one skill.');
+        if (selectedSkills.length > MAX_WORKER_SKILLS) return toast.error(`You can select maximum ${MAX_WORKER_SKILLS} skills.`);
+        const selectedPrimary = selectedSkills.find((row) => row?.isPrimary);
+        if (!selectedPrimary) return toast.error('Please mark one selected skill as primary.');
+        const customSkills = [formData.otherSkill, formData.otherSkillSecondary]
+            .map((value) => value.trim())
+            .filter(Boolean);
+
+        if (skills.Other && customSkills.length === 0) {
+            return toast.error('Please specify at least one Other skill.');
+        }
+
+        const duplicateCustomSkill = customSkills.find((value, index) =>
+            customSkills.findIndex((inner) => inner.toLowerCase() === value.toLowerCase()) !== index
+        );
+        if (duplicateCustomSkill) {
+            return toast.error('Custom Other skills must be different.');
+        }
+
+        const finalSkills = [];
+        selectedSkills.forEach((row) => {
+            if (row.name === 'Other') {
+                if (customSkills[0]) {
+                    finalSkills.push({ name: customSkills[0], isPrimary: !!row.isPrimary });
+                }
+                if (customSkills[1] && finalSkills.length < MAX_WORKER_SKILLS) {
+                    finalSkills.push({ name: customSkills[1], isPrimary: false });
+                }
+                return;
+            }
+            finalSkills.push({ name: row.name, isPrimary: !!row.isPrimary });
+        });
+
+        if (finalSkills.length > MAX_WORKER_SKILLS) {
+            return toast.error(`You can select maximum ${MAX_WORKER_SKILLS} skills.`);
+        }
+
+        if (!finalSkills.some((row) => row.isPrimary) && finalSkills.length > 0) {
+            finalSkills[0].isPrimary = true;
+        }
+        const primarySkill = (finalSkills.find((row) => row.isPrimary) || finalSkills[0])?.name || '';
+
         const data = new FormData();
         Object.keys(formData).forEach(k => data.append(k, formData[k]));
         data.append('ageConsent', String(ageConsent));
-        data.append('skills',     JSON.stringify(Object.values(skills)));
+        data.append('skills',     JSON.stringify(finalSkills));
+        data.append('primarySkill', primarySkill);
         data.append('references', JSON.stringify(references));
         if (files.photo)     data.append('photo',     files.photo);
         if (files.idProof)   data.append('idProof',   files.idProof);
@@ -586,13 +669,11 @@ const WorkerRegister = () => {
                                     <h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><Award className="h-8 w-8 mr-3"/>Skills & Experience</h2>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div><label className="block text-sm font-semibold text-gray-700 mb-2">Overall Experience</label>
-                                    <select name="overallExperience" value={formData.overallExperience} onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"><option>Beginner</option><option>Intermediate</option><option>Expert</option></select></div>
                                     <div><label className="block text-sm font-semibold text-gray-700 mb-2">Years of Experience</label>
                                     <input type="number" name="experience" value={formData.experience} placeholder="e.g., 5" onChange={handleChange} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-orange-50/50"/></div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Select Skills & Proficiency *</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Select Skills (max {MAX_WORKER_SKILLS}) and one Primary Skill *</label>
                                     <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-2xl p-6 max-h-96 overflow-y-auto">
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {skillList.map(skill => (
@@ -602,9 +683,16 @@ const WorkerRegister = () => {
                                                         <label htmlFor={skill} className="ml-3 text-sm font-medium text-gray-700">{skill}</label>
                                                     </div>
                                                     {skills[skill] && (
-                                                        <select onChange={e => handleSkillProficiency(skill, e.target.value)} value={skills[skill].proficiency} className="w-full text-sm p-2 border border-orange-200 rounded-lg bg-orange-50">
-                                                            <option value="Good">Good</option><option value="Medium">Medium</option><option value="High">High</option>
-                                                        </select>
+                                                        <label className="flex items-center gap-2 text-xs font-semibold text-orange-700">
+                                                            <input
+                                                                type="radio"
+                                                                name="primarySkill"
+                                                                checked={!!skills[skill]?.isPrimary}
+                                                                onChange={() => handlePrimarySkill(skill)}
+                                                                className="h-4 w-4 text-orange-600"
+                                                            />
+                                                            Mark as Primary Skill
+                                                        </label>
                                                     )}
                                                 </div>
                                             ))}
@@ -612,11 +700,14 @@ const WorkerRegister = () => {
                                     </div>
                                     {skills.Other && (
                                         <div className="mt-4 bg-white p-4 rounded-xl border-2 border-orange-200">
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Specify Skill</label>
-                                            <input type="text" name="otherSkill" value={formData.otherSkill} onChange={handleChange} placeholder="Your skill…" className="w-full px-4 py-3 border border-orange-200 rounded-lg"/>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Specify up to 2 Other Skills</label>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <input type="text" name="otherSkill" value={formData.otherSkill} onChange={handleChange} placeholder="Other skill 1" className="w-full px-4 py-3 border border-orange-200 rounded-lg"/>
+                                                <input type="text" name="otherSkillSecondary" value={formData.otherSkillSecondary} onChange={handleChange} placeholder="Other skill 2 (optional)" className="w-full px-4 py-3 border border-orange-200 rounded-lg"/>
+                                            </div>
                                         </div>
                                     )}
-                                    <p className="text-sm text-gray-600 mt-3">Selected: <span className="font-semibold text-orange-600">{Object.keys(skills).length}</span></p>
+                                    <p className="text-sm text-gray-600 mt-3">Selected: <span className="font-semibold text-orange-600">{Object.keys(skills).length}</span> / {MAX_WORKER_SKILLS}</p>
                                 </div>
                                 <div className="flex justify-between pt-6">
                                     <button type="button" onClick={() => setActiveSection(0)} className="px-8 py-4 bg-gray-200 text-gray-700 font-semibold rounded-xl flex items-center"><ArrowLeft className="h-5 w-5 mr-2"/>Back</button>
@@ -641,7 +732,7 @@ const WorkerRegister = () => {
                                     {locationError && <p className="text-sm text-red-600 mb-3">{locationError}</p>}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="md:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-2">Full Address *</label><input name="fullAddress" value={formData.fullAddress} placeholder="House/Street/Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">City *</label><input name="city" value={formData.city} placeholder="Your city" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">District *</label><input name="city" value={formData.city} placeholder="Your district" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Village *</label><input name="village" value={formData.village} placeholder="Village / Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Pincode *</label><input name="pincode" value={formData.pincode} placeholder="Area pincode" onChange={handleChange} required maxLength={6} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
                                         <div><label className="block text-sm font-semibold text-gray-700 mb-2">Locality *</label><input name="locality" value={formData.locality} placeholder="Area / Locality" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
@@ -680,6 +771,13 @@ const WorkerRegister = () => {
                                             placeholder="Enter E-Shram number"
                                             className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"
                                         />
+                                        <p className="text-xs text-gray-600 mt-2">
+                                            If you do not have it, register on{' '}
+                                            <a href="https://eshram.gov.in/" target="_blank" rel="noreferrer" className="text-orange-600 font-semibold underline">
+                                                e-Shram portal
+                                            </a>
+                                            .
+                                        </p>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">E-Shram Card (optional)</label>
@@ -791,7 +889,7 @@ const WorkerRegister = () => {
                                         {[
                                             'Your ID card face is extracted and securely compared with your live photo',
                                             'You\'ll be asked to blink and turn your head to prove you are physically present',
-                                            'The comparison score is reviewed by our team along with your profile',
+                                            'The face match result is reviewed by our team along with your profile',
                                             'Your face data is stored securely and never shared with third parties',
                                         ].map((s, i) => (
                                             <div key={i} className="flex items-start gap-2">
@@ -814,17 +912,11 @@ const WorkerRegister = () => {
 
                                         <div className="mt-4 bg-white border border-green-200 rounded-xl p-3 text-left max-w-md mx-auto">
                                             {checkingSimilarity ? (
-                                                <p className="text-sm text-orange-700 font-medium">Checking similarity with ID proof...</p>
+                                                <p className="text-sm text-orange-700 font-medium">Verifying face match...</p>
                                             ) : (
                                                 <>
-                                                    <p className="text-sm text-gray-700">
-                                                        Similarity Score: <span className="font-bold">{typeof similarity === 'number' ? similarity.toFixed(3) : 'N/A'}</span>
-                                                    </p>
-                                                    <p className="text-sm text-gray-700">
-                                                        Threshold: <span className="font-bold">{similarityThreshold.toFixed(2)}</span>
-                                                    </p>
                                                     <p className={`text-sm mt-1 font-semibold ${faceMatchPassed ? 'text-green-700' : 'text-red-700'}`}>
-                                                        {faceMessage || (faceMatchPassed ? 'Face match passed.' : 'Face match failed. Please retry.')}
+                                                        {faceMessage || (faceMatchPassed ? 'Congratulations, face match.' : 'Face not match with ID.')}
                                                     </p>
                                                 </>
                                             )}
@@ -832,7 +924,6 @@ const WorkerRegister = () => {
 
                                         <button type="button" onClick={() => {
                                             setLivePhotoData(null);
-                                            setSimilarity(null);
                                             setFaceMatchPassed(false);
                                             setFaceMessage('');
                                         }} className="mt-4 text-sm text-gray-500 hover:text-gray-700 underline">Redo verification</button>
@@ -858,7 +949,7 @@ const WorkerRegister = () => {
                                         <p><span className="font-semibold">{formData.idDocumentType} Number:</span> {formData.idNumber || 'N/A'}</p>
                                         <p><span className="font-semibold">Travel:</span> {travelMethods.find((m) => m.value === formData.travelMethod)?.label || 'Other'}</p>
                                         <p><span className="font-semibold">E-Shram:</span> {formData.eShramNumber || 'Not provided'}</p>
-                                        <p><span className="font-semibold">City:</span> {formData.city || 'N/A'}</p>
+                                        <p><span className="font-semibold">District:</span> {formData.city || 'N/A'}</p>
                                         <p><span className="font-semibold">Locality:</span> {formData.locality || 'N/A'}</p>
                                         <p><span className="font-semibold">ID Proof:</span> {files.idProof?.name || 'Not selected'}</p>
                                         <p><span className="font-semibold">E-Shram Card:</span> {files.eShramCard?.name || 'Not provided'}</p>
@@ -897,7 +988,7 @@ const WorkerRegister = () => {
             </div>
 
             {legalPreview.open && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={closeLegalPreview}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-3 sm:p-4" onClick={closeLegalPreview}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         <div className="h-14 border-b border-orange-100 px-4 sm:px-5 flex items-center justify-between bg-orange-50">
                             <h3 className="text-sm sm:text-base font-black text-orange-700 truncate">{legalPreview.title}</h3>
@@ -906,6 +997,24 @@ const WorkerRegister = () => {
                             </button>
                         </div>
                         <iframe title={legalPreview.title} src={legalPreview.path} className="w-full h-[calc(85vh-56px)] border-0 bg-white" />
+                    </div>
+                </div>
+            )}
+
+            {showTermsGate && (
+                <div className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl border border-orange-200 shadow-2xl p-6">
+                        <h3 className="text-xl font-black text-orange-800">Review Terms Before Registration</h3>
+                        <p className="text-sm text-gray-600 mt-2">Please preview the legal policies once. After you accept, this screen will not be shown again.</p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => openLegalPreview('Terms and Conditions', '/terms-and-conditions')} className="px-4 py-2 rounded-xl bg-orange-100 text-orange-700 font-bold hover:bg-orange-200">View Terms & Conditions</button>
+                            <button type="button" onClick={() => openLegalPreview('Privacy Policy', '/privacy-policy')} className="px-4 py-2 rounded-xl bg-orange-100 text-orange-700 font-bold hover:bg-orange-200">View Privacy Policy</button>
+                        </div>
+                        <label className="mt-5 flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox" checked={termsGateAccepted} onChange={(e) => setTermsGateAccepted(e.target.checked)} className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"/>
+                            <span className="text-sm text-gray-700">I have reviewed and accept the Terms and Privacy Policy for continuing registration.</span>
+                        </label>
+                        <button type="button" onClick={acceptTermsGate} className="mt-5 w-full px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black hover:from-orange-600 hover:to-amber-600">Accept and Continue</button>
                     </div>
                 </div>
             )}

@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const Job = require('../models/jobModel');
 const User = require('../models/userModel');
 const PaymentTransaction = require('../models/paymentTransactionModel');
-const { sendOtpSms } = require('../utils/smsHelper');
+const { sendOtpSms, sendCustomSms, buildWorkerPaymentSms, formatDateTime } = require('../utils/smsHelper');
+const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 
 // Lazy initialization of Razorpay to allow environment variables to load
 let razorpay = null;
@@ -205,7 +206,23 @@ exports.sendCashPaymentOtp = async (req, res) => {
         });
 
         await transaction.save();
-        await sendOtpSms(targetWorker.mobile, otp);
+
+        const cooldownKey = `cash-payment-otp:${transaction._id}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                success: false,
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
+        const smsResult = await sendOtpSms(targetWorker.mobile, otp);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
 
         return res.status(200).json({
             success: true,
@@ -263,7 +280,22 @@ exports.resendCashPaymentOtp = async (req, res) => {
         transaction.cashOtpResendCount = Number(transaction.cashOtpResendCount || 0) + 1;
         await transaction.save();
 
-        await sendOtpSms(worker.mobile, otp);
+        const cooldownKey = `cash-payment-otp:${transaction._id}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                success: false,
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
+        const smsResult = await sendOtpSms(worker.mobile, otp);
+        if (smsResult?.success === false) {
+            throw new Error(smsResult.reason || 'sms_send_failed');
+        }
+
+        markOtpCooldown(cooldownKey);
 
         return res.status(200).json({
             success: true,
@@ -361,6 +393,32 @@ exports.verifyCashPaymentOtp = async (req, res) => {
         await transaction.save();
         await applyCashPaymentToJob({ transaction, paymentAmount: transaction.amount });
         await clearClientPaymentLockIfPossible(transaction.clientId);
+
+        try {
+            const [worker, client, job] = await Promise.all([
+                User.findById(transaction.workerId).select('name mobile'),
+                User.findById(transaction.clientId).select('name mobile'),
+                Job.findById(transaction.jobId).select('title scheduledDate scheduledTime location'),
+            ]);
+
+            if (worker?.mobile) {
+                const smsResult = await sendCustomSms(
+                    worker.mobile,
+                    buildWorkerPaymentSms({
+                        jobTitle: job?.title || 'N/A',
+                        amountPaid: transaction.amount,
+                        clientName: client?.name || 'N/A',
+                        clientMobile: client?.mobile || 'N/A',
+                        dateTime: formatDateTime(job?.scheduledDate || transaction.createdAt, job?.scheduledTime || ''),
+                    })
+                );
+                if (smsResult?.success === false) {
+                    console.warn('Cash payment SMS was not delivered:', smsResult.reason);
+                }
+            }
+        } catch (smsErr) {
+            console.error('Cash payment SMS failed (non-fatal):', smsErr.message);
+        }
 
         return res.status(200).json({
             success: true,
