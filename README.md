@@ -162,6 +162,62 @@ VITE_FLASK_URL=http://localhost:5001
 VITE_FRAUD_SOCKET_URL=http://localhost:5001
 ```
 
+## Deployment Ready Notes
+
+- Use the provided `.env.example` files in `server/`, `client/`, `face_service/`, `server/fraud_service/`, and `server/semantic_match_service/`.
+- Never commit actual `.env` files or secret values. Create local `.env` files from the examples.
+- For production, override the following URLs with your live domains:
+  - `NODE_BASE_URL`
+  - `FRONTEND_URL`
+  - `FACE_SERVICE_URL`
+  - `FRAUD_SERVICE_URL`
+  - `SEMANTIC_SERVICE_URL`
+- Set `TWILIO_WEBHOOK_URL` to `https://<your-backend-domain>/api/ivr/twilio/voice`.
+- Keep `DISABLE_DIRECT_HIRE_SWEEP=true` and `SKIP_SEMANTIC_REBUILD_ON_STARTUP=true` in production if you plan to scale the backend horizontally.
+
+## Recommended Production Deployment Order
+
+1. Provision shared resources:
+   - MongoDB Atlas
+   - Cloudinary
+   - Twilio phone number and webhook
+   - Razorpay account
+   - Email SMTP credentials
+   - Google Maps API key
+   - Groq/OpenAI API key
+
+2. Deploy Python microservices first:
+   - `server/fraud_service/`
+   - `server/semantic_match_service/`
+   - `face_service/`
+
+3. Deploy `server/` backend next.
+   - Set the backend’s `FACE_SERVICE_URL`, `FRAUD_SERVICE_URL`, and `SEMANTIC_SERVICE_URL` to the deployed Python service URLs.
+   - Set `NODE_BASE_URL` and `FRONTEND_URL` to the production domains.
+
+4. Deploy `client/` frontend last.
+   - Set `VITE_API_URL`, `VITE_API_BASE_URL`, `VITE_FLASK_URL`, and `VITE_FRAUD_SOCKET_URL` to the production service URLs.
+
+5. Verify end-to-end:
+   - `GET /api/health`
+   - `GET /api/fraud/health`
+   - `GET /api/matching/health`
+   - `GET /health` on the face service
+   - browser-based app load and login flows
+   - Twilio IVR webhook connectivity
+
+## Recommended Hosting Setup
+
+- Use Vercel for `client/`.
+- Use Render for `server/` and the three Python microservices.
+- If you prefer a single platform, you can use Render for all services and deploy the static frontend using a Render static site.
+
+## What to deploy first
+
+1. Python microservices so the backend can resolve them.
+2. Backend API so the client has a working API endpoint.
+3. Frontend last, after all API URLs are live.
+
 ## Run Order
 
 Start the services in this order:
