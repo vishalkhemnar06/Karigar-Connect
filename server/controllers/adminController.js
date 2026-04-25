@@ -249,7 +249,20 @@ const buildQuoteRateSnapshot = (quote = {}) => {
 };
 
 const buildRateDisplay = (rate = {}) => {
+    const nested = rate.rates || {};
+    const rateNumber = (...values) => {
+        for (const value of values) {
+            const numberValue = Number(value);
+            if (Number.isFinite(numberValue) && numberValue > 0) return numberValue;
+        }
+        return 0;
+    };
+
     const hourly = averagePositive(
+        nested.hourly,
+        nested.hour,
+        rate.hourly,
+        rate.hourRate,
         rate.platformHourlyMin,
         rate.platformHourlyMax,
         rate.localHourlyMin,
@@ -261,6 +274,10 @@ const buildRateDisplay = (rate = {}) => {
     );
 
     const daily = averagePositive(
+        nested.daily,
+        nested.day,
+        rate.daily,
+        rate.dayRate,
         rate.platformDayMin,
         rate.platformDayMax,
         rate.localDayMin,
@@ -269,6 +286,9 @@ const buildRateDisplay = (rate = {}) => {
     );
 
     const visit = averagePositive(
+        nested.visit,
+        rate.visitRate,
+        rate.visit,
         rate.platformCostMin,
         rate.platformCostMax,
         daily,
@@ -1489,35 +1509,44 @@ exports.uploadBaseRatesCsv = async (req, res) => {
             // and rich format (City/Skill/Local_* / Platform_* fields).
             const city = String(pickField(record, ['city', 'City', 'city_key', 'City_Key']) || '').trim();
             const skill = String(pickField(record, ['skill', 'Skill', 'skill_key', 'Skill_Key']) || '').trim();
-            const rawHourRate = toNumber(
+            const rawHourRateMin = toNumber(
                 pickField(record, ['hourRate', 'HourRate', 'Local_Hourly_Min_INR', 'Local_Hourly_Min', 'localHourlyMin'])
             );
-            const rawDayRate = toNumber(
+            const rawHourRateMax = toNumber(
+                pickField(record, ['HourRateMax', 'Local_Hourly_Max_INR', 'Local_Hourly_Max', 'localHourlyMax'])
+            );
+            const rawDayRateMin = toNumber(
                 pickField(record, ['dayRate', 'DayRate', 'Local_Day_Min_INR', 'Local_Day_Min', 'localDayMin'])
             );
-            const rawVisitRate = toNumber(
+            const rawDayRateMax = toNumber(
+                pickField(record, ['DayRateMax', 'Local_Day_Max_INR', 'Local_Day_Max', 'localDayMax'])
+            );
+            const rawVisitRateMin = toNumber(
                 pickField(record, ['visitRate', 'VisitRate', 'Platform_Cost_Min_INR', 'Platform_Cost_Min', 'platformCostMin'])
+            );
+            const rawVisitRateMax = toNumber(
+                pickField(record, ['VisitRateMax', 'Platform_Cost_Max_INR', 'Platform_Cost_Max', 'platformCostMax'])
             );
 
             // Derive missing rates so CSVs with per-visit services (often no hourly value)
             // can still be imported safely.
-            const hourRate = Number.isFinite(rawHourRate) && rawHourRate > 0
-                ? rawHourRate
-                : (Number.isFinite(rawDayRate) && rawDayRate > 0
-                    ? rawDayRate / 8
-                    : (Number.isFinite(rawVisitRate) && rawVisitRate > 0 ? rawVisitRate / 8 : NaN));
+            const hourRate = Number.isFinite(rawHourRateMin) && rawHourRateMin > 0
+                ? rawHourRateMin
+                : (Number.isFinite(rawDayRateMin) && rawDayRateMin > 0
+                    ? rawDayRateMin / 8
+                    : (Number.isFinite(rawVisitRateMin) && rawVisitRateMin > 0 ? rawVisitRateMin / 8 : NaN));
 
-            const dayRate = Number.isFinite(rawDayRate) && rawDayRate > 0
-                ? rawDayRate
-                : (Number.isFinite(rawHourRate) && rawHourRate > 0
-                    ? rawHourRate * 8
-                    : (Number.isFinite(rawVisitRate) && rawVisitRate > 0 ? rawVisitRate : NaN));
+            const dayRate = Number.isFinite(rawDayRateMin) && rawDayRateMin > 0
+                ? rawDayRateMin
+                : (Number.isFinite(rawHourRateMin) && rawHourRateMin > 0
+                    ? rawHourRateMin * 8
+                    : (Number.isFinite(rawVisitRateMin) && rawVisitRateMin > 0 ? rawVisitRateMin : NaN));
 
-            const visitRate = Number.isFinite(rawVisitRate) && rawVisitRate > 0
-                ? rawVisitRate
-                : (Number.isFinite(rawDayRate) && rawDayRate > 0
-                    ? rawDayRate
-                    : (Number.isFinite(rawHourRate) && rawHourRate > 0 ? rawHourRate * 8 : NaN));
+            const visitRate = Number.isFinite(rawVisitRateMin) && rawVisitRateMin > 0
+                ? rawVisitRateMin
+                : (Number.isFinite(rawDayRateMin) && rawDayRateMin > 0
+                    ? rawDayRateMin
+                    : (Number.isFinite(rawHourRateMin) && rawHourRateMin > 0 ? rawHourRateMin * 8 : NaN));
             const rateModeRaw = String(
                 pickField(record, ['rateMode', 'Rate_Mode', 'rate_type', 'Rate_Type']) || 'mixed'
             ).trim().toLowerCase();
@@ -1525,9 +1554,19 @@ exports.uploadBaseRatesCsv = async (req, res) => {
                 pickField(record, ['unit', 'Unit']) || ''
             ).trim().toLowerCase();
 
+            const resolvedHourMax = Number.isFinite(rawHourRateMax) && rawHourRateMax > 0
+                ? rawHourRateMax
+                : (Number.isFinite(hourRate) && hourRate > 0 ? hourRate : NaN);
+            const resolvedDayMax = Number.isFinite(rawDayRateMax) && rawDayRateMax > 0
+                ? rawDayRateMax
+                : (Number.isFinite(dayRate) && dayRate > 0 ? dayRate : NaN);
+            const resolvedVisitMax = Number.isFinite(rawVisitRateMax) && rawVisitRateMax > 0
+                ? rawVisitRateMax
+                : (Number.isFinite(visitRate) && visitRate > 0 ? visitRate : NaN);
+
             const resolvedDayRate = Number.isFinite(dayRate) && dayRate > 0
                 ? dayRate
-                : (Number.isFinite(visitRate) && visitRate > 0 ? visitRate : NaN);
+                : (Number.isFinite(resolvedVisitMax) && resolvedVisitMax > 0 ? resolvedVisitMax : NaN);
             const resolvedHourRate = Number.isFinite(hourRate) && hourRate > 0
                 ? hourRate
                 : (Number.isFinite(resolvedDayRate) && resolvedDayRate > 0 ? resolvedDayRate / 8 : NaN);
@@ -1558,13 +1597,31 @@ exports.uploadBaseRatesCsv = async (req, res) => {
 
             validRecords.push({
                 city,
+                cityKey: city.toLowerCase().replace(/\s+/g, ''),
                 skill,
+                skillKey: skill.toLowerCase().replace(/\s+/g, '_').replace(/[^\w_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''),
+                rateType: String(pickField(record, ['Rate_Type', 'rateType']) || 'mixed').trim().toLowerCase(),
+                rateMode: rateModeRaw || 'mixed',
+                unit: unitRaw || (String(pickField(record, ['Unit']) || '').trim().toLowerCase() || 'day'),
+                currency: String(pickField(record, ['Currency', 'currency']) || 'INR').trim().toUpperCase(),
+                localHourlyMin: Math.round(resolvedHourRate),
+                localHourlyMax: Math.round(resolvedHourMax),
+                localDayMin: Math.round(resolvedDayRate),
+                localDayMax: Math.round(resolvedDayMax),
+                platformHourlyMin: Math.round(resolvedHourRate),
+                platformHourlyMax: Math.round(resolvedHourMax),
+                platformDayMin: Math.round(resolvedDayRate),
+                platformDayMax: Math.round(resolvedDayMax),
+                platformCostMin: Math.round(resolvedVisitRate),
+                platformCostMax: Math.round(resolvedVisitMax),
+                platformCostBasis: rateModeRaw.includes('visit') ? 'per_visit' : 'per_day_equiv',
                 rates: {
                     hourly: Math.round(resolvedHourRate),
                     daily: Math.round(resolvedDayRate),
                     visit: Math.round(resolvedVisitRate),
                 },
                 source: 'csv_bootstrap',
+                confidence: Number(pickField(record, ['Confidence', 'confidence']) || 0.75) || 0.75,
                 effectiveFrom: new Date(),
                 isActive: true,
             });
