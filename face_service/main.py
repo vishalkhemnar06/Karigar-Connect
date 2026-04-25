@@ -29,9 +29,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("face_service")
 
 # ── InsightFace model (loaded once on startup) ────────────────────────────────
+
+# Lazy loading globals
 face_analyzer = None
 loaded_model_name = None
 startup_error = None
+
+def get_face_analyzer():
+    global face_analyzer, loaded_model_name, startup_error
+    if face_analyzer is not None:
+        return face_analyzer
+    try:
+        face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
+        startup_error = None
+        log.info("InsightFace model loaded (model pack: %s)", loaded_model_name)
+    except Exception as exc:
+        log.warning("InsightFace model load failed: %s", exc)
+        try:
+            download_model_pack(INSIGHTFACE_MODEL_PACK)
+            face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
+            startup_error = None
+            log.info("InsightFace model loaded after auto-download (model pack: %s)", loaded_model_name)
+        except Exception as retry_exc:
+            face_analyzer = None
+            loaded_model_name = None
+            startup_error = str(retry_exc)
+            log.exception("Failed to load InsightFace model after auto-download")
+    return face_analyzer
 
 INSIGHTFACE_MODEL_ROOT = Path(os.path.expanduser(os.getenv("INSIGHTFACE_MODEL_ROOT", "~/.insightface/models")))
 INSIGHTFACE_MODEL_PACK = os.getenv("INSIGHTFACE_MODEL_PACK", "buffalo_l")
@@ -174,36 +198,7 @@ def init_face_analyzer(model_candidates=None):
     )
 
 
-@asynccontextmanager
-async def lifespan(app_instance):
-    del app_instance
-    global face_analyzer, loaded_model_name, startup_error
-
-    log.info("Loading InsightFace models...")
-    try:
-        face_analyzer, loaded_model_name = init_face_analyzer()
-        startup_error = None
-        log.info("InsightFace models loaded successfully (model pack: %s)", loaded_model_name)
-    except Exception as exc:
-        log.warning("Initial InsightFace load failed: %s", exc)
-        try:
-            download_model_pack(INSIGHTFACE_MODEL_PACK)
-            face_analyzer, loaded_model_name = init_face_analyzer([INSIGHTFACE_MODEL_PACK])
-            startup_error = None
-            log.info(
-                "InsightFace models loaded successfully after auto-download (model pack: %s)",
-                loaded_model_name,
-            )
-        except Exception as retry_exc:
-            face_analyzer = None
-            loaded_model_name = None
-            startup_error = str(retry_exc)
-            log.exception("Failed to load InsightFace models after auto-download")
-
-    yield
-
-
-app = FastAPI(title="KarigarConnect Face Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="KarigarConnect Face Service", version="1.0.0")
 
 # Allow calls from Node.js backend only (adjust origins for production)
 app.add_middleware(
@@ -232,9 +227,10 @@ def extract_face_embedding(img_bgr: np.ndarray):
     Run face detection + ArcFace embedding on a BGR image.
     Returns (embedding: ndarray[512], det_score: float) or (None, None).
     """
-    if face_analyzer is None:
+    analyzer = get_face_analyzer()
+    if analyzer is None:
         raise RuntimeError("Face models not loaded")
-    faces = face_analyzer.get(img_bgr)
+    faces = analyzer.get(img_bgr)
     if not faces:
         return None, None
     # Pick the largest detected face (most likely the subject)
@@ -265,9 +261,11 @@ class DuplicateRequest(BaseModel):
 
 @app.get("/health")
 def health():
+    # Check if model is loaded or can be loaded
+    analyzer = get_face_analyzer()
     return {
         "status": "ok",
-        "models_loaded": face_analyzer is not None,
+        "models_loaded": analyzer is not None,
         "model": loaded_model_name,
         "startup_error": startup_error,
     }
@@ -279,7 +277,8 @@ async def extract_embedding(image: UploadFile = File(...)):
     Detect face in uploaded image → generate 512-dim ArcFace embedding.
     Accepts: JPEG, PNG, WebP
     """
-    if face_analyzer is None:
+    analyzer = get_face_analyzer()
+    if analyzer is None:
         detail = "Face models not loaded."
         if startup_error:
             detail = f"Face models not loaded: {startup_error}"
