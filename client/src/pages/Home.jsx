@@ -11,6 +11,8 @@ import {
 import logo from '../assets/logo.jpg';
 import faqData from '../constants/faqData';
 import FaqAccordion from '../components/FaqAccordion';
+import GuestChatbotWidget from '../components/GuestChatbotWidget';
+import CityTicker from '../components/CityTicker';
 
 const Home = () => {
     const [token, setToken] = useState(null);
@@ -102,7 +104,7 @@ const Home = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10">
+        <div className="min-h-screen pb-10 bg-gradient-to-br from-orange-50/20 via-white to-orange-50/10">
             
             {/* Hero Section with Animated Background */}
             <section ref={heroRef} className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -619,6 +621,9 @@ const Home = () => {
                     </div>
                 </div>
             )}
+
+            {!token && <GuestChatbotWidget />}
+            <CityTicker />
 
             <style>{`
                 @keyframes scale-slow {

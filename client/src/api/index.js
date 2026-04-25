@@ -300,6 +300,9 @@ export const aiGeneratePreviews  = (fd) => API.post('/api/ai/generate-preview-im
 // ── CLIENT CHATBOT (ISOLATED) ───────────────────────────────────────────────
 export const getClientChatbotSuggestions = (lang = 'en') => API.get('/api/chatbot/client/suggestions', { params: { lang } });
 export const queryClientChatbot = (body) => API.post('/api/chatbot/client/query', body);
+export const getGuestChatbotSuggestions = (lang = 'en') => API.get('/api/chatbot/guest/suggestions', { params: { lang } });
+export const queryGuestChatbot = (body) => API.post('/api/chatbot/guest/query', body);
+export const getGuestChatbotMeta = () => API.get('/api/chatbot/guest/meta');
 export const requestClientChatbotSupport = (body) => API.post('/api/chatbot/support/request', body);
 export const getClientChatbotSupportCurrent = () => API.get('/api/chatbot/support/current');
 export const sendClientChatbotSupportMessage = (body) => API.post('/api/chatbot/support/message', body);

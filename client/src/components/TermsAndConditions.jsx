@@ -294,8 +294,7 @@ const TermsAndConditions = () => {
           {/* Quick Summary Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
             {[
-              { label: "Cancellation fee", value: "From ₹100" },
-              { label: "Refund window", value: "48 hours" },
+            
               { label: "Governing law", value: "India / Pune" },
               { label: "Dispute method", value: "Arbitration" },
             ].map((item) => (

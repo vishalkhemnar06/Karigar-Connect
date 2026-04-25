@@ -574,7 +574,7 @@ export default function ClientChatbotWidget() {
     return (
         <>
             {/* Floating Button */}
-            <div className="fixed z-[70] right-4 md:right-6 bottom-6">
+            <div className="fixed z-[45] right-3 md:right-6 bottom-5 md:bottom-6">
                 <AnimatePresence>
                     {!isOpen && (
                         <motion.button
@@ -612,7 +612,7 @@ export default function ClientChatbotWidget() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 50, scale: 0.9 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="fixed z-[80] right-4 md:right-6 bottom-6 w-[calc(100vw-2rem)] max-w-[480px]"
+                        className="fixed z-[45] right-3 md:right-6 bottom-5 md:bottom-6 w-[calc(100vw-1.5rem)] md:w-[calc(100vw-2rem)] max-w-[480px]"
                     >
                         <div className="rounded-2xl bg-white shadow-2xl overflow-hidden border border-orange-100 flex flex-col">
                             {/* Header */}
