@@ -1,7 +1,13 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
+
 fastapi==0.115.0
 uvicorn==0.30.6
 numpy==1.26.4
 faiss-cpu==1.8.0.post1
-sentence-transformers==2.2.2
+
 torch==2.0.1+cpu
+torchvision==0.15.2+cpu
+
+sentence-transformers==2.2.2
+transformers==4.30.2
+huggingface-hub==0.14.1
