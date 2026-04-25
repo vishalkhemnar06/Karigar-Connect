@@ -1460,6 +1460,23 @@ exports.uploadBaseRatesCsv = async (req, res) => {
             }
         }
 
+        const toNumber = (value) => {
+            if (value === null || value === undefined) return NaN;
+            const normalized = String(value).replace(/,/g, '').trim();
+            if (!normalized) return NaN;
+            const parsed = Number(normalized);
+            return Number.isFinite(parsed) ? parsed : NaN;
+        };
+
+        const pickField = (record, keys) => {
+            for (const key of keys) {
+                if (record[key] !== undefined && record[key] !== null && String(record[key]).trim() !== '') {
+                    return record[key];
+                }
+            }
+            return undefined;
+        };
+
         // Validate and transform records
         const errors = [];
         const validRecords = [];
@@ -1468,12 +1485,19 @@ exports.uploadBaseRatesCsv = async (req, res) => {
             const record = records[i];
             const rowNum = i + 2; // CSV header is row 1, data starts at row 2
 
-            // Validate required columns
-            const city = String(record.city || '').trim();
-            const skill = String(record.skill || '').trim();
-            const hourRate = Number(record.hourRate);
-            const dayRate = Number(record.dayRate);
-            const visitRate = Number(record.visitRate);
+            // Accept both simple format (city/skill/hourRate/dayRate/visitRate)
+            // and rich format (City/Skill/Local_* / Platform_* fields).
+            const city = String(pickField(record, ['city', 'City', 'city_key', 'City_Key']) || '').trim();
+            const skill = String(pickField(record, ['skill', 'Skill', 'skill_key', 'Skill_Key']) || '').trim();
+            const hourRate = toNumber(
+                pickField(record, ['hourRate', 'HourRate', 'Local_Hourly_Min_INR', 'Local_Hourly_Min', 'localHourlyMin'])
+            );
+            const dayRate = toNumber(
+                pickField(record, ['dayRate', 'DayRate', 'Local_Day_Min_INR', 'Local_Day_Min', 'localDayMin'])
+            );
+            const visitRate = toNumber(
+                pickField(record, ['visitRate', 'VisitRate', 'Platform_Cost_Min_INR', 'Platform_Cost_Min', 'platformCostMin'])
+            );
 
             if (!city) {
                 errors.push(`Row ${rowNum}: Missing or empty 'city' column.`);
@@ -1484,15 +1508,15 @@ exports.uploadBaseRatesCsv = async (req, res) => {
                 continue;
             }
             if (!Number.isFinite(hourRate) || hourRate <= 0) {
-                errors.push(`Row ${rowNum}: 'hourRate' must be a positive number.`);
+                errors.push(`Row ${rowNum}: 'hourRate' (or Local_Hourly_Min_INR) must be a positive number.`);
                 continue;
             }
             if (!Number.isFinite(dayRate) || dayRate <= 0) {
-                errors.push(`Row ${rowNum}: 'dayRate' must be a positive number.`);
+                errors.push(`Row ${rowNum}: 'dayRate' (or Local_Day_Min_INR) must be a positive number.`);
                 continue;
             }
             if (!Number.isFinite(visitRate) || visitRate <= 0) {
-                errors.push(`Row ${rowNum}: 'visitRate' must be a positive number.`);
+                errors.push(`Row ${rowNum}: 'visitRate' (or Platform_Cost_Min_INR) must be a positive number.`);
                 continue;
             }
 
