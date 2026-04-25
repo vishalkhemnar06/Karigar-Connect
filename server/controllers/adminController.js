@@ -1489,15 +1489,51 @@ exports.uploadBaseRatesCsv = async (req, res) => {
             // and rich format (City/Skill/Local_* / Platform_* fields).
             const city = String(pickField(record, ['city', 'City', 'city_key', 'City_Key']) || '').trim();
             const skill = String(pickField(record, ['skill', 'Skill', 'skill_key', 'Skill_Key']) || '').trim();
-            const hourRate = toNumber(
+            const rawHourRate = toNumber(
                 pickField(record, ['hourRate', 'HourRate', 'Local_Hourly_Min_INR', 'Local_Hourly_Min', 'localHourlyMin'])
             );
-            const dayRate = toNumber(
+            const rawDayRate = toNumber(
                 pickField(record, ['dayRate', 'DayRate', 'Local_Day_Min_INR', 'Local_Day_Min', 'localDayMin'])
             );
-            const visitRate = toNumber(
+            const rawVisitRate = toNumber(
                 pickField(record, ['visitRate', 'VisitRate', 'Platform_Cost_Min_INR', 'Platform_Cost_Min', 'platformCostMin'])
             );
+
+            // Derive missing rates so CSVs with per-visit services (often no hourly value)
+            // can still be imported safely.
+            const hourRate = Number.isFinite(rawHourRate) && rawHourRate > 0
+                ? rawHourRate
+                : (Number.isFinite(rawDayRate) && rawDayRate > 0
+                    ? rawDayRate / 8
+                    : (Number.isFinite(rawVisitRate) && rawVisitRate > 0 ? rawVisitRate / 8 : NaN));
+
+            const dayRate = Number.isFinite(rawDayRate) && rawDayRate > 0
+                ? rawDayRate
+                : (Number.isFinite(rawHourRate) && rawHourRate > 0
+                    ? rawHourRate * 8
+                    : (Number.isFinite(rawVisitRate) && rawVisitRate > 0 ? rawVisitRate : NaN));
+
+            const visitRate = Number.isFinite(rawVisitRate) && rawVisitRate > 0
+                ? rawVisitRate
+                : (Number.isFinite(rawDayRate) && rawDayRate > 0
+                    ? rawDayRate
+                    : (Number.isFinite(rawHourRate) && rawHourRate > 0 ? rawHourRate * 8 : NaN));
+            const rateModeRaw = String(
+                pickField(record, ['rateMode', 'Rate_Mode', 'rate_type', 'Rate_Type']) || 'mixed'
+            ).trim().toLowerCase();
+            const unitRaw = String(
+                pickField(record, ['unit', 'Unit']) || ''
+            ).trim().toLowerCase();
+
+            const resolvedDayRate = Number.isFinite(dayRate) && dayRate > 0
+                ? dayRate
+                : (Number.isFinite(visitRate) && visitRate > 0 ? visitRate : NaN);
+            const resolvedHourRate = Number.isFinite(hourRate) && hourRate > 0
+                ? hourRate
+                : (Number.isFinite(resolvedDayRate) && resolvedDayRate > 0 ? resolvedDayRate / 8 : NaN);
+            const resolvedVisitRate = Number.isFinite(visitRate) && visitRate > 0
+                ? visitRate
+                : (Number.isFinite(resolvedDayRate) && resolvedDayRate > 0 ? resolvedDayRate : NaN);
 
             if (!city) {
                 errors.push(`Row ${rowNum}: Missing or empty 'city' column.`);
@@ -1507,16 +1543,16 @@ exports.uploadBaseRatesCsv = async (req, res) => {
                 errors.push(`Row ${rowNum}: Missing or empty 'skill' column.`);
                 continue;
             }
-            if (!Number.isFinite(hourRate) || hourRate <= 0) {
-                errors.push(`Row ${rowNum}: 'hourRate' (or Local_Hourly_Min_INR) must be a positive number.`);
+            if (!Number.isFinite(resolvedHourRate) || resolvedHourRate <= 0) {
+                errors.push(`Row ${rowNum}: Could not derive a valid hourly rate from hour/day/visit values (mode=${rateModeRaw}, unit=${unitRaw || 'n/a'}).`);
                 continue;
             }
-            if (!Number.isFinite(dayRate) || dayRate <= 0) {
-                errors.push(`Row ${rowNum}: 'dayRate' (or Local_Day_Min_INR) must be a positive number.`);
+            if (!Number.isFinite(resolvedDayRate) || resolvedDayRate <= 0) {
+                errors.push(`Row ${rowNum}: Could not derive a valid daily rate from day/visit values (mode=${rateModeRaw}, unit=${unitRaw || 'n/a'}).`);
                 continue;
             }
-            if (!Number.isFinite(visitRate) || visitRate <= 0) {
-                errors.push(`Row ${rowNum}: 'visitRate' (or Platform_Cost_Min_INR) must be a positive number.`);
+            if (!Number.isFinite(resolvedVisitRate) || resolvedVisitRate <= 0) {
+                errors.push(`Row ${rowNum}: Could not derive a valid visit rate from visit/day values (mode=${rateModeRaw}, unit=${unitRaw || 'n/a'}).`);
                 continue;
             }
 
@@ -1524,9 +1560,9 @@ exports.uploadBaseRatesCsv = async (req, res) => {
                 city,
                 skill,
                 rates: {
-                    hourly: Math.round(hourRate),
-                    daily: Math.round(dayRate),
-                    visit: Math.round(visitRate),
+                    hourly: Math.round(resolvedHourRate),
+                    daily: Math.round(resolvedDayRate),
+                    visit: Math.round(resolvedVisitRate),
                 },
                 source: 'csv_bootstrap',
                 effectiveFrom: new Date(),
