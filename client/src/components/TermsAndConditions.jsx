@@ -29,7 +29,7 @@ const SECTIONS = [
           <li>Be a resident of India and operate within the service areas supported by the platform.</li>
           <li>Provide accurate, current, and complete information during registration. Providing false information is grounds for immediate, permanent suspension.</li>
           <li>Maintain the security and confidentiality of your login credentials. You are solely responsible for all activity under your account.</li>
-          <li>Notify KarigarConnect immediately at <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline">kc.india@gmail.com</a> if you become aware of any unauthorized use of your account.</li>
+          <li>Notify KarigarConnect immediately at <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline">kc.india07@gmail.com</a> if you become aware of any unauthorized use of your account.</li>
         </ul>
         <p>Workers must additionally complete face verification, submit a valid government-issued photo ID (Aadhaar, PAN, Driving Licence, or Voter ID), and pass skill and background verification before being listed on the platform. KarigarConnect reserves the right to reject any application without providing a reason.</p>
         <p>One person may not hold more than one active account of the same role. Creating multiple accounts to circumvent a suspension is a material breach of these Terms.</p>
@@ -193,7 +193,7 @@ const SECTIONS = [
       <div className="space-y-3 text-gray-700 text-sm leading-relaxed">
         <p>All platform content including but not limited to: the KarigarConnect name, logo, AI models, algorithms, software code, database structure, UI/UX design, and written content are the exclusive intellectual property of KarigarConnect and are protected under the Copyright Act, 1957, Trade Marks Act, 1999, and applicable Indian and international intellectual property laws.</p>
         <p>You may not copy, reproduce, distribute, create derivative works from, publicly display, or commercially exploit any platform content without prior written permission from KarigarConnect.</p>
-        <p>If you believe any content on the platform infringes your intellectual property rights, please send a notice to <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline">kc.india@gmail.com</a> with full details of the alleged infringement.</p>
+        <p>If you believe any content on the platform infringes your intellectual property rights, please send a notice to <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline">kc.india07@gmail.com</a> with full details of the alleged infringement.</p>
       </div>
     ),
   },
@@ -203,7 +203,7 @@ const SECTIONS = [
     title: "13. Dispute Resolution & Governing Law",
     content: (
       <div className="space-y-3 text-gray-700 text-sm leading-relaxed">
-        <p><strong>13.1 Platform Grievances.</strong> If you have a complaint about KarigarConnect's services, please first raise it through the in-app complaint system or write to our Grievance Officer at <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline">kc.india@gmail.com</a>. We will endeavor to resolve all grievances within <strong>30 days</strong> of receipt.</p>
+        <p><strong>13.1 Platform Grievances.</strong> If you have a complaint about KarigarConnect's services, please first raise it through the in-app complaint system or write to our Grievance Officer at <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline">kc.india07@gmail.com</a>. We will endeavor to resolve all grievances within <strong>30 days</strong> of receipt.</p>
         <p><strong>13.2 Between Users.</strong> KarigarConnect may at its discretion facilitate mediation between Clients and Workers. However, KarigarConnect is not an arbitrator and its mediation suggestions are non-binding.</p>
         <p><strong>13.3 Arbitration.</strong> Any dispute, controversy, or claim arising out of or relating to these Terms, or the breach, termination, or invalidity thereof, that cannot be resolved through internal grievance mechanisms shall be finally settled by binding arbitration under the <strong>Arbitration and Conciliation Act, 1996</strong>. The seat of arbitration shall be <strong>Pune, Maharashtra</strong>. The arbitration shall be conducted in English.</p>
         <p><strong>13.4 Governing Law & Jurisdiction.</strong> These Terms are governed by the laws of India. Subject to the arbitration clause above, the courts of Pune, Maharashtra shall have exclusive jurisdiction over any matters that proceed to litigation.</p>
@@ -221,7 +221,7 @@ const SECTIONS = [
         <p><strong>14.2 Severability.</strong> If any provision of these Terms is found by a court of competent jurisdiction to be invalid or unenforceable, that provision shall be modified to the minimum extent necessary to make it valid, and the remaining provisions shall continue in full force and effect.</p>
         <p><strong>14.3 Entire Agreement.</strong> These Terms, together with the Privacy Policy and any additional terms applicable to specific services, constitute the entire agreement between you and KarigarConnect and supersede all prior agreements relating to the platform.</p>
         <p><strong>14.4 No Waiver.</strong> KarigarConnect's failure to enforce any right or provision in these Terms shall not constitute a waiver of that right or provision.</p>
-        <p><strong>14.5 Contact.</strong> KarigarConnect Pvt. Ltd., Manjari Budruk, Hadapsar Road, Wagholi, Pune, Maharashtra 412307. Email: <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline">kc.india@gmail.com</a>. Phone: +91 86051 71209.</p>
+        <p><strong>14.5 Contact.</strong> KarigarConnect Pvt. Ltd., Manjari Budruk, Hadapsar Road, Wagholi, Pune, Maharashtra 412307. Email: <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline">kc.india07@gmail.com</a>. Phone: +91 86051 71209.</p>
       </div>
     ),
   },
@@ -317,7 +317,7 @@ const TermsAndConditions = () => {
             <p className="font-bold text-lg mb-1">✔ By using KarigarConnect, you agree to these Terms.</p>
             <p className="text-orange-100 text-sm">
               Questions? Contact us at{" "}
-              <a href="mailto:kc.india@gmail.com" className="underline font-semibold">kc.india@gmail.com</a>
+              <a href="mailto:kc.india07@gmail.com" className="underline font-semibold">kc.india07@gmail.com</a>
               {" "}or call{" "}
               <a href="tel:+918605171209" className="underline font-semibold">+91 86051 71209</a>.
             </p>
