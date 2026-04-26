@@ -20,7 +20,7 @@ const DATA_TABLE = [
 ];
 
 const RIGHTS_TABLE = [
-  { right: "Right to Access", description: "Request a copy of all personal data we hold about you.", how: "Email kc.india@gmail.com with subject 'Data Access Request'. We will respond within 30 days." },
+  { right: "Right to Access", description: "Request a copy of all personal data we hold about you.", how: "Email kc.india07@gmail.com with subject 'Data Access Request'. We will respond within 30 days." },
   { right: "Right to Correction", description: "Request correction of inaccurate or incomplete personal data.", how: "Most data can be updated directly in your profile. For ID-linked data, email us." },
   { right: "Right to Erasure", description: "Request deletion of your account and associated personal data.", how: "Use Settings → Delete Account, or email us. Some data may be retained for legal compliance." },
   { right: "Right to Data Portability", description: "Receive your personal data in a structured, machine-readable format.", how: "Email us. We will provide a JSON/CSV export within 30 days." },
@@ -205,7 +205,7 @@ const SECTIONS = [
             </div>
           ))}
         </div>
-        <p>Despite these measures, no internet transmission is 100% secure. You are responsible for keeping your login credentials confidential. If you suspect unauthorized access to your account, contact us immediately at <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline">kc.india@gmail.com</a>.</p>
+        <p>Despite these measures, no internet transmission is 100% secure. You are responsible for keeping your login credentials confidential. If you suspect unauthorized access to your account, contact us immediately at <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline">kc.india07@gmail.com</a>.</p>
       </div>
     ),
   },
@@ -250,7 +250,7 @@ const SECTIONS = [
         <p>In accordance with Rule 5(9) of the SPDI Rules, 2011 and Section 13 of the DPDPA 2023, KarigarConnect has designated a Grievance Officer to address your data-related concerns:</p>
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 space-y-2">
           <p className="font-bold text-gray-900">KarigarConnect Grievance Officer</p>
-          <p className="text-sm">📧 <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline font-medium">kc.india@gmail.com</a></p>
+          <p className="text-sm">📧 <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline font-medium">kc.india07@gmail.com</a></p>
           <p className="text-sm">📞 <a href="tel:+918605171209" className="text-orange-600 underline font-medium">+91 86051 71209</a> (Mon–Sat, 9 AM – 6 PM IST)</p>
           <p className="text-sm">📍 Manjari Budruk, Hadapsar Road, Wagholi, Pune, Maharashtra 412307, India</p>
           <p className="text-xs text-gray-500 mt-2">Please use subject line: <em>"Privacy Grievance — [Your registered email]"</em> for faster resolution.</p>
@@ -295,7 +295,7 @@ const SECTIONS = [
     content: (
       <div className="space-y-3 text-gray-700 text-sm leading-relaxed">
         <p>KarigarConnect is not intended for individuals under the age of <strong>18 years</strong>. We do not knowingly collect personal data from minors. Registration requires confirmation of age 18+.</p>
-        <p>If we become aware that a user is under 18, we will suspend the account and promptly delete all associated personal data. If you believe a minor has registered on the platform, please notify us at <a href="mailto:kc.india@gmail.com" className="text-orange-600 underline">kc.india@gmail.com</a>.</p>
+        <p>If we become aware that a user is under 18, we will suspend the account and promptly delete all associated personal data. If you believe a minor has registered on the platform, please notify us at <a href="mailto:kc.india07@gmail.com" className="text-orange-600 underline">kc.india07@gmail.com</a>.</p>
         <p>Under the DPDPA 2023, processing of children's data requires parental consent. KarigarConnect does not have a mechanism to obtain verifiable parental consent and therefore the platform is restricted to adults only.</p>
       </div>
     ),
@@ -398,8 +398,8 @@ const PrivacyPolicy = () => {
             <p className="font-bold text-lg mb-1">Questions about your privacy?</p>
             <p className="text-orange-100 text-sm mb-4">Contact our Grievance Officer — we aim to respond within 48 hours on all business days.</p>
             <div className="flex flex-wrap gap-3">
-              <a href="mailto:kc.india@gmail.com" className="inline-flex items-center gap-2 bg-white text-orange-600 font-semibold text-sm px-4 py-2 rounded-lg hover:bg-orange-50">
-                ✉️ kc.india@gmail.com
+              <a href="mailto:kc.india07@gmail.com" className="inline-flex items-center gap-2 bg-white text-orange-600 font-semibold text-sm px-4 py-2 rounded-lg hover:bg-orange-50">
+                ✉️ kc.india07@gmail.com
               </a>
               <a href="tel:+918605171209" className="inline-flex items-center gap-2 bg-white/20 text-white font-semibold text-sm px-4 py-2 rounded-lg hover:bg-white/30">
                 📞 +91 86051 71209
