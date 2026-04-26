@@ -532,7 +532,7 @@ const Home = () => {
                                     <Mail className="w-5 h-5 text-orange-400 mt-0.5 flex-shrink-0" />
                                     <div>
                                         <p className="text-gray-300 text-sm font-semibold">Email</p>
-                                        <a href="mailto:kc.india@gmail.com" className="text-gray-400 hover:text-orange-400 transition-colors break-all">kc.india@gmail.com</a>
+                                        <a href="mailto:kc.india07@gmail.com" className="text-gray-400 hover:text-orange-400 transition-colors break-all">kc.india07@gmail.com</a>
                                     </div>
                                 </li>
                             </ul>
