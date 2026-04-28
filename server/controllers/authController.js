@@ -522,6 +522,7 @@ exports.registerClient = async (req, res) => {
             securityQuestion, securityAnswer,
             // T&C acceptance
             termsPaymentAccepted, termsDisputePolicyAccepted, termsDataPrivacyAccepted, termsWorkerProtectionAccepted,
+            termsAccepted, privacyAccepted,
         } = req.body;
 
         // ── Validation ────────────────────────────────────────────────────────
@@ -563,12 +564,19 @@ exports.registerClient = async (req, res) => {
         if (ageFromDob < 18) {
             return res.status(400).json({ message: 'Birth date indicates age below 18.' });
         }
+        const expectedDobYear = new Date().getFullYear() - ageNum;
+        const selectedDobYear = dobDate.getFullYear();
+        if (selectedDobYear !== expectedDobYear) {
+            return res.status(400).json({ message: `DOB year must match age. For age ${ageNum}, birth year must be ${expectedDobYear}.` });
+        }
 
         if (!['Male', 'Female', 'Other'].includes(gender)) {
             return res.status(400).json({ message: 'Gender is required.' });
         }
 
         const toBool = (v) => v === true || v === 'true';
+        const acceptedTerms = toBool(termsAccepted) || toBool(termsPaymentAccepted) || toBool(termsDisputePolicyAccepted) || toBool(termsWorkerProtectionAccepted);
+        const acceptedPrivacy = toBool(privacyAccepted) || toBool(termsDataPrivacyAccepted);
 
         // NEW: Security validations
         if (!toBool(ageVerified) && ageNum < 18)
@@ -585,8 +593,8 @@ exports.registerClient = async (req, res) => {
             return res.status(400).json({ message: 'Preferred payment method is required.' });
         if (!securityQuestion?.trim() || !securityAnswer?.trim())
             return res.status(400).json({ message: 'Security question and answer are required.' });
-        if (!toBool(termsPaymentAccepted) || !toBool(termsDisputePolicyAccepted) || !toBool(termsDataPrivacyAccepted) || !toBool(termsWorkerProtectionAccepted))
-            return res.status(400).json({ message: 'You must accept all terms and conditions.' });
+        if (!acceptedTerms || !acceptedPrivacy)
+            return res.status(400).json({ message: 'You must accept Terms and Privacy Policy.' });
 
         if (await User.findOne({ mobile }))
             return res.status(409).json({ message: 'Mobile number is already registered.' });
@@ -774,10 +782,10 @@ exports.registerClient = async (req, res) => {
             signupUserAgent: userAgent,
             
             // T&C acceptance
-            termsPaymentAccepted: toBool(termsPaymentAccepted),
-            termsDisputePolicyAccepted: toBool(termsDisputePolicyAccepted),
-            termsDataPrivacyAccepted: toBool(termsDataPrivacyAccepted),
-            termsWorkerProtectionAccepted: toBool(termsWorkerProtectionAccepted),
+            termsPaymentAccepted: acceptedTerms,
+            termsDisputePolicyAccepted: acceptedTerms,
+            termsDataPrivacyAccepted: acceptedPrivacy,
+            termsWorkerProtectionAccepted: acceptedTerms,
             
             // Legacy fields
             workplaceInfo, socialProfile,
