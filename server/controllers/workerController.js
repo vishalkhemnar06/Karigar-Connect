@@ -1030,6 +1030,17 @@ exports.getWorkerProfile = async (req, res) => {
     try {
         const w = await User.findById(req.user.id).select('-password -resetPasswordToken -resetPasswordExpire -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry');
         if (!w) return res.status(404).json({ message: 'Not found.' });
+
+        let idCardIssuedAt = w.idCardIssuedAt;
+        if (!idCardIssuedAt) {
+            idCardIssuedAt = new Date();
+            await User.updateOne(
+                { _id: w._id, idCardIssuedAt: null },
+                { $set: { idCardIssuedAt } }
+            );
+            w.idCardIssuedAt = idCardIssuedAt;
+        }
+
         const normalized = await normalizeWorkerDocumentUrls(w);
         const sanitized = sanitizeWorkerSensitiveFields(normalized);
         const dailyProfile = await getWorkerDailyProfileSnapshot(sanitized);
@@ -1049,6 +1060,8 @@ exports.getWorkerProfile = async (req, res) => {
         
         return res.json({
             ...sanitized,
+            idCardIssuedAt,
+            expiryYear: new Date(idCardIssuedAt).getFullYear() + 3,
             averageRating: avgStars,
             totalRatings,
             dailyProfile,
@@ -1269,7 +1282,7 @@ exports.deleteAccount = async (req, res) => {
 exports.getPublicWorkerProfile = async (req, res) => {
     try {
         const w = await findWorkerByIdOrKarigarId(req.params.id, {
-            select: '-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry -email',
+            select: '-password -resetPasswordToken -resetPasswordExpire -faceEmbedding -idFaceEmbedding -securityAnswer -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry -mobile -email',
             populate: { path: 'reviewLock.lockedBy', select: 'name karigarId' },
         });
         if (!w) return res.status(404).json({ message: 'Not found.' });
@@ -1298,6 +1311,7 @@ exports.getPublicWorkerProfile = async (req, res) => {
         return res.json({
             ...worker,
             address: publicAddress,
+            mobile: undefined,
             email: undefined,
             expiryYear: expiryYear,
             completedJobs,
