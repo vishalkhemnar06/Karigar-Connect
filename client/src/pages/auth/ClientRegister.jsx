@@ -28,6 +28,29 @@ import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../
 const DRAFT_KEY = 'client_register_draft_v1';
 const CLIENT_TERMS_GATE_KEY = 'kc_client_terms_gate_v1';
 
+const getYearFromDate = (dateValue) => {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.getFullYear();
+};
+
+const getExpectedDobYearFromAge = (ageValue) => {
+    const ageNum = Number(ageValue);
+    if (!Number.isFinite(ageNum) || ageNum <= 0) return null;
+    return new Date().getFullYear() - ageNum;
+};
+
+const getAgeFromDob = (dobValue) => {
+    const dobDate = new Date(dobValue);
+    if (Number.isNaN(dobDate.getTime())) return null;
+
+    const now = new Date();
+    let years = now.getFullYear() - dobDate.getFullYear();
+    const monthDelta = now.getMonth() - dobDate.getMonth();
+    if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dobDate.getDate())) years -= 1;
+    return years;
+};
+
 const ClientRegister = () => {
     const [formData, setFormData] = useState({
         // Basic
@@ -44,10 +67,8 @@ const ClientRegister = () => {
         businessRegistrationNumber:'', gstTaxId:'', insuranceDetails:'',
         securityQuestion:'', securityAnswer:'',
         // NEW T&C Checkboxes (separate from legacy agreedToTerms)
-        termsPaymentAccepted: false,
-        termsDisputePolicyAccepted: false,
-        termsDataPrivacyAccepted: false,
-        termsWorkerProtectionAccepted: false,
+        termsAccepted: false,
+        privacyAccepted: false,
     });
     const [files, setFiles] = useState({ 
         photo:null, idProof:null,
@@ -79,6 +100,8 @@ const ClientRegister = () => {
     const [legalPreview, setLegalPreview] = useState({ open: false, title: '', path: '' });
     const [showTermsGate, setShowTermsGate] = useState(false);
     const [termsGateAccepted, setTermsGateAccepted] = useState(false);
+    const [mobileOtpCooldownSec, setMobileOtpCooldownSec] = useState(0);
+    const [emailOtpCooldownSec, setEmailOtpCooldownSec] = useState(0);
 
     const navigate = useNavigate();
     const strength = getPasswordStrength(formData.password);
@@ -139,7 +162,37 @@ const ClientRegister = () => {
         }
     }, []);
 
-    const handleChange     = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+    useEffect(() => {
+        if (mobileOtpCooldownSec <= 0) return;
+        const timer = setInterval(() => {
+            setMobileOtpCooldownSec((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [mobileOtpCooldownSec]);
+
+    useEffect(() => {
+        if (emailOtpCooldownSec <= 0) return;
+        const timer = setInterval(() => {
+            setEmailOtpCooldownSec((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [emailOtpCooldownSec]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+
+        if (name === 'dob') {
+            const detectedAge = getAgeFromDob(value);
+            setFormData((prev) => ({
+                ...prev,
+                dob: value,
+                age: detectedAge !== null ? String(detectedAge) : prev.age,
+            }));
+            return;
+        }
+
+        setFormData((prev) => ({ ...prev, [name]: value }));
+    };
     const handleFileChange = e => {
         const { name, files: selectedFiles } = e.target;
         const file = selectedFiles?.[0] || null;
@@ -213,9 +266,20 @@ const ClientRegister = () => {
     // OTP handlers (unchanged)
     const handleSendMobileOtp = async () => {
         if (!formData.mobile || formData.mobile.length !== 10) return toast.error('Valid 10-digit mobile required');
+        if (mobileOtpCooldownSec > 0) return toast.error(`Please wait ${mobileOtpCooldownSec}s before requesting another OTP.`);
         const id = toast.loading('Sending Mobile OTP…');
-        try { await api.sendOtp({ mobile: formData.mobile }); setMobileOtpSent(true); toast.success('OTP sent!', { id }); }
-        catch { toast.error('Failed to send mobile OTP', { id }); }
+        try {
+            await api.sendOtp({ mobile: formData.mobile });
+            setMobileOtpSent(true);
+            setMobileOtpCooldownSec(60);
+            toast.success('OTP sent!', { id });
+        }
+        catch (err) {
+            const retryAfter = Number(err?.response?.data?.retryAfterSeconds || 0);
+            const message = err?.response?.data?.message || 'Failed to send mobile OTP';
+            if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
+            toast.error(message, { id });
+        }
     };
     const handleVerifyMobileOtp = async () => {
         if (!mobileOtp) return toast.error('Enter mobile OTP');
@@ -225,9 +289,20 @@ const ClientRegister = () => {
     };
     const handleSendEmailOtp = async () => {
         if (!formData.email) return toast.error('Enter email address');
+        if (emailOtpCooldownSec > 0) return toast.error(`Please wait ${emailOtpCooldownSec}s before requesting another OTP.`);
         const id = toast.loading('Sending Email OTP…');
-        try { await api.sendOtp({ email: formData.email }); setEmailOtpSent(true); toast.success('OTP sent to email!', { id }); }
-        catch { toast.error('Failed to send email OTP', { id }); }
+        try {
+            await api.sendOtp({ email: formData.email });
+            setEmailOtpSent(true);
+            setEmailOtpCooldownSec(60);
+            toast.success('OTP sent to email!', { id });
+        }
+        catch (err) {
+            const retryAfter = Number(err?.response?.data?.retryAfterSeconds || 0);
+            const message = err?.response?.data?.message || 'Failed to send email OTP';
+            if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
+            toast.error(message, { id });
+        }
     };
     const handleVerifyEmailOtp = async () => {
         if (!emailOtp) return toast.error('Enter email OTP');
@@ -246,6 +321,11 @@ const ClientRegister = () => {
         const dobDate = new Date(formData.dob);
         if (Number.isNaN(dobDate.getTime())) return toast.error('Birth date is invalid.');
         if (dobDate > new Date()) return toast.error('Birth date cannot be in the future.');
+        const expectedDobYear = getExpectedDobYearFromAge(ageNum);
+        const selectedDobYear = getYearFromDate(formData.dob);
+        if (expectedDobYear !== null && selectedDobYear !== null && selectedDobYear !== expectedDobYear) {
+            return toast.error(`For age ${ageNum}, birth year must be ${expectedDobYear}.`);
+        }
         if (!formData.gender) return toast.error('Gender is required.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
         if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
@@ -258,10 +338,8 @@ const ClientRegister = () => {
         if (!formData.emergencyContactName?.trim()) return toast.error('Emergency contact name required.');
         if (!formData.emergencyContactMobile?.trim()) return toast.error('Emergency contact mobile required.');
         // NEW: Validate all T&C acceptance
-        if (!formData.termsPaymentAccepted) return toast.error('Accept payment terms to continue.');
-        if (!formData.termsDisputePolicyAccepted) return toast.error('Accept dispute policy to continue.');
-        if (!formData.termsDataPrivacyAccepted) return toast.error('Accept data privacy policy to continue.');
-        if (!formData.termsWorkerProtectionAccepted) return toast.error('Accept worker protection terms to continue.');
+        if (!formData.termsAccepted) return toast.error('Please accept the Terms and Conditions.');
+        if (!formData.privacyAccepted) return toast.error('Please accept the Privacy Policy.');
         return true;
     };
 
@@ -274,6 +352,11 @@ const ClientRegister = () => {
         if (!formData.dob) return toast.error('Enter your birth date.');
         const dobDate = new Date(formData.dob);
         if (Number.isNaN(dobDate.getTime()) || dobDate > new Date()) return toast.error('Enter a valid birth date.');
+        const expectedDobYear = getExpectedDobYearFromAge(ageNum);
+        const selectedDobYear = getYearFromDate(formData.dob);
+        if (expectedDobYear !== null && selectedDobYear !== null && selectedDobYear !== expectedDobYear) {
+            return toast.error(`For age ${ageNum}, birth year must be ${expectedDobYear}.`);
+        }
         if (!formData.gender) return toast.error('Select gender.');
         // NEW: Validate security fields
         if (!formData.emergencyContactName?.trim()) return toast.error('Enter emergency contact name.');
@@ -371,9 +454,8 @@ const ClientRegister = () => {
 
     const submitRegistration = async () => {
         // NEW: Validate ALL T&C acceptance with separate checks
-        if (!formData.termsPaymentAccepted || !formData.termsDisputePolicyAccepted || 
-            !formData.termsDataPrivacyAccepted || !formData.termsWorkerProtectionAccepted) {
-            return toast.error('Please accept all terms and conditions.');
+        if (!formData.termsAccepted || !formData.privacyAccepted) {
+            return toast.error('Please accept Terms and Privacy Policy.');
         }
         if (!faceMatchPassed) return toast.error('Face not match with ID. Registration is blocked.');
         if (!livePhotoData) return toast.error('Please complete face verification first.');
@@ -384,6 +466,10 @@ const ClientRegister = () => {
             ageVerified: Number(formData.age) >= 18,
         };
         Object.keys(normalizedForm).forEach(k => data.append(k, normalizedForm[k]));
+        data.append('termsPaymentAccepted', String(!!formData.termsAccepted));
+        data.append('termsDisputePolicyAccepted', String(!!formData.termsAccepted));
+        data.append('termsWorkerProtectionAccepted', String(!!formData.termsAccepted));
+        data.append('termsDataPrivacyAccepted', String(!!formData.privacyAccepted));
         // NEW: Add all new files
         if (files.photo) data.append('photo', files.photo);
         if (files.idProof) data.append('idProof', files.idProof);
@@ -543,10 +629,10 @@ const ClientRegister = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleSendMobileOtp}
-                                                disabled={mobileOtpSent || mobileVerified}
+                                                disabled={mobileVerified || mobileOtpCooldownSec > 0}
                                                 className="px-4 py-3 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-600 disabled:bg-orange-300 whitespace-nowrap"
                                             >
-                                                Send OTP
+                                                {mobileOtpCooldownSec > 0 ? `Resend in ${mobileOtpCooldownSec}s` : (mobileOtpSent ? 'Resend OTP' : 'Send OTP')}
                                             </button>
                                         </div>
                                         {mobileOtpSent && !mobileVerified && (
@@ -578,10 +664,10 @@ const ClientRegister = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleSendEmailOtp}
-                                                disabled={emailOtpSent || emailVerified}
+                                                disabled={emailVerified || emailOtpCooldownSec > 0}
                                                 className="px-4 py-3 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-600 disabled:bg-orange-300 whitespace-nowrap"
                                             >
-                                                Send OTP
+                                                {emailOtpCooldownSec > 0 ? `Resend in ${emailOtpCooldownSec}s` : (emailOtpSent ? 'Resend OTP' : 'Send OTP')}
                                             </button>
                                         </div>
                                         {emailOtpSent && !emailVerified && (
@@ -599,6 +685,11 @@ const ClientRegister = () => {
                                     </div>
 
                                     {/* Age, Birth date and Gender */}
+                                    {Number(formData.age) >= 18 && (
+                                        <p className="text-xs text-orange-700">
+                                            For age {formData.age}, select a DOB in year {getExpectedDobYearFromAge(formData.age)}.
+                                        </p>
+                                    )}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <input
                                             type="number"
@@ -615,6 +706,14 @@ const ClientRegister = () => {
                                             name="dob"
                                             value={formData.dob}
                                             onChange={handleChange}
+                                            min={(() => {
+                                                const y = getExpectedDobYearFromAge(formData.age);
+                                                return y ? `${y}-01-01` : undefined;
+                                            })()}
+                                            max={(() => {
+                                                const y = getExpectedDobYearFromAge(formData.age);
+                                                return y ? `${y}-12-31` : new Date().toISOString().split('T')[0];
+                                            })()}
                                             className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
                                         />
                                         <select
@@ -990,42 +1089,24 @@ const ClientRegister = () => {
                                 </div>
 
                                 <div className="pt-2 border-t border-orange-200 space-y-3">
-                                    <p className="font-semibold text-orange-800 mb-3">Accept All Terms & Conditions <span className="text-red-600">*</span></p>
+                                    <p className="font-semibold text-orange-800 mb-3">Accept Terms <span className="text-red-600">*</span></p>
                                     <label className="flex items-start gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
-                                            checked={formData.termsPaymentAccepted}
-                                            onChange={e => setFormData({ ...formData, termsPaymentAccepted: e.target.checked })}
+                                            checked={formData.termsAccepted}
+                                            onChange={e => setFormData({ ...formData, termsAccepted: e.target.checked })}
                                             className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Payment Terms & Conditions', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Payment Terms & Conditions</button></span>
+                                        <span className="text-sm text-gray-700">I agree to the <button type="button" onClick={() => openLegalPreview('Terms and Conditions', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Terms and Conditions</button></span>
                                     </label>
                                     <label className="flex items-start gap-3 cursor-pointer">
                                         <input
                                             type="checkbox"
-                                            checked={formData.termsDisputePolicyAccepted}
-                                            onChange={e => setFormData({ ...formData, termsDisputePolicyAccepted: e.target.checked })}
+                                            checked={formData.privacyAccepted}
+                                            onChange={e => setFormData({ ...formData, privacyAccepted: e.target.checked })}
                                             className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
                                         />
-                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Dispute Resolution Policy', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Dispute Resolution Policy</button></span>
-                                    </label>
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.termsDataPrivacyAccepted}
-                                            onChange={e => setFormData({ ...formData, termsDataPrivacyAccepted: e.target.checked })}
-                                            className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
-                                        />
-                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Data Privacy Policy', '/privacy-policy')} className="text-orange-600 underline font-bold">Data Privacy Policy</button></span>
-                                    </label>
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.termsWorkerProtectionAccepted}
-                                            onChange={e => setFormData({ ...formData, termsWorkerProtectionAccepted: e.target.checked })}
-                                            className="h-5 w-5 mt-0.5 rounded border-orange-300 text-orange-600"
-                                        />
-                                        <span className="text-sm text-gray-700">I agree to <button type="button" onClick={() => openLegalPreview('Worker Protection & Safety Terms', '/terms-and-conditions')} className="text-orange-600 underline font-bold">Worker Protection & Safety Terms</button></span>
+                                        <span className="text-sm text-gray-700">I agree to the <button type="button" onClick={() => openLegalPreview('Privacy Policy', '/privacy-policy')} className="text-orange-600 underline font-bold">Privacy Policy</button></span>
                                     </label>
                                 </div>
 
@@ -1035,8 +1116,7 @@ const ClientRegister = () => {
                                         type="button"
                                         onClick={submitRegistration}
                                         disabled={!mobileVerified || !emailVerified || !livePhotoData || !faceMatchPassed || 
-                                                 !formData.termsPaymentAccepted || !formData.termsDisputePolicyAccepted || 
-                                                 !formData.termsDataPrivacyAccepted || !formData.termsWorkerProtectionAccepted || checkingSimilarity}
+                                                 !formData.termsAccepted || !formData.privacyAccepted || checkingSimilarity}
                                         className="px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl disabled:from-gray-400 disabled:to-gray-500 shadow-xl text-lg"
                                     >
                                         Submit Registration
