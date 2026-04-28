@@ -10,6 +10,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import * as api from "../../api";
+import logo from "../../assets/logo.jpg";
 
 // ─── Google Font loader ────────────────────────────────────────────────────────
 const loadFonts = () => {
@@ -190,6 +191,24 @@ const S = {
     padding: "24px 28px 0 28px",
     display: "flex",
     gap: 28,
+    position: "relative",
+  },
+  
+  // Logo in top-left corner of card body
+  logoCorner: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    overflow: "hidden",
+    border: "2px solid #E85D04",
+    boxShadow: "0 2px 8px rgba(232,93,4,0.2)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#fff",
   },
 
   // LEFT: Photo column
@@ -791,7 +810,8 @@ const ViewIdCard = () => {
   const skills   = (user.skills || []).map((s) => s.name || s).filter(Boolean);
   const publicURL = `${window.location.origin}/profile/public/${user.karigarId}`;
   const issueDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const expYear  = new Date().getFullYear() + 3;
+  // Use expiry year from API (set by backend on worker registration), fallback to +3 years
+  const expYear  = user.expiryYear || new Date().getFullYear() + 3;
   const fvPassed = user.faceVerificationStatus === "passed";
   const initials = (user.name || "KC")
     .split(" ")
@@ -835,6 +855,14 @@ const ViewIdCard = () => {
 
         {/* ── Body: 3 columns [Photo | Info | QR] ── */}
         <div style={S.body}>
+          {/* Logo in top-left corner */}
+          <div style={S.logoCorner}>
+            <img
+              src={logo}
+              alt="KarigarConnect"
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+            />
+          </div>
 
           {/* Column 1 — Photo */}
           <div style={S.photoCol}>
@@ -893,7 +921,7 @@ const ViewIdCard = () => {
               </div>
               <div style={S.infoCell}>
                 <div style={S.infoLabel}>Valid Until</div>
-                <div style={S.infoValue}>Dec {expYear}</div>
+                <div style={S.infoValue}>{expYear}</div>
               </div>
             </div>
 
@@ -929,10 +957,8 @@ const ViewIdCard = () => {
 
             {/* Validity block */}
             <div style={S.expSection}>
-              <div style={S.expLabel}>Issue Date</div>
-              <div style={{ ...S.expValue, fontSize: 12 }}>{issueDate}</div>
-              <div style={{ ...S.expLabel, marginTop: 6 }}>Expires</div>
-              <div style={S.expValue}>Dec {expYear}</div>
+              <div style={S.expLabel}>Expires</div>
+              <div style={S.expValue}>{expYear}</div>
             </div>
           </div>
         </div>
@@ -955,7 +981,6 @@ const ViewIdCard = () => {
             </div>
           </div>
           <div style={S.footerRight}>
-            <div style={S.footerIssued}>Issued: {issueDate}</div>
             <div style={S.footerIdBig}>{user.karigarId}</div>
           </div>
         </div>
