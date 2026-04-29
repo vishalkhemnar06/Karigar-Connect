@@ -488,7 +488,7 @@ const ShopRegister = () => {
         } catch (e) {
             toast.error(e.response?.data?.message || 'Registration failed.');
         } finally { setLoading(false); }
-    }, [ownerName, mobile, email, password, confirmPwd, shopName, gstNumber, address, city,
+    }, [termsAgreed, ownerName, mobile, email, password, confirmPwd, shopName, gstNumber, address, city,
         pincode, locality, idType, category, customCategory, ownerPhoto, idProof, shopLogo,
         shopPhoto, gstnCertificate, latitude, longitude, mobileVerified, emailVerified]);
 

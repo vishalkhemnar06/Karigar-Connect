@@ -95,6 +95,8 @@ const userSchema = new mongoose.Schema({
     },
     rejectedAt: { type: Date, default: undefined },
     rejectionReason: { type: String, default: null, trim: true, maxlength: 500 },
+    // Fixed issue date for worker ID card (set once on first card generation/view)
+    idCardIssuedAt: { type: Date, default: null },
 
     // Client fields — Basic Security & Verification
     ageVerified: { type: Boolean, default: false },

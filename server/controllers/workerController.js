@@ -1030,6 +1030,17 @@ exports.getWorkerProfile = async (req, res) => {
     try {
         const w = await User.findById(req.user.id).select('-password -resetPasswordToken -resetPasswordExpire -passwordChangeOtp -passwordChangeOtpExpiry -passwordChangeVerifiedToken -passwordChangeVerifiedTokenExpiry');
         if (!w) return res.status(404).json({ message: 'Not found.' });
+
+        let idCardIssuedAt = w.idCardIssuedAt;
+        if (!idCardIssuedAt) {
+            idCardIssuedAt = new Date();
+            await User.updateOne(
+                { _id: w._id, idCardIssuedAt: null },
+                { $set: { idCardIssuedAt } }
+            );
+            w.idCardIssuedAt = idCardIssuedAt;
+        }
+
         const normalized = await normalizeWorkerDocumentUrls(w);
         const sanitized = sanitizeWorkerSensitiveFields(normalized);
         const dailyProfile = await getWorkerDailyProfileSnapshot(sanitized);
@@ -1049,6 +1060,8 @@ exports.getWorkerProfile = async (req, res) => {
         
         return res.json({
             ...sanitized,
+            idCardIssuedAt,
+            expiryYear: new Date(idCardIssuedAt).getFullYear() + 3,
             averageRating: avgStars,
             totalRatings,
             dailyProfile,
@@ -1291,11 +1304,16 @@ exports.getPublicWorkerProfile = async (req, res) => {
             locality: worker.address.locality || '',
             state: worker.address.state || '',
         } : null;
+        
+        // Calculate expiry: valid for 3 years from registration or default to +3 years from now
+        const expiryYear = worker.createdAt ? new Date(worker.createdAt).getFullYear() + 3 : new Date().getFullYear() + 3;
+        
         return res.json({
             ...worker,
             address: publicAddress,
             mobile: undefined,
             email: undefined,
+            expiryYear: expiryYear,
             completedJobs,
             ratings,
             rank: rankCount + 1,

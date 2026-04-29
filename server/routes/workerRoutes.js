@@ -123,7 +123,8 @@ router.post('/availability',        protect, worker, toggleAvailability);
 router.delete('/account/delete',    protect, worker, deleteAccount);
 
 // ── Public ────────────────────────────────────────────────────────────────────
-router.get('/public/:id',  protect, getPublicWorkerProfile);
+// PUBLIC: No auth needed for viewing worker profiles (QR scans, public sharing)
+router.get('/public/:id',  getPublicWorkerProfile);
 router.get('/all',         protect, getAllKarigars);
 router.get('/leaderboard', protect, getLeaderboard);
 

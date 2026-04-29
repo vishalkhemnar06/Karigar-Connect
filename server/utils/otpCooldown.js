@@ -1,4 +1,4 @@
-const OTP_COOLDOWN_MS = 5 * 60 * 1000;
+const OTP_COOLDOWN_MS = 60 * 1000; // 60 seconds (reduced from 5 minutes for better UX)
 
 const cooldownStore = new Map();
 
