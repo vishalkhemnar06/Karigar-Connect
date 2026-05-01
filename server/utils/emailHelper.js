@@ -63,7 +63,7 @@ const sendEmailMessage = async ({ to, subject, text, html, logPrefix = '[EMAIL]'
         try {
             const startedAt = Date.now();
             const result = await transport.sendMail({
-                from: `KarigarConnect <${process.env.EMAIL_USER}>`,
+                from: `KarigarConnect <${process.env.EMAIL_FROM}>`,
                 to,
                 subject,
                 text,
@@ -99,7 +99,7 @@ const sendEmailMessage = async ({ to, subject, text, html, logPrefix = '[EMAIL]'
 
             const startedAt = Date.now();
             const result = await fallbackTransport.sendMail({
-                from: `KarigarConnect <${process.env.SMTP_FALLBACK_USER || process.env.EMAIL_USER}>`,
+                from: `KarigarConnect <${process.env.EMAIL_FROM}>`,
                 to,
                 subject,
                 text,
@@ -149,7 +149,7 @@ exports.sendOtpEmail = async (to, otp) => {
     const otpTransport = nodemailer.createTransport(otpTransportOptions);
 
     const mailOptions = {
-        from: `KarigarConnect <${process.env.EMAIL_USER}>`,
+        from: `KarigarConnect <${process.env.EMAIL_FROM}>`,
         to,
         subject: 'Your KarigarConnect OTP',
         text: `Your KarigarConnect OTP is ${otp}. It is valid for 5 minutes. Do not share this OTP with anyone.`,
