@@ -3,7 +3,7 @@
 const Shop       = require('../models/shopModel');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../utils/emailHelper');
 const { sendOtpSms } = require('../utils/smsHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
@@ -12,15 +12,10 @@ const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passw
 const signToken = (id) =>
     jwt.sign({ id, role: 'shop' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-// ── Email transporter ─────────────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
-
-const sendEmail = async (to, subject, text) => {
+// ── Email helper ─────────────────────────────────────────────────────────────
+const sendShopEmail = async (to, subject, text) => {
     try {
-        await transporter.sendMail({ from: process.env.EMAIL_USER, to, subject, text });
+        await sendEmail({ to, subject, text });
     } catch (err) {
         console.error('Email error:', err.message);
     }
@@ -106,7 +101,7 @@ exports.sendEmailOtp = async (req, res) => {
             );
         }
 
-        await sendEmail(
+        await sendShopEmail(
             email,
             'KarigarConnect Shop — Email Verification OTP',
             `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`
