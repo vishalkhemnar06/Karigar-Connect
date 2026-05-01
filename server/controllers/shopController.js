@@ -1,392 +1,297 @@
-// server/controllers/shopAuthController.js
+// server/controllers/shopController.js
 
-const Shop       = require('../models/shopModel');
-const jwt        = require('jsonwebtoken');
-const crypto     = require('crypto');
-const { sendOtpSms } = require('../utils/smsHelper');
-const { sendEmailMessage } = require('../utils/emailHelper');
-const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
-const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
+const Shop        = require('../models/shopModel');
+const Product     = require('../models/productModel');
+const Coupon      = require('../models/couponModel');
+const Transaction = require('../models/transactionModel');
 
-// ── JWT helper ────────────────────────────────────────────────────────────────
-const signToken = (id) =>
-    jwt.sign({ id, role: 'shop' }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-// ── MEDIA PATH HELPERS ───────────────────────────────────────────────────────
-// Cloudinary upload middleware returns a fully qualified URL in req.file.path.
-// Keep that value as-is so updates and fetches resolve to the same Cloudinary URL.
 const resolveMediaPath = (file) => file?.path || file?.secure_url || file?.url || null;
 
-// ── STEP 1: Send Mobile OTP ───────────────────────────────────────────────────
-exports.sendMobileOtp = async (req, res) => {
+// ── PROFILE ───────────────────────────────────────────────────────────────────
+exports.getShopProfile = async (req, res) => {
     try {
-        const { mobile } = req.body;
-        if (!mobile || mobile.length !== 10)
-            return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
-
-        // Check if shop is already registered with approved status
-        const existingShop = await Shop.findOne({ mobile });
-        if (existingShop && existingShop.verificationStatus === 'approved') {
-            return res.status(400).json({ 
-                message: 'This mobile number is already registered and approved. Please login instead.',
-                alreadyRegistered: true 
-            });
-        }
-
-        const cooldownKey = `shop:mobile-otp:${mobile}`;
-        const cooldown = getOtpCooldownState(cooldownKey);
-        if (!cooldown.allowed) {
-            return res.status(429).json({
-                message: formatOtpCooldownMessage(cooldown.remainingMs),
-                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
-            });
-        }
-
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiry = new Date(Date.now() + 10 * 60 * 1000);
-        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
-
-        await Shop.findOneAndUpdate(
-            { mobile },
-            { mobileOtp: hashed, mobileOtpExpiry: expiry, mobileVerified: false },
-            { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: false }
-        );
-
-        const smsResult = await sendOtpSms(mobile, otp);
-        if (smsResult?.success === false) {
-            throw new Error(smsResult.reason || 'sms_send_failed');
-        }
-
-        markOtpCooldown(cooldownKey);
-        return res.json({ message: 'OTP sent to mobile.' });
+        const shop = await Shop.findById(req.shop.id).select('-password');
+        if (!shop) return res.status(404).json({ message: 'Shop not found.' });
+        return res.json(shop);
     } catch (err) {
-        console.error('sendMobileOtp:', err);
-        return res.status(500).json({ message: 'Failed to send OTP.' });
+        return res.status(500).json({ message: 'Failed.' });
     }
 };
 
-// ── STEP 2: Send Email OTP ────────────────────────────────────────────────────
-exports.sendEmailOtp = async (req, res) => {
+exports.updateShopProfile = async (req, res) => {
     try {
-        const email = String(req.body?.email || '').trim().toLowerCase();
-        const mobile = String(req.body?.mobile || '').trim();
-        if (!email) return res.status(400).json({ message: 'Email required.' });
-        if (!mobile || mobile.length !== 10) {
-            return res.status(400).json({ message: 'Valid mobile number is required before email OTP.' });
-        }
+        const shop = await Shop.findById(req.shop.id);
+        if (!shop) return res.status(404).json({ message: 'Not found.' });
 
-        const shop = await Shop.findOne({ mobile }).select('mobileVerified');
-        if (!shop) {
-            return res.status(400).json({ message: 'Send and verify mobile OTP first.' });
-        }
-        if (!shop.mobileVerified) {
-            return res.status(400).json({ message: 'Please verify mobile OTP before email OTP.' });
-        }
-
-        // Each identifier (email/mobile) has its own 30-second cooldown
-        const cooldownKey = `shop:email-otp:${String(mobile || email).trim().toLowerCase()}`;
-        const cooldown = getOtpCooldownState(cooldownKey);
-        if (!cooldown.allowed) {
-            return res.status(429).json({
-                message: formatOtpCooldownMessage(cooldown.remainingMs),
-                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
-            });
-        }
-
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiry = new Date(Date.now() + 10 * 60 * 1000);
-        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
-
-        await Shop.findOneAndUpdate(
-            { mobile },
-            { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
-            { upsert: false }
-        );
-
-        // Send email with better error handling
-        try {
-            await sendEmailMessage({
-                to: email,
-                subject: 'KarigarConnect Shop - Email Verification OTP',
-                text: `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`,
-                html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-                    <h2 style="color:#ea580c;margin-bottom:8px">KarigarConnect Shop Email Verification</h2>
-                    <p>Your OTP is:</p>
-                    <p style="font-size:28px;font-weight:700;letter-spacing:2px;color:#ea580c;margin:8px 0">${otp}</p>
-                    <p>This OTP is valid for 10 minutes. Do not share it with anyone.</p>
-                    <hr style="margin:20px 0;border:none;border-top:1px solid #ddd"/>
-                    <p style="font-size:12px;color:#999">If you did not request this OTP, please ignore this email.</p>
-                </div>`,
-                logPrefix: '[SHOP EMAIL]',
-            });
-            markOtpCooldown(cooldownKey);
-            return res.json({ 
-                message: 'OTP sent to email.',
-                expiresAt: expiry.toISOString(),
-            });
-        } catch (emailErr) {
-            console.error('[SHOP EMAIL OTP] Failed:', emailErr.message);
-            return res.status(500).json({ message: 'Failed to send email OTP. Please try again.' });
-        }
-    } catch (err) {
-        console.error('sendEmailOtp:', err);
-        return res.status(500).json({ message: 'Failed to send email OTP.' });
-    }
-};
-
-// ── STEP 3: Verify Mobile OTP ─────────────────────────────────────────────────
-exports.verifyMobileOtp = async (req, res) => {
-    try {
-        const { mobile, otp } = req.body;
-        const shop = await Shop.findOne({ mobile }).select('+mobileOtp +mobileOtpExpiry');
-        if (!shop || !shop.mobileOtp)
-            return res.status(400).json({ message: 'No OTP request found.' });
-        if (Date.now() > new Date(shop.mobileOtpExpiry).getTime())
-            return res.status(400).json({ message: 'OTP expired. Request a new one.' });
-
-        const hashed = crypto.createHash('sha256').update(otp.trim()).digest('hex');
-        if (hashed !== shop.mobileOtp)
-            return res.status(400).json({ message: 'Incorrect OTP.' });
-
-        shop.mobileVerified  = true;
-        shop.mobileOtp       = undefined;
-        shop.mobileOtpExpiry = undefined;
-        await shop.save({ validateBeforeSave: false });
-        return res.json({ message: 'Mobile verified.' });
-    } catch (err) {
-        console.error('verifyMobileOtp:', err);
-        return res.status(500).json({ message: 'Verification failed.' });
-    }
-};
-
-// ── STEP 4: Verify Email OTP ──────────────────────────────────────────────────
-exports.verifyEmailOtp = async (req, res) => {
-    try {
-        const mobile = String(req.body?.mobile || '').trim();
-        const otp = String(req.body?.otp || '').trim();
-        if (!mobile || !otp) {
-            return res.status(400).json({ message: 'Mobile and OTP are required.' });
-        }
-
-        const shop = await Shop.findOne({ mobile }).select('+emailOtp +emailOtpExpiry');
-        if (!shop || !shop.emailOtp)
-            return res.status(400).json({ message: 'No email OTP found.' });
-        if (Date.now() > new Date(shop.emailOtpExpiry).getTime())
-            return res.status(400).json({ message: 'OTP expired.' });
-
-        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
-        if (hashed !== shop.emailOtp)
-            return res.status(400).json({ message: 'Incorrect OTP.' });
-
-        shop.emailVerified  = true;
-        shop.emailOtp       = undefined;
-        shop.emailOtpExpiry = undefined;
-        await shop.save({ validateBeforeSave: false });
-        return res.json({ message: 'Email verified.' });
-    } catch (err) {
-        console.error('verifyEmailOtp:', err);
-        return res.status(500).json({ message: 'Verification failed.' });
-    }
-};
-
-// ── LOGIN OTP: Send OTP for existing shops ────────────────────────────────────
-exports.sendLoginOtp = async (req, res) => {
-    try {
-        const { mobile } = req.body;
-        if (!mobile || mobile.length !== 10)
-            return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
-
-        // Find existing shop
-        const shop = await Shop.findOne({ mobile });
-        if (!shop) {
-            return res.status(404).json({ 
-                message: 'This mobile number is not registered. Please register first.',
-                notRegistered: true 
-            });
-        }
-
-        if (shop.verificationStatus === 'rejected' || shop.verificationStatus === 'blocked') {
-            return res.status(403).json({ 
-                message: `Your shop account is ${shop.verificationStatus}. Contact support.`,
-                accountBlocked: true 
-            });
-        }
-
-        const cooldownKey = `shop:login-otp:${mobile}`;
-        const cooldown = getOtpCooldownState(cooldownKey);
-        if (!cooldown.allowed) {
-            return res.status(429).json({
-                message: formatOtpCooldownMessage(cooldown.remainingMs),
-                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
-            });
-        }
-
-        // Send OTP for login
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
-        const expiry = new Date(Date.now() + 10 * 60 * 1000);
-        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
-
-        shop.loginOtp       = hashed;
-        shop.loginOtpExpiry = expiry;
-        await shop.save({ validateBeforeSave: false });
-
-        const smsResult = await sendOtpSms(mobile, otp);
-        if (smsResult?.success === false) {
-            throw new Error(smsResult.reason || 'sms_send_failed');
-        }
-
-        markOtpCooldown(cooldownKey);
-        return res.json({ message: 'OTP sent to mobile.' });
-    } catch (err) {
-        console.error('sendLoginOtp:', err);
-        return res.status(500).json({ message: 'Failed to send OTP.' });
-    }
-};
-
-// ── LOGIN OTP: Verify OTP for existing shops ──────────────────────────────────
-exports.verifyLoginOtp = async (req, res) => {
-    try {
-        const { mobile, otp } = req.body;
-        if (!mobile || !otp)
-            return res.status(400).json({ message: 'Mobile and OTP required.' });
-
-        const shop = await Shop.findOne({ mobile }).select('+loginOtp +loginOtpExpiry');
-        if (!shop || !shop.loginOtp)
-            return res.status(400).json({ message: 'No OTP request found. Send OTP first.' });
-
-        if (Date.now() > new Date(shop.loginOtpExpiry).getTime())
-            return res.status(400).json({ message: 'OTP expired. Request a new one.' });
-
-        const hashed = crypto.createHash('sha256').update(otp.trim()).digest('hex');
-        if (hashed !== shop.loginOtp)
-            return res.status(400).json({ message: 'Incorrect OTP.' });
-
-        // Clear OTP fields
-        shop.loginOtp       = undefined;
-        shop.loginOtpExpiry = undefined;
-        await shop.save({ validateBeforeSave: false });
-
-        // Prepare response
-        const token = signToken(shop._id);
-        const shopData = shop.toObject();
-        delete shopData.password;
-        delete shopData.mobileOtp;
-        delete shopData.mobileOtpExpiry;
-        delete shopData.emailOtp;
-        delete shopData.emailOtpExpiry;
-        delete shopData.loginOtp;
-        delete shopData.loginOtpExpiry;
-
-        return res.json({
-            token,
-            shop: shopData,
-            message: 'Login successful!'
-        });
-    } catch (err) {
-        console.error('verifyLoginOtp:', err);
-        return res.status(500).json({ message: 'Verification failed.' });
-    }
-};
-
-// ── STEP 5: Complete Registration ─────────────────────────────────────────────
-exports.registerShop = async (req, res) => {
-    try {
-        const {
-            ownerName, mobile, email, password,
-            shopName, gstNumber, category,
-            address, city, pincode, locality, idType,
-            latitude, longitude,
-        } = req.body;
-
-        if (!validateStrongPassword(password || '').isValid) {
-            return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
-        }
-
-        const shop = await Shop.findOne({ mobile });
-        if (!shop)             return res.status(400).json({ message: 'Please verify mobile first.' });
-        if (!shop.mobileVerified) return res.status(400).json({ message: 'Mobile not verified.' });
-        if (!shop.emailVerified)  return res.status(400).json({ message: 'Email not verified.' });
+        const fields = ['shopName', 'ownerName', 'address', 'city', 'pincode', 'locality', 'gstNumber', 'category'];
+        fields.forEach(f => { if (req.body[f] !== undefined) shop[f] = req.body[f]; });
 
         const files = req.files || {};
+        if (files.shopLogo?.[0])   shop.shopLogo   = resolveMediaPath(files.shopLogo[0]);
+        if (files.ownerPhoto?.[0]) shop.ownerPhoto = resolveMediaPath(files.ownerPhoto[0]);
 
-        // ── KEY FIX: normalise ALL file paths before saving ──────────────────
-        // multer.path on Windows:  "C:\...\uploads\1234-photo.jpg"
-        // normPath converts to:    "uploads/1234-photo.jpg"
-        // Express serves at:       GET /uploads/1234-photo.jpg  ✅
-        const ownerPhotoPath = resolveMediaPath(files.ownerPhoto?.[0]);
-        const idProofPath    = resolveMediaPath(files.idProof?.[0]);
-        const shopLogoPath   = resolveMediaPath(files.shopLogo?.[0]);
-        const shopPhotoPath  = resolveMediaPath(files.shopPhoto?.[0]);
-        const gstnCertPath   = resolveMediaPath(files.gstnCertificate?.[0]);
-
-        shop.ownerName  = ownerName;
-        shop.email      = email;
-        shop.password   = password;
-        shop.shopName   = shopName;
-        shop.shopLogo   = shopLogoPath;
-        shop.shopPhoto  = shopPhotoPath;
-        shop.gstNumber  = gstNumber || null;
-        shop.gstnCertificate = gstnCertPath;
-        shop.category   = category;
-        shop.address    = address;
-        shop.city       = city;
-        shop.pincode    = pincode || '';
-        shop.locality   = locality || '';
-        shop.ownerPhoto = ownerPhotoPath;
-        shop.idProof    = { idType: idType || 'Aadhar Card', filePath: idProofPath };
-        
-        // Store location if provided
-        if (latitude && longitude) {
-            shop.shopLocation = {
-                latitude: parseFloat(latitude),
-                longitude: parseFloat(longitude),
-            };
-        }
-        
-        shop.verificationStatus = 'pending';
-
-        await shop.save();
-        return res.status(201).json({
-            message: 'Registration submitted. We will contact you within 24 hours.',
-        });
+        await shop.save({ validateBeforeSave: false });
+        return res.json(shop);
     } catch (err) {
-        console.error('registerShop:', err);
-        return res.status(500).json({ message: err.message || 'Registration failed.' });
+        console.error('updateShopProfile:', err);
+        return res.status(500).json({ message: 'Update failed.' });
     }
 };
 
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
-exports.loginShop = async (req, res) => {
+exports.deleteShopAccount = async (req, res) => {
     try {
-        const { mobile, password } = req.body;
-        if (!mobile || !password)
-            return res.status(400).json({ message: 'Mobile and password required.' });
+        const shop = await Shop.findById(req.shop.id);
+        if (!shop) return res.status(404).json({ message: 'Shop not found.' });
 
-        const shop = await Shop.findOne({ mobile }).select('+password');
-        if (!shop)
-            return res.status(401).json({ message: 'Invalid credentials.' });
+        // Delete all products associated with this shop
+        await Product.deleteMany({ shop: req.shop.id });
 
-        if (shop.verificationStatus !== 'approved')
-            return res.status(403).json({
-                message: shop.verificationStatus === 'pending'
-                    ? 'Your shop is under review. Admin will contact you within 24 hours.'
-                    : shop.verificationStatus === 'blocked'
-                    ? 'Your shop account has been blocked. Contact support.'
-                    : 'Shop not approved.',
-            });
+        // Delete all transactions associated with this shop
+        await Transaction.deleteMany({ shop: req.shop.id });
 
-        const bcrypt  = require('bcryptjs');
-        const isMatch = await bcrypt.compare(password, shop.password);
-        if (!isMatch)
-            return res.status(401).json({ message: 'Invalid credentials.' });
+        // Delete all coupons associated with this shop
+        await Coupon.deleteMany({ shop: req.shop.id });
 
-        const token    = signToken(shop._id);
-        const shopData = shop.toObject();
-        delete shopData.password;
+        // Delete the shop itself
+        await Shop.findByIdAndDelete(req.shop.id);
 
-        return res.json({ token, shop: shopData });
+        return res.json({ message: 'Account deleted successfully.' });
     } catch (err) {
-        console.error('loginShop:', err);
-        return res.status(500).json({ message: 'Login failed.' });
+        console.error('deleteShopAccount:', err);
+        return res.status(500).json({ message: 'Account deletion failed.' });
+    }
+};
+
+// ── PRODUCTS ──────────────────────────────────────────────────────────────────
+exports.getProducts = async (req, res) => {
+    try {
+        const products = await Product.find({ shop: req.shop.id }).sort({ createdAt: -1 });
+        return res.json(products);
+    } catch {
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+exports.addProduct = async (req, res) => {
+    try {
+        const { name, description, price, stock } = req.body;
+        if (!name || !price) return res.status(400).json({ message: 'Name and price required.' });
+
+        const image = resolveMediaPath(req.file);
+        const product = await Product.create({
+            shop: req.shop.id,
+            name,
+            description: description || '',
+            price:  Number(price),
+            stock:  Number(stock) || 0,
+            image,
+        });
+        return res.status(201).json(product);
+    } catch (err) {
+        console.error('addProduct:', err);
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+exports.editProduct = async (req, res) => {
+    try {
+        const product = await Product.findOne({ _id: req.params.id, shop: req.shop.id });
+        if (!product) return res.status(404).json({ message: 'Not found.' });
+
+        const { name, description, price, stock } = req.body;
+        if (name !== undefined)        product.name        = name;
+        if (description !== undefined) product.description = description;
+        if (price !== undefined)       product.price       = Number(price);
+        if (stock !== undefined)       product.stock       = Number(stock);
+        if (req.file)                  product.image       = resolveMediaPath(req.file);
+
+        await product.save();
+        return res.json(product);
+    } catch (err) {
+        console.error('editProduct:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+exports.deleteProduct = async (req, res) => {
+    try {
+        await Product.findOneAndDelete({ _id: req.params.id, shop: req.shop.id });
+        return res.json({ message: 'Deleted.' });
+    } catch {
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── COUPON VERIFICATION ───────────────────────────────────────────────────────
+exports.verifyCoupon = async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) return res.status(400).json({ message: 'Coupon code required.' });
+
+        const coupon = await Coupon.findOne({ code: code.toUpperCase().trim() })
+            .populate('worker', 'name userId karigarId photo points experience');
+
+        if (!coupon)       return res.status(404).json({ message: 'Invalid coupon code.' });
+        if (coupon.isUsed) return res.status(400).json({ message: 'This coupon has already been used.' });
+        if (new Date() > coupon.expiresAt) return res.status(400).json({ message: 'This coupon has expired.' });
+
+        return res.json({
+            valid: true,
+            coupon: {
+                _id:         coupon._id,
+                code:        coupon.code,
+                discountPct: coupon.discountPct,
+                expiresAt:   coupon.expiresAt,
+                worker:      coupon.worker,
+            },
+        });
+    } catch (err) {
+        console.error('verifyCoupon:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── APPLY COUPON & RECORD TRANSACTION ─────────────────────────────────────────
+exports.applyCoupon = async (req, res) => {
+    try {
+        const { couponCode, productId } = req.body;
+
+        const coupon = await Coupon.findOne({ code: couponCode.toUpperCase().trim() });
+        if (!coupon || coupon.isUsed || new Date() > coupon.expiresAt)
+            return res.status(400).json({ message: 'Invalid or expired coupon.' });
+
+        const product = await Product.findOne({ _id: productId, shop: req.shop.id });
+        if (!product) return res.status(404).json({ message: 'Product not found.' });
+        if (product.price < 1000)
+            return res.status(400).json({ message: 'Discount only applies on products with MRP ≥ ₹1000.' });
+        if (product.stock < 1)
+            return res.status(400).json({ message: 'Product is out of stock.' });
+
+        const productPhoto   = resolveMediaPath(req.file);
+        const discountAmount = Math.round((coupon.discountPct / 100) * product.price);
+        const finalPrice     = product.price - discountAmount;
+
+        // Mark coupon used
+        coupon.isUsed = true;
+        coupon.usedAt = new Date();
+        coupon.usedBy = req.shop.id;
+        await coupon.save();
+
+        // Decrease stock
+        product.stock -= 1;
+        await product.save();
+
+        // Record transaction
+        const txn = await Transaction.create({
+            shop:           req.shop.id,
+            worker:         coupon.worker,
+            coupon:         coupon._id,
+            product:        product._id,
+            productPhoto,
+            originalPrice:  product.price,
+            discountPct:    coupon.discountPct,
+            discountAmount,
+            finalPrice,
+        });
+
+        // Update shop analytics
+        await Shop.findByIdAndUpdate(req.shop.id, {
+            $inc: { totalSales: finalPrice, totalDiscounts: discountAmount, totalWorkers: 1 },
+        });
+
+        return res.json({ message: 'Coupon applied successfully.', transaction: txn, finalPrice, discountAmount });
+    } catch (err) {
+        console.error('applyCoupon:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── TRANSACTION HISTORY ───────────────────────────────────────────────────────
+exports.getTransactions = async (req, res) => {
+    try {
+        const txns = await Transaction.find({ shop: req.shop.id })
+            .populate('worker',  'name userId karigarId photo')
+            .populate('product', 'name price image')
+            .populate('coupon',  'code discountPct')
+            .sort({ createdAt: -1 });
+        return res.json(txns);
+    } catch {
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── DASHBOARD ANALYTICS ───────────────────────────────────────────────────────
+exports.getShopAnalytics = async (req, res) => {
+    try {
+        const shopId = req.shop.id;
+
+        const [shop, txns, usedCoupons] = await Promise.all([
+            Shop.findById(shopId).select('totalSales totalDiscounts totalWorkers'),
+            Transaction.find({ shop: shopId }).populate('product', 'name'),
+            Coupon.countDocuments({ usedBy: shopId })
+        ]);
+
+        const productCount = {};
+        txns.forEach(t => {
+            const key = t.product?._id?.toString();
+            if (!key) return;
+            if (!productCount[key]) productCount[key] = { name: t.product.name, count: 0 };
+            productCount[key].count++;
+        });
+        const mostSold = Object.values(productCount)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        return res.json({
+            totalSales:     shop.totalSales,
+            totalDiscounts: shop.totalDiscounts,
+            totalWorkers:   shop.totalWorkers,
+            totalTxns:      txns.length,
+            mostSold,
+            usedCoupons
+        });
+    } catch (err) {
+        console.error('getShopAnalytics:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+}
+// ── WORKER PURCHASE HISTORY ─────────────────────────────────────────────
+// Returns all transactions for a worker (purchase history)
+exports.getWorkerPurchaseHistory = async (req, res) => {
+    try {
+        const workerId = req.user.id; // assuming req.user is set by auth middleware
+        const txns = await Transaction.find({ worker: workerId })
+            .populate('shop', 'shopName address city category mobile shopLogo shopPhoto ownerName')
+            .populate('product', 'name price description image')
+            .populate('coupon', 'code discountPct')
+            .sort({ createdAt: -1 });
+        return res.json(txns);
+    } catch (err) {
+        console.error('getWorkerPurchaseHistory:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── ALL SHOPS (public, for workers) ──────────────────────────────────────────
+exports.getAllApprovedShops = async (req, res) => {
+    try {
+        const shops = await Shop.find({ verificationStatus: 'approved' })
+            .select('-password'); // exclude only sensitive
+        
+        return res.json(shops);
+    } catch (err) {
+        console.error('getAllApprovedShops:', err);
+        return res.status(500).json({ message: 'Failed.' });
+    }
+};
+
+// ── SHOP PRODUCTS (public, for workers) ──────────────────────────────────────
+exports.getShopProducts = async (req, res) => {
+    try {
+        const products = await Product.find({ shop: req.params.shopId, isActive: true })
+            .sort({ createdAt: -1 });
+        return res.json(products);
+    } catch {
+        return res.status(500).json({ message: 'Failed.' });
     }
 };
