@@ -6,20 +6,34 @@ const parseNumber = (value, fallback) => {
 };
 
 const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = parseNumber(process.env.SMTP_PORT, 465);
-const smtpSecure = String(process.env.SMTP_SECURE || 'true').toLowerCase() === 'true';
+const smtpPort = 587;
+const smtpSecure = false;
 
-const transport = nodemailer.createTransport({
+const createStartTlsTransport = ({ host, user, pass, pool = false, maxConnections, maxMessages }) => nodemailer.createTransport({
+    host,
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    tls: {
+        minVersion: 'TLSv1.2',
+        servername: host,
+    },
+    pool,
+    maxConnections,
+    maxMessages,
+    auth: {
+        user,
+        pass,
+    },
+});
+
+const transport = createStartTlsTransport({
     host: smtpHost,
-    port: smtpPort,
-    secure: smtpSecure,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
     pool: true,
     maxConnections: parseNumber(process.env.SMTP_MAX_CONNECTIONS, 5),
     maxMessages: parseNumber(process.env.SMTP_MAX_MESSAGES, 100),
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-    },
 });
 
 // Verify transport connection once on load
@@ -27,7 +41,7 @@ transport.verify((error, success) => {
     if (error) {
         console.error('[EMAIL] Transporter error:', error.message);
     } else {
-        console.log(`[EMAIL] Transporter ready (${smtpHost}:${smtpPort}, pool=true)`);
+        console.log(`[EMAIL] Transporter ready (${smtpHost}:587, STARTTLS, pool=true)`);
     }
 });
 
@@ -73,14 +87,10 @@ const sendEmailMessage = async ({ to, subject, text, html, logPrefix = '[EMAIL]'
     if (fallbackHost && fallbackHost !== smtpHost) {
         try {
             console.log(`${logPrefix} Trying fallback SMTP provider: ${fallbackHost}`);
-            const fallbackTransport = nodemailer.createTransport({
+            const fallbackTransport = createStartTlsTransport({
                 host: fallbackHost,
-                port: parseNumber(process.env.SMTP_FALLBACK_PORT, 587),
-                secure: String(process.env.SMTP_FALLBACK_SECURE || 'false').toLowerCase() === 'true',
-                auth: {
-                    user: process.env.SMTP_FALLBACK_USER,
-                    pass: process.env.SMTP_FALLBACK_PASS,
-                },
+                user: process.env.SMTP_FALLBACK_USER,
+                pass: process.env.SMTP_FALLBACK_PASS,
                 pool: false,
             });
 
@@ -116,8 +126,13 @@ exports.sendOtpEmail = async (to, otp) => {
     // to avoid connection timeouts causing OTP send failures in transient network conditions.
     const otpTransportOptions = {
         host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
+        port: 587,
+        secure: false,
+        requireTLS: true,
+        tls: {
+            minVersion: 'TLSv1.2',
+            servername: smtpHost,
+        },
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
