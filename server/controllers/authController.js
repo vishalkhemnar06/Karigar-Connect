@@ -111,17 +111,26 @@ exports.sendOtp = async (req, res) => {
         let smsDelivered = false;
         let emailDelivered = false;
 
+        const deliveryTasks = [];
         if (mobile) {
-            const smsResult = await sendOtpSms(mobile, otp);
-            smsDelivered = smsResult?.success !== false;
+            deliveryTasks.push(
+                sendOtpSms(mobile, otp).then((smsResult) => {
+                    smsDelivered = smsResult?.success !== false;
+                })
+            );
         }
         if (email) {
-            try {
-                await sendOtpEmail(email, otp);
-                emailDelivered = true;
-            } catch (emailErr) {
-                console.warn(`[OTP] Email send failed for ${email}: ${emailErr.message}`);
-            }
+            deliveryTasks.push(
+                sendOtpEmail(email, otp).then(() => {
+                    emailDelivered = true;
+                }).catch((emailErr) => {
+                    console.warn(`[OTP] Email send failed for ${email}: ${emailErr.message}`);
+                })
+            );
+        }
+
+        if (deliveryTasks.length) {
+            await Promise.allSettled(deliveryTasks);
         }
 
         if (!smsDelivered && !emailDelivered) {
