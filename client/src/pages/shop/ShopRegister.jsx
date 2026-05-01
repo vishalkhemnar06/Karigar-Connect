@@ -446,8 +446,6 @@ const ShopRegister = () => {
     }, [mobile, mobileOtp]);
 
     const sendEmailOtp = useCallback(async () => {
-        if (!mobile || mobile.trim().length !== 10) return toast.error('Enter valid 10-digit mobile first.');
-        if (!mobileVerified) return toast.error('Please verify mobile OTP before email OTP.');
         if (!email) return toast.error('Enter email first.');
         if (emailOtpCooldownSec > 0) return toast.error(`Please wait ${emailOtpCooldownSec}s before requesting another OTP.`);
         setLoading(true);
@@ -463,17 +461,17 @@ const ShopRegister = () => {
             toast.error(msg);
         }
         finally { setLoading(false); }
-    }, [email, mobile, mobileVerified, emailOtpCooldownSec]);
+    }, [email, mobile, emailOtpCooldownSec]);
 
     const verifyEmailOtp = useCallback(async () => {
         setLoading(true);
         try {
-            await api.shopVerifyEmailOtp({ mobile: mobile.trim(), otp: emailOtp.trim() });
+            await api.shopVerifyEmailOtp({ email: email.trim(), mobile: mobile.trim(), otp: emailOtp.trim() });
             setEmailVerified(true);
             toast.success('Email verified!');
         } catch (e) { toast.error(e.response?.data?.message || 'Incorrect OTP.'); }
         finally { setLoading(false); }
-    }, [mobile, emailOtp]);
+    }, [email, mobile, emailOtp]);
 
     const goStep2 = useCallback(() => {
         // Free navigation - no validation required
