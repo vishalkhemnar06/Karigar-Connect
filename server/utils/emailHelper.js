@@ -20,10 +20,6 @@ const transport = nodemailer.createTransport({
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
     },
-    connectionTimeout: parseNumber(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10000),
-    greetingTimeout: parseNumber(process.env.SMTP_GREETING_TIMEOUT_MS, 10000),
-    socketTimeout: parseNumber(process.env.SMTP_SOCKET_TIMEOUT_MS, 20000),
-    dnsTimeout: parseNumber(process.env.SMTP_DNS_TIMEOUT_MS, 10000),
 });
 
 // Verify transport connection once on load
@@ -86,9 +82,6 @@ const sendEmailMessage = async ({ to, subject, text, html, logPrefix = '[EMAIL]'
                     pass: process.env.SMTP_FALLBACK_PASS,
                 },
                 pool: false,
-                connectionTimeout: parseNumber(process.env.SMTP_FALLBACK_CONNECTION_TIMEOUT_MS, 15000),
-                greetingTimeout: parseNumber(process.env.SMTP_FALLBACK_GREETING_TIMEOUT_MS, 15000),
-                socketTimeout: parseNumber(process.env.SMTP_FALLBACK_SOCKET_TIMEOUT_MS, 30000),
             });
 
             const startedAt = Date.now();
@@ -130,10 +123,6 @@ exports.sendOtpEmail = async (to, otp) => {
             pass: process.env.EMAIL_PASS,
         },
         pool: false,
-        // Increased timeouts for OTP sending to avoid premature failures
-        connectionTimeout: parseNumber(process.env.SMTP_OTP_CONNECTION_TIMEOUT_MS, 120000),
-        greetingTimeout: parseNumber(process.env.SMTP_OTP_GREETING_TIMEOUT_MS, 120000),
-        socketTimeout: parseNumber(process.env.SMTP_OTP_SOCKET_TIMEOUT_MS, 300000),
     };
 
     const otpTransport = nodemailer.createTransport(otpTransportOptions);
