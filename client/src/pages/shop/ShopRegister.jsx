@@ -110,7 +110,7 @@ const FileField = memo(({ label, value, onChange, accept, hint, preview }) => (
 FileField.displayName = 'FileField';
 
 const OtpRow = memo(({ label, verified, value, onChange, otp, onOtpChange,
-    onSend, onVerify, otpSent, loading, disabled }) => (
+    onSend, onVerify, otpSent, loading, disabled, cooldownSec = 0 }) => (
     <div className="space-y-2">
         <Field label={label}>
             <div className="flex gap-2">
@@ -119,10 +119,10 @@ const OtpRow = memo(({ label, verified, value, onChange, otp, onOtpChange,
                         value={value} onChange={onChange} disabled={disabled || verified} />
                 </div>
                 {!verified && (
-                    <button type="button" onClick={onSend} disabled={loading || disabled}
+                    <button type="button" onClick={onSend} disabled={loading || disabled || cooldownSec > 0}
                         className="shrink-0 px-4 py-3 bg-orange-100 hover:bg-orange-200 text-orange-700
                             rounded-xl text-xs font-black border border-orange-200 disabled:opacity-40 whitespace-nowrap transition-all">
-                        {otpSent ? 'Resend' : 'Send OTP'}
+                        {cooldownSec > 0 ? `Resend in ${cooldownSec}s` : (otpSent ? 'Resend' : 'Send OTP')}
                     </button>
                 )}
                 {verified && (
@@ -215,6 +215,10 @@ const ShopRegister = () => {
     const [shopLogoPreview, setShopLogoPreview]     = useState(null);
     const [shopPhotoPreview, setShopPhotoPreview]   = useState(null);
 
+    // OTP cooldown state (per user, 30 seconds)
+    const [mobileOtpCooldownSec, setMobileOtpCooldownSec] = useState(0);
+    const [emailOtpCooldownSec, setEmailOtpCooldownSec] = useState(0);
+
     // ── Load draft from sessionStorage on mount ─────────────────────────────────
     useEffect(() => {
         try {
@@ -266,6 +270,24 @@ const ShopRegister = () => {
         mobileVerified, emailVerified, termsAgreed, ownerName, shopName, gstNumber, category,
         customCategory, address, city, pincode, locality, idType, latitude, longitude,
         ownerPhotoPreview, shopLogoPreview, shopPhotoPreview, step]);
+
+    // OTP Cooldown timer for mobile (per user, 30 seconds)
+    useEffect(() => {
+        if (mobileOtpCooldownSec <= 0) return;
+        const timer = setInterval(() => {
+            setMobileOtpCooldownSec((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [mobileOtpCooldownSec]);
+
+    // OTP Cooldown timer for email (per user, 30 seconds)
+    useEffect(() => {
+        if (emailOtpCooldownSec <= 0) return;
+        const timer = setInterval(() => {
+            setEmailOtpCooldownSec((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [emailOtpCooldownSec]);
 
     // Stable onChange handlers (no remount)
     const onMobile = useCallback(e => setMobile(e.target.value), []);
@@ -393,13 +415,17 @@ const ShopRegister = () => {
     // OTP actions
     const sendMobileOtp = useCallback(async () => {
         if (!mobile || mobile.length !== 10) return toast.error('Enter valid 10-digit mobile.');
+        if (mobileOtpCooldownSec > 0) return toast.error(`Please wait ${mobileOtpCooldownSec}s before requesting another OTP.`);
         setLoading(true);
         try {
             const res = await api.shopSendMobileOtp({ mobile });
             setMobileOtpSent(true);
+            setMobileOtpCooldownSec(30);
             toast.success('OTP sent to mobile!');
-        } catch (e) { 
+        } catch (e) {
+            const retryAfter = Number(e?.response?.data?.retryAfterSeconds || 0);
             const msg = e.response?.data?.message || 'Failed.';
+            if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
             if (e.response?.data?.alreadyRegistered) {
                 toast.error(msg);
             } else {
@@ -407,7 +433,7 @@ const ShopRegister = () => {
             }
         }
         finally { setLoading(false); }
-    }, [mobile]);
+    }, [mobile, mobileOtpCooldownSec]);
 
     const verifyMobileOtp = useCallback(async () => {
         setLoading(true);
@@ -420,20 +446,29 @@ const ShopRegister = () => {
     }, [mobile, mobileOtp]);
 
     const sendEmailOtp = useCallback(async () => {
+        if (!mobile || mobile.trim().length !== 10) return toast.error('Enter valid 10-digit mobile first.');
+        if (!mobileVerified) return toast.error('Please verify mobile OTP before email OTP.');
         if (!email) return toast.error('Enter email first.');
+        if (emailOtpCooldownSec > 0) return toast.error(`Please wait ${emailOtpCooldownSec}s before requesting another OTP.`);
         setLoading(true);
         try {
-            await api.shopSendEmailOtp({ email, mobile });
+            await api.shopSendEmailOtp({ email: email.trim(), mobile: mobile.trim() });
             setEmailOtpSent(true);
+            setEmailOtpCooldownSec(30);
             toast.success('OTP sent to email!');
-        } catch (e) { toast.error(e.response?.data?.message || 'Failed.'); }
+        } catch (e) {
+            const retryAfter = Number(e?.response?.data?.retryAfterSeconds || 0);
+            const msg = e.response?.data?.message || 'Failed.';
+            if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
+            toast.error(msg);
+        }
         finally { setLoading(false); }
-    }, [email, mobile]);
+    }, [email, mobile, mobileVerified, emailOtpCooldownSec]);
 
     const verifyEmailOtp = useCallback(async () => {
         setLoading(true);
         try {
-            await api.shopVerifyEmailOtp({ mobile, otp: emailOtp });
+            await api.shopVerifyEmailOtp({ mobile: mobile.trim(), otp: emailOtp.trim() });
             setEmailVerified(true);
             toast.success('Email verified!');
         } catch (e) { toast.error(e.response?.data?.message || 'Incorrect OTP.'); }
@@ -589,14 +624,14 @@ const ShopRegister = () => {
                                     otp={mobileOtp} onOtpChange={onMobileOtp}
                                     onSend={sendMobileOtp} onVerify={verifyMobileOtp}
                                     otpSent={mobileOtpSent} verified={mobileVerified}
-                                    loading={loading} />
+                                    loading={loading} cooldownSec={mobileOtpCooldownSec} />
 
                                 <OtpRow label="Email Address"
                                     value={email} onChange={onEmail}
                                     otp={emailOtp} onOtpChange={onEmailOtp}
                                     onSend={sendEmailOtp} onVerify={verifyEmailOtp}
                                     otpSent={emailOtpSent} verified={emailVerified}
-                                    loading={loading} />
+                                    loading={loading} cooldownSec={emailOtpCooldownSec} />
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <Field label="Password" required>
