@@ -3,28 +3,14 @@
 const Shop       = require('../models/shopModel');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
-const nodemailer = require('nodemailer');
 const { sendOtpSms } = require('../utils/smsHelper');
+const { sendEmailMessage, sendOtpEmail } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 // ── JWT helper ────────────────────────────────────────────────────────────────
 const signToken = (id) =>
     jwt.sign({ id, role: 'shop' }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-// ── Email transporter ─────────────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
-
-const sendEmail = async (to, subject, text) => {
-    try {
-        await transporter.sendMail({ from: process.env.EMAIL_USER, to, subject, text });
-    } catch (err) {
-        console.error('Email error:', err.message);
-    }
-};
 
 // ── MEDIA PATH HELPERS ───────────────────────────────────────────────────────
 // Cloudinary upload middleware returns a fully qualified URL in req.file.path.
@@ -82,10 +68,12 @@ exports.sendMobileOtp = async (req, res) => {
 // ── STEP 2: Send Email OTP ────────────────────────────────────────────────────
 exports.sendEmailOtp = async (req, res) => {
     try {
-        const { email, mobile } = req.body;
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const mobile = String(req.body?.mobile || '').trim();
         if (!email) return res.status(400).json({ message: 'Email required.' });
 
-        const cooldownKey = `shop:email-otp:${mobile || email}`;
+        // Each identifier (email/mobile) has its own 30-second cooldown
+        const cooldownKey = `shop:email-otp:${email}`;
         const cooldown = getOtpCooldownState(cooldownKey);
         if (!cooldown.allowed) {
             return res.status(429).json({
@@ -93,26 +81,37 @@ exports.sendEmailOtp = async (req, res) => {
                 retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
             });
         }
-
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
 
-        if (mobile) {
+        // Upsert by email if mobile not provided, otherwise update by mobile
+        if (mobile && mobile.length === 10) {
             await Shop.findOneAndUpdate(
                 { mobile },
-                { emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
-                { upsert: false }
+                { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+        } else {
+            await Shop.findOneAndUpdate(
+                { email },
+                { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
             );
         }
 
-        await sendEmail(
-            email,
-            'KarigarConnect Shop — Email Verification OTP',
-            `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`
-        );
-        markOtpCooldown(cooldownKey);
-        return res.json({ message: 'OTP sent to email.' });
+        // Send email OTP using optimized OTP send path
+        try {
+            await sendOtpEmail(email, otp);
+            markOtpCooldown(cooldownKey);
+            return res.json({ 
+                message: 'OTP sent to email.',
+                expiresAt: expiry.toISOString(),
+            });
+        } catch (emailErr) {
+            console.error('[SHOP EMAIL OTP] Failed:', emailErr.message || emailErr);
+            return res.status(500).json({ message: 'Failed to send email OTP. Please try again.' });
+        }
     } catch (err) {
         console.error('sendEmailOtp:', err);
         return res.status(500).json({ message: 'Failed to send email OTP.' });
@@ -147,14 +146,21 @@ exports.verifyMobileOtp = async (req, res) => {
 // ── STEP 4: Verify Email OTP ──────────────────────────────────────────────────
 exports.verifyEmailOtp = async (req, res) => {
     try {
-        const { mobile, otp } = req.body;
-        const shop = await Shop.findOne({ mobile }).select('+emailOtp +emailOtpExpiry');
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const mobile = String(req.body?.mobile || '').trim();
+        const otp = String(req.body?.otp || '').trim();
+        if (!otp || (!email && !mobile)) {
+            return res.status(400).json({ message: 'Email or mobile and OTP are required.' });
+        }
+
+        const query = email ? { email } : { mobile };
+        const shop = await Shop.findOne(query).select('+emailOtp +emailOtpExpiry');
         if (!shop || !shop.emailOtp)
             return res.status(400).json({ message: 'No email OTP found.' });
         if (Date.now() > new Date(shop.emailOtpExpiry).getTime())
             return res.status(400).json({ message: 'OTP expired.' });
 
-        const hashed = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
         if (hashed !== shop.emailOtp)
             return res.status(400).json({ message: 'Incorrect OTP.' });
 

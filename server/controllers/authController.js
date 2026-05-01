@@ -94,6 +94,7 @@ exports.sendOtp = async (req, res) => {
         const identifier = mobile || email;
         if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
 
+        // Each identifier (mobile/email) has its own 30-second cooldown
         const cooldownKey = `auth:send-otp:${String(identifier).trim().toLowerCase()}`;
         const cooldown = getOtpCooldownState(cooldownKey);
         if (!cooldown.allowed) {
@@ -110,29 +111,52 @@ exports.sendOtp = async (req, res) => {
 
         let smsDelivered = false;
         let emailDelivered = false;
+        let smsError = null;
+        let emailError = null;
 
         if (mobile) {
-            const smsResult = await sendOtpSms(mobile, otp);
-            smsDelivered = smsResult?.success !== false;
+            try {
+                const smsResult = await sendOtpSms(mobile, otp);
+                smsDelivered = smsResult?.success === true;
+                if (!smsDelivered) smsError = smsResult?.reason || 'Unknown SMS error';
+            } catch (err) {
+                smsError = err.message;
+                console.error(`[OTP] SMS send error for ${mobile}:`, smsError);
+            }
         }
+
         if (email) {
             try {
                 await sendOtpEmail(email, otp);
                 emailDelivered = true;
-            } catch (emailErr) {
-                console.warn(`[OTP] Email send failed for ${email}: ${emailErr.message}`);
+            } catch (err) {
+                emailError = err.message;
+                console.error(`[OTP] Email send error for ${email}:`, emailError);
             }
         }
 
+        // At least one channel must succeed
         if (!smsDelivered && !emailDelivered) {
             otpStore.delete(identifier);
-            return res.status(500).json({ message: 'Failed to send OTP.' });
+            console.error(`[OTP] Both channels failed. SMS: ${smsError}, Email: ${emailError}`);
+            return res.status(500).json({ 
+                message: 'Failed to send OTP via SMS and Email. Please try again.',
+                debug: { smsError, emailError }
+            });
         }
 
+        // Mark cooldown for this specific identifier
         markOtpCooldown(cooldownKey);
 
-        return res.json({ message: 'OTP sent successfully.' });
-    } catch { return res.status(500).json({ message: 'Failed to send OTP.' }); }
+        return res.json({ 
+            message: 'OTP sent successfully.',
+            channels: { sms: smsDelivered, email: emailDelivered },
+            expiresAt: new Date(expiry).toISOString(),
+        });
+    } catch (err) {
+        console.error('[OTP] Unexpected error in sendOtp:', err);
+        return res.status(500).json({ message: 'Failed to send OTP.' });
+    }
 };
 
 exports.verifyOtp = async (req, res) => {
