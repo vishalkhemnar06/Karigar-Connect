@@ -10,7 +10,6 @@ const crypto   = require('crypto');
 const User     = require('../models/userModel');
 const faceClient = require('../utils/faceServiceClient');
 const { sendOtpSms } = require('../utils/smsHelper');
-const { sendOtpEmail } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
@@ -90,11 +89,10 @@ const safeGet = (files, field) => files?.[field]?.[0] ?? null;
 // ── OTP ───────────────────────────────────────────────────────────────────────
 exports.sendOtp = async (req, res) => {
     try {
-        const { mobile, email } = req.body;
-        const identifier = mobile || email;
-        if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
+        const { mobile } = req.body;
+        if (!mobile) return res.status(400).json({ message: 'Mobile is required for OTP.' });
 
-        const cooldownKey = `auth:send-otp:${String(identifier).trim().toLowerCase()}`;
+        const cooldownKey = `auth:send-otp:${String(mobile).trim().toLowerCase()}`;
         const cooldown = getOtpCooldownState(cooldownKey);
         if (!cooldown.allowed) {
             return res.status(429).json({
@@ -105,36 +103,14 @@ exports.sendOtp = async (req, res) => {
 
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + OTP_TTL_MS;
-        otpStore.set(identifier, { otp, expiry });
-        otpAttemptStore.delete(identifier);
+        otpStore.set(mobile, { otp, expiry });
+        otpAttemptStore.delete(mobile);
 
-        let smsDelivered = false;
-        let emailDelivered = false;
+        const smsResult = await sendOtpSms(mobile, otp);
+        const smsDelivered = smsResult?.success !== false;
 
-        const deliveryTasks = [];
-        if (mobile) {
-            deliveryTasks.push(
-                sendOtpSms(mobile, otp).then((smsResult) => {
-                    smsDelivered = smsResult?.success !== false;
-                })
-            );
-        }
-        if (email) {
-            deliveryTasks.push(
-                sendOtpEmail(email, otp).then(() => {
-                    emailDelivered = true;
-                }).catch((emailErr) => {
-                    console.warn(`[OTP] Email send failed for ${email}: ${emailErr.message}`);
-                })
-            );
-        }
-
-        if (deliveryTasks.length) {
-            await Promise.allSettled(deliveryTasks);
-        }
-
-        if (!smsDelivered && !emailDelivered) {
-            otpStore.delete(identifier);
+        if (!smsDelivered) {
+            otpStore.delete(mobile);
             return res.status(500).json({ message: 'Failed to send OTP.' });
         }
 
