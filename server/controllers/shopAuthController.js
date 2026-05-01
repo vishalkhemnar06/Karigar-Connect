@@ -71,20 +71,9 @@ exports.sendEmailOtp = async (req, res) => {
         const email = String(req.body?.email || '').trim().toLowerCase();
         const mobile = String(req.body?.mobile || '').trim();
         if (!email) return res.status(400).json({ message: 'Email required.' });
-        if (!mobile || mobile.length !== 10) {
-            return res.status(400).json({ message: 'Valid mobile number is required before email OTP.' });
-        }
-
-        const shop = await Shop.findOne({ mobile }).select('mobileVerified');
-        if (!shop) {
-            return res.status(400).json({ message: 'Send and verify mobile OTP first.' });
-        }
-        if (!shop.mobileVerified) {
-            return res.status(400).json({ message: 'Please verify mobile OTP before email OTP.' });
-        }
 
         // Each identifier (email/mobile) has its own 30-second cooldown
-        const cooldownKey = `shop:email-otp:${String(mobile || email).trim().toLowerCase()}`;
+        const cooldownKey = `shop:email-otp:${email}`;
         const cooldown = getOtpCooldownState(cooldownKey);
         if (!cooldown.allowed) {
             return res.status(429).json({
@@ -92,40 +81,35 @@ exports.sendEmailOtp = async (req, res) => {
                 retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
             });
         }
-
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
 
-        await Shop.findOneAndUpdate(
-            { mobile },
-            { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
-            { upsert: false }
-        );
+        // Upsert by email if mobile not provided, otherwise update by mobile
+        if (mobile && mobile.length === 10) {
+            await Shop.findOneAndUpdate(
+                { mobile },
+                { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+        } else {
+            await Shop.findOneAndUpdate(
+                { email },
+                { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+        }
 
-        // Send email with better error handling
+        // Send email OTP using optimized OTP send path
         try {
-            await sendEmailMessage({
-                to: email,
-                subject: 'KarigarConnect Shop - Email Verification OTP',
-                text: `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`,
-                html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-                    <h2 style="color:#ea580c;margin-bottom:8px">KarigarConnect Shop Email Verification</h2>
-                    <p>Your OTP is:</p>
-                    <p style="font-size:28px;font-weight:700;letter-spacing:2px;color:#ea580c;margin:8px 0">${otp}</p>
-                    <p>This OTP is valid for 10 minutes. Do not share it with anyone.</p>
-                    <hr style="margin:20px 0;border:none;border-top:1px solid #ddd"/>
-                    <p style="font-size:12px;color:#999">If you did not request this OTP, please ignore this email.</p>
-                </div>`,
-                logPrefix: '[SHOP EMAIL]',
-            });
+            await exports.__sendOtpEmailInternal(email, otp);
             markOtpCooldown(cooldownKey);
             return res.json({ 
                 message: 'OTP sent to email.',
                 expiresAt: expiry.toISOString(),
             });
         } catch (emailErr) {
-            console.error('[SHOP EMAIL OTP] Failed:', emailErr.message);
+            console.error('[SHOP EMAIL OTP] Failed:', emailErr.message || emailErr);
             return res.status(500).json({ message: 'Failed to send email OTP. Please try again.' });
         }
     } catch (err) {
