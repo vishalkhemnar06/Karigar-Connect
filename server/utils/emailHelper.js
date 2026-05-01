@@ -125,29 +125,6 @@ exports.sendOtpEmail = async (to, otp) => {
         throw new Error('Email and OTP are required.');
     }
 
-    // Use a short-lived transport for OTP sends with relaxed/longer timeouts
-    // to avoid connection timeouts causing OTP send failures in transient network conditions.
-    const otpTransportOptions = {
-        host: smtpHost,
-        port: 587,
-        secure: false,
-        requireTLS: true,
-        tls: {
-            minVersion: 'TLSv1.2',
-            servername: smtpHost,
-        },
-        connectionTimeout: parseNumber(process.env.SMTP_CONNECTION_TIMEOUT_MS, 60000),
-        greetingTimeout: parseNumber(process.env.SMTP_GREETING_TIMEOUT_MS, 30000),
-        socketTimeout: parseNumber(process.env.SMTP_SOCKET_TIMEOUT_MS, 60000),
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-        },
-        pool: false,
-    };
-
-    const otpTransport = nodemailer.createTransport(otpTransportOptions);
-
     const mailOptions = {
         from: `KarigarConnect <${process.env.EMAIL_FROM}>`,
         to,
@@ -165,15 +142,13 @@ exports.sendOtpEmail = async (to, otp) => {
 
     try {
         const startedAt = Date.now();
-        const result = await otpTransport.sendMail(mailOptions);
+        const result = await transport.sendMail(mailOptions);
         const elapsedMs = Date.now() - startedAt;
         console.log(`[EMAIL OTP] Sent to ${to} in ${elapsedMs}ms. Message ID: ${result.messageId}`);
-        // close transport if it exposes close
-        try { otpTransport.close && otpTransport.close(); } catch (e) { /* ignore */ }
         return { success: true, messageId: result.messageId, elapsedMs };
     } catch (err) {
-        console.error(`[EMAIL OTP] Primary OTP transport failed for ${to}:`, err.message || err);
-        // Fallback to shared sendEmailMessage which has retry/fallback logic
+        console.error(`[EMAIL OTP] Primary send failed for ${to}:`, err.message || err);
+        // Fallback to retry logic
         try {
             const fallbackResult = await sendEmailMessage({
                 to,
@@ -185,7 +160,6 @@ exports.sendOtpEmail = async (to, otp) => {
             return fallbackResult;
         } catch (fbErr) {
             console.error(`[EMAIL OTP] Fallback also failed for ${to}:`, fbErr.message || fbErr);
-            try { otpTransport.close && otpTransport.close(); } catch (e) { /* ignore */ }
             throw fbErr;
         }
     }
