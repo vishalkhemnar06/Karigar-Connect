@@ -4,7 +4,7 @@ const Shop       = require('../models/shopModel');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
 const { sendOtpSms } = require('../utils/smsHelper');
-const { sendEmailMessage } = require('../utils/emailHelper');
+const { sendEmailMessage, sendOtpEmail } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
@@ -102,7 +102,7 @@ exports.sendEmailOtp = async (req, res) => {
 
         // Send email OTP using optimized OTP send path
         try {
-            await exports.__sendOtpEmailInternal(email, otp);
+            await sendOtpEmail(email, otp);
             markOtpCooldown(cooldownKey);
             return res.json({ 
                 message: 'OTP sent to email.',
@@ -146,13 +146,15 @@ exports.verifyMobileOtp = async (req, res) => {
 // ── STEP 4: Verify Email OTP ──────────────────────────────────────────────────
 exports.verifyEmailOtp = async (req, res) => {
     try {
+        const email = String(req.body?.email || '').trim().toLowerCase();
         const mobile = String(req.body?.mobile || '').trim();
         const otp = String(req.body?.otp || '').trim();
-        if (!mobile || !otp) {
-            return res.status(400).json({ message: 'Mobile and OTP are required.' });
+        if (!otp || (!email && !mobile)) {
+            return res.status(400).json({ message: 'Email or mobile and OTP are required.' });
         }
 
-        const shop = await Shop.findOne({ mobile }).select('+emailOtp +emailOtpExpiry');
+        const query = email ? { email } : { mobile };
+        const shop = await Shop.findOne(query).select('+emailOtp +emailOtpExpiry');
         if (!shop || !shop.emailOtp)
             return res.status(400).json({ message: 'No email OTP found.' });
         if (Date.now() > new Date(shop.emailOtpExpiry).getTime())
