@@ -5,7 +5,7 @@ const parseNumber = (value, fallback) => {
     return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+const smtpHost = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
 const smtpPort = 587;
 const smtpSecure = false;
 
@@ -21,6 +21,9 @@ const createStartTlsTransport = ({ host, user, pass, pool = false, maxConnection
     pool,
     maxConnections,
     maxMessages,
+    connectionTimeout: parseNumber(process.env.SMTP_CONNECTION_TIMEOUT_MS, 60000),
+    greetingTimeout: parseNumber(process.env.SMTP_GREETING_TIMEOUT_MS, 30000),
+    socketTimeout: parseNumber(process.env.SMTP_SOCKET_TIMEOUT_MS, 60000),
     auth: {
         user,
         pass,
@@ -31,7 +34,7 @@ const transport = createStartTlsTransport({
     host: smtpHost,
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
-    pool: true,
+    pool: false,
     maxConnections: parseNumber(process.env.SMTP_MAX_CONNECTIONS, 5),
     maxMessages: parseNumber(process.env.SMTP_MAX_MESSAGES, 100),
 });
@@ -133,6 +136,9 @@ exports.sendOtpEmail = async (to, otp) => {
             minVersion: 'TLSv1.2',
             servername: smtpHost,
         },
+        connectionTimeout: parseNumber(process.env.SMTP_CONNECTION_TIMEOUT_MS, 60000),
+        greetingTimeout: parseNumber(process.env.SMTP_GREETING_TIMEOUT_MS, 30000),
+        socketTimeout: parseNumber(process.env.SMTP_SOCKET_TIMEOUT_MS, 60000),
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
