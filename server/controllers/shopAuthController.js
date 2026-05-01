@@ -3,46 +3,14 @@
 const Shop       = require('../models/shopModel');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
-const nodemailer = require('nodemailer');
 const { sendOtpSms } = require('../utils/smsHelper');
+const { sendEmailMessage } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
 
 // ── JWT helper ────────────────────────────────────────────────────────────────
 const signToken = (id) =>
     jwt.sign({ id, role: 'shop' }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-// ── Email transporter ─────────────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
-
-// Verify transporter connection on load
-transporter.verify((error, success) => {
-    if (error) {
-        console.error('[SHOP EMAIL] ❌ Transporter error:', error.message);
-    } else {
-        console.log('[SHOP EMAIL] ✅ Transporter ready');
-    }
-});
-
-const sendEmail = async (to, subject, text, html) => {
-    try {
-        const result = await transporter.sendMail({ 
-            from: `KarigarConnect <${process.env.EMAIL_USER}>`, 
-            to, 
-            subject, 
-            text,
-            html: html || text,
-        });
-        console.log(`[SHOP EMAIL] ✅ Email sent to ${to}. Message ID: ${result.messageId}`);
-        return { success: true, messageId: result.messageId };
-    } catch (err) {
-        console.error(`[SHOP EMAIL] ❌ Failed to send to ${to}:`, err.message);
-        throw err;
-    }
-};
 
 // ── MEDIA PATH HELPERS ───────────────────────────────────────────────────────
 // Cloudinary upload middleware returns a fully qualified URL in req.file.path.
@@ -137,19 +105,20 @@ exports.sendEmailOtp = async (req, res) => {
 
         // Send email with better error handling
         try {
-            await sendEmail(
-                email,
-                'KarigarConnect Shop — Email Verification OTP',
-                `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`,
-                `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+            await sendEmailMessage({
+                to: email,
+                subject: 'KarigarConnect Shop - Email Verification OTP',
+                text: `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`,
+                html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
                     <h2 style="color:#ea580c;margin-bottom:8px">KarigarConnect Shop Email Verification</h2>
                     <p>Your OTP is:</p>
                     <p style="font-size:28px;font-weight:700;letter-spacing:2px;color:#ea580c;margin:8px 0">${otp}</p>
                     <p>This OTP is valid for 10 minutes. Do not share it with anyone.</p>
                     <hr style="margin:20px 0;border:none;border-top:1px solid #ddd"/>
                     <p style="font-size:12px;color:#999">If you did not request this OTP, please ignore this email.</p>
-                </div>`
-            );
+                </div>`,
+                logPrefix: '[SHOP EMAIL]',
+            });
             markOtpCooldown(cooldownKey);
             return res.json({ 
                 message: 'OTP sent to email.',
