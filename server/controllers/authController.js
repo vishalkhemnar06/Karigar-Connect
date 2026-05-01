@@ -10,6 +10,7 @@ const crypto   = require('crypto');
 const User     = require('../models/userModel');
 const faceClient = require('../utils/faceServiceClient');
 const { sendOtpSms } = require('../utils/smsHelper');
+const { sendOtpEmail } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
@@ -89,10 +90,12 @@ const safeGet = (files, field) => files?.[field]?.[0] ?? null;
 // ── OTP ───────────────────────────────────────────────────────────────────────
 exports.sendOtp = async (req, res) => {
     try {
-        const { mobile } = req.body;
-        if (!mobile) return res.status(400).json({ message: 'Mobile is required for OTP.' });
+        const { mobile, email } = req.body;
+        const identifier = mobile || email;
+        if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
 
-        const cooldownKey = `auth:send-otp:${String(mobile).trim().toLowerCase()}`;
+        // Each identifier (mobile/email) has its own 30-second cooldown
+        const cooldownKey = `auth:send-otp:${String(identifier).trim().toLowerCase()}`;
         const cooldown = getOtpCooldownState(cooldownKey);
         if (!cooldown.allowed) {
             return res.status(429).json({
@@ -103,21 +106,57 @@ exports.sendOtp = async (req, res) => {
 
         const otp    = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + OTP_TTL_MS;
-        otpStore.set(mobile, { otp, expiry });
-        otpAttemptStore.delete(mobile);
+        otpStore.set(identifier, { otp, expiry });
+        otpAttemptStore.delete(identifier);
 
-        const smsResult = await sendOtpSms(mobile, otp);
-        const smsDelivered = smsResult?.success !== false;
+        let smsDelivered = false;
+        let emailDelivered = false;
+        let smsError = null;
+        let emailError = null;
 
-        if (!smsDelivered) {
-            otpStore.delete(mobile);
-            return res.status(500).json({ message: 'Failed to send OTP.' });
+        if (mobile) {
+            try {
+                const smsResult = await sendOtpSms(mobile, otp);
+                smsDelivered = smsResult?.success === true;
+                if (!smsDelivered) smsError = smsResult?.reason || 'Unknown SMS error';
+            } catch (err) {
+                smsError = err.message;
+                console.error(`[OTP] SMS send error for ${mobile}:`, smsError);
+            }
         }
 
+        if (email) {
+            try {
+                await sendOtpEmail(email, otp);
+                emailDelivered = true;
+            } catch (err) {
+                emailError = err.message;
+                console.error(`[OTP] Email send error for ${email}:`, emailError);
+            }
+        }
+
+        // At least one channel must succeed
+        if (!smsDelivered && !emailDelivered) {
+            otpStore.delete(identifier);
+            console.error(`[OTP] Both channels failed. SMS: ${smsError}, Email: ${emailError}`);
+            return res.status(500).json({ 
+                message: 'Failed to send OTP via SMS and Email. Please try again.',
+                debug: { smsError, emailError }
+            });
+        }
+
+        // Mark cooldown for this specific identifier
         markOtpCooldown(cooldownKey);
 
-        return res.json({ message: 'OTP sent successfully.' });
-    } catch { return res.status(500).json({ message: 'Failed to send OTP.' }); }
+        return res.json({ 
+            message: 'OTP sent successfully.',
+            channels: { sms: smsDelivered, email: emailDelivered },
+            expiresAt: new Date(expiry).toISOString(),
+        });
+    } catch (err) {
+        console.error('[OTP] Unexpected error in sendOtp:', err);
+        return res.status(500).json({ message: 'Failed to send OTP.' });
+    }
 };
 
 exports.verifyOtp = async (req, res) => {
