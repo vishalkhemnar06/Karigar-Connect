@@ -3,6 +3,7 @@
 const Shop       = require('../models/shopModel');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
+const nodemailer = require('nodemailer');
 const { sendOtpSms } = require('../utils/smsHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passwordPolicy');
@@ -10,6 +11,38 @@ const { validateStrongPassword, PASSWORD_POLICY_TEXT } = require('../utils/passw
 // ── JWT helper ────────────────────────────────────────────────────────────────
 const signToken = (id) =>
     jwt.sign({ id, role: 'shop' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+// ── Email transporter ─────────────────────────────────────────────────────────
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+});
+
+// Verify transporter connection on load
+transporter.verify((error, success) => {
+    if (error) {
+        console.error('[SHOP EMAIL] ❌ Transporter error:', error.message);
+    } else {
+        console.log('[SHOP EMAIL] ✅ Transporter ready');
+    }
+});
+
+const sendEmail = async (to, subject, text, html) => {
+    try {
+        const result = await transporter.sendMail({ 
+            from: `KarigarConnect <${process.env.EMAIL_USER}>`, 
+            to, 
+            subject, 
+            text,
+            html: html || text,
+        });
+        console.log(`[SHOP EMAIL] ✅ Email sent to ${to}. Message ID: ${result.messageId}`);
+        return { success: true, messageId: result.messageId };
+    } catch (err) {
+        console.error(`[SHOP EMAIL] ❌ Failed to send to ${to}:`, err.message);
+        throw err;
+    }
+};
 
 // ── MEDIA PATH HELPERS ───────────────────────────────────────────────────────
 // Cloudinary upload middleware returns a fully qualified URL in req.file.path.
@@ -66,7 +99,70 @@ exports.sendMobileOtp = async (req, res) => {
 
 // ── STEP 2: Send Email OTP ────────────────────────────────────────────────────
 exports.sendEmailOtp = async (req, res) => {
-    return res.status(400).json({ message: 'Email OTP is disabled. Use mobile OTP instead.' });
+    try {
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const mobile = String(req.body?.mobile || '').trim();
+        if (!email) return res.status(400).json({ message: 'Email required.' });
+        if (!mobile || mobile.length !== 10) {
+            return res.status(400).json({ message: 'Valid mobile number is required before email OTP.' });
+        }
+
+        const shop = await Shop.findOne({ mobile }).select('mobileVerified');
+        if (!shop) {
+            return res.status(400).json({ message: 'Send and verify mobile OTP first.' });
+        }
+        if (!shop.mobileVerified) {
+            return res.status(400).json({ message: 'Please verify mobile OTP before email OTP.' });
+        }
+
+        // Each identifier (email/mobile) has its own 30-second cooldown
+        const cooldownKey = `shop:email-otp:${String(mobile || email).trim().toLowerCase()}`;
+        const cooldown = getOtpCooldownState(cooldownKey);
+        if (!cooldown.allowed) {
+            return res.status(429).json({
+                message: formatOtpCooldownMessage(cooldown.remainingMs),
+                retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
+            });
+        }
+
+        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = new Date(Date.now() + 10 * 60 * 1000);
+        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
+
+        await Shop.findOneAndUpdate(
+            { mobile },
+            { email, emailOtp: hashed, emailOtpExpiry: expiry, emailVerified: false },
+            { upsert: false }
+        );
+
+        // Send email with better error handling
+        try {
+            await sendEmail(
+                email,
+                'KarigarConnect Shop — Email Verification OTP',
+                `Your OTP for email verification is: ${otp}\nValid for 10 minutes. Do not share.`,
+                `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+                    <h2 style="color:#ea580c;margin-bottom:8px">KarigarConnect Shop Email Verification</h2>
+                    <p>Your OTP is:</p>
+                    <p style="font-size:28px;font-weight:700;letter-spacing:2px;color:#ea580c;margin:8px 0">${otp}</p>
+                    <p>This OTP is valid for 10 minutes. Do not share it with anyone.</p>
+                    <hr style="margin:20px 0;border:none;border-top:1px solid #ddd"/>
+                    <p style="font-size:12px;color:#999">If you did not request this OTP, please ignore this email.</p>
+                </div>`
+            );
+            markOtpCooldown(cooldownKey);
+            return res.json({ 
+                message: 'OTP sent to email.',
+                expiresAt: expiry.toISOString(),
+            });
+        } catch (emailErr) {
+            console.error('[SHOP EMAIL OTP] Failed:', emailErr.message);
+            return res.status(500).json({ message: 'Failed to send email OTP. Please try again.' });
+        }
+    } catch (err) {
+        console.error('sendEmailOtp:', err);
+        return res.status(500).json({ message: 'Failed to send email OTP.' });
+    }
 };
 
 // ── STEP 3: Verify Mobile OTP ─────────────────────────────────────────────────
@@ -97,14 +193,19 @@ exports.verifyMobileOtp = async (req, res) => {
 // ── STEP 4: Verify Email OTP ──────────────────────────────────────────────────
 exports.verifyEmailOtp = async (req, res) => {
     try {
-        const { mobile, otp } = req.body;
+        const mobile = String(req.body?.mobile || '').trim();
+        const otp = String(req.body?.otp || '').trim();
+        if (!mobile || !otp) {
+            return res.status(400).json({ message: 'Mobile and OTP are required.' });
+        }
+
         const shop = await Shop.findOne({ mobile }).select('+emailOtp +emailOtpExpiry');
         if (!shop || !shop.emailOtp)
             return res.status(400).json({ message: 'No email OTP found.' });
         if (Date.now() > new Date(shop.emailOtpExpiry).getTime())
             return res.status(400).json({ message: 'OTP expired.' });
 
-        const hashed = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+        const hashed = crypto.createHash('sha256').update(otp).digest('hex');
         if (hashed !== shop.emailOtp)
             return res.status(400).json({ message: 'Incorrect OTP.' });
 
