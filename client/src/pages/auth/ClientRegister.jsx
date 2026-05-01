@@ -28,21 +28,18 @@ import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../
 const DRAFT_KEY = 'client_register_draft_v1';
 const CLIENT_TERMS_GATE_KEY = 'kc_client_terms_gate_v1';
 
-const getYearFromDate = (dateValue) => {
-    const date = new Date(dateValue);
+const parseLocalDate = (dateValue) => {
+    if (!dateValue || typeof dateValue !== 'string') return null;
+    const [year, month, day] = dateValue.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    const date = new Date(year, month - 1, day);
     if (Number.isNaN(date.getTime())) return null;
-    return date.getFullYear();
-};
-
-const getExpectedDobYearFromAge = (ageValue) => {
-    const ageNum = Number(ageValue);
-    if (!Number.isFinite(ageNum) || ageNum <= 0) return null;
-    return new Date().getFullYear() - ageNum;
+    return date;
 };
 
 const getAgeFromDob = (dobValue) => {
-    const dobDate = new Date(dobValue);
-    if (Number.isNaN(dobDate.getTime())) return null;
+    const dobDate = parseLocalDate(dobValue);
+    if (!dobDate || Number.isNaN(dobDate.getTime())) return null;
 
     const now = new Date();
     let years = now.getFullYear() - dobDate.getFullYear();
@@ -318,13 +315,13 @@ const ClientRegister = () => {
         if (!Number.isFinite(ageNum) || ageNum <= 0) return toast.error('Age must be a positive number.');
         if (ageNum < 18) return toast.error('Age must be 18 or above.');
         if (!formData.dob) return toast.error('Birth date is required.');
-        const dobDate = new Date(formData.dob);
-        if (Number.isNaN(dobDate.getTime())) return toast.error('Birth date is invalid.');
+        const dobDate = parseLocalDate(formData.dob);
+        if (!dobDate || Number.isNaN(dobDate.getTime())) return toast.error('Birth date is invalid.');
         if (dobDate > new Date()) return toast.error('Birth date cannot be in the future.');
-        const expectedDobYear = getExpectedDobYearFromAge(ageNum);
-        const selectedDobYear = getYearFromDate(formData.dob);
-        if (expectedDobYear !== null && selectedDobYear !== null && selectedDobYear !== expectedDobYear) {
-            return toast.error(`For age ${ageNum}, birth year must be ${expectedDobYear}.`);
+        const calculatedAge = getAgeFromDob(formData.dob);
+        if (calculatedAge === null) return toast.error('Birth date is invalid.');
+        if (calculatedAge !== ageNum) {
+            return toast.error(`Age and DOB mismatch. Based on DOB, age should be ${calculatedAge}.`);
         }
         if (!formData.gender) return toast.error('Gender is required.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
@@ -350,12 +347,12 @@ const ClientRegister = () => {
         if (!Number.isFinite(ageNum) || ageNum <= 0) return toast.error('Age must be a positive number.');
         if (ageNum < 18) return toast.error('You must be 18 or older to register.');
         if (!formData.dob) return toast.error('Enter your birth date.');
-        const dobDate = new Date(formData.dob);
-        if (Number.isNaN(dobDate.getTime()) || dobDate > new Date()) return toast.error('Enter a valid birth date.');
-        const expectedDobYear = getExpectedDobYearFromAge(ageNum);
-        const selectedDobYear = getYearFromDate(formData.dob);
-        if (expectedDobYear !== null && selectedDobYear !== null && selectedDobYear !== expectedDobYear) {
-            return toast.error(`For age ${ageNum}, birth year must be ${expectedDobYear}.`);
+        const dobDate = parseLocalDate(formData.dob);
+        if (!dobDate || Number.isNaN(dobDate.getTime()) || dobDate > new Date()) return toast.error('Enter a valid birth date.');
+        const calculatedAge = getAgeFromDob(formData.dob);
+        if (calculatedAge === null) return toast.error('Enter a valid birth date.');
+        if (calculatedAge !== ageNum) {
+            return toast.error(`Age and DOB mismatch. Based on DOB, age should be ${calculatedAge}.`);
         }
         if (!formData.gender) return toast.error('Select gender.');
         // NEW: Validate security fields
@@ -685,11 +682,6 @@ const ClientRegister = () => {
                                     </div>
 
                                     {/* Age, Birth date and Gender */}
-                                    {Number(formData.age) >= 18 && (
-                                        <p className="text-xs text-orange-700">
-                                            For age {formData.age}, select a DOB in year {getExpectedDobYearFromAge(formData.age)}.
-                                        </p>
-                                    )}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <input
                                             type="number"
@@ -701,21 +693,30 @@ const ClientRegister = () => {
                                             onChange={handleChange}
                                             className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
                                         />
-                                        <input
-                                            type="date"
-                                            name="dob"
-                                            value={formData.dob}
-                                            onChange={handleChange}
-                                            min={(() => {
-                                                const y = getExpectedDobYearFromAge(formData.age);
-                                                return y ? `${y}-01-01` : undefined;
-                                            })()}
-                                            max={(() => {
-                                                const y = getExpectedDobYearFromAge(formData.age);
-                                                return y ? `${y}-12-31` : new Date().toISOString().split('T')[0];
-                                            })()}
-                                            className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
-                                        />
+                                        
+                                        {/* DOB Input with Manual Day/Month/Year Selection */}
+                                        <div className="space-y-2">
+                                            <label className="block text-xs font-semibold text-orange-700">Date of Birth</label>
+                                            <input
+                                                type="date"
+                                                name="dob"
+                                                value={formData.dob}
+                                                onChange={handleChange}
+                                                max={new Date().toISOString().split('T')[0]}
+                                                className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
+                                            />
+                                            {formData.dob && (
+                                                <p className="text-xs text-green-700 font-semibold">
+                                                    ✓ {new Date(formData.dob).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                </p>
+                                            )}
+                                            {formData.age && formData.dob && (
+                                                <p className="text-xs text-blue-700">
+                                                    Age: {getAgeFromDob(formData.dob)} years
+                                                </p>
+                                            )}
+                                        </div>
+                                        
                                         <select
                                             name="gender"
                                             value={formData.gender}
@@ -728,6 +729,20 @@ const ClientRegister = () => {
                                             <option value="Other">Other</option>
                                         </select>
                                     </div>
+
+                                    {/* Age & DOB Validation Help Text */}
+                                    {formData.age && formData.dob && (
+                                        <div className={`p-3 rounded-lg text-sm font-semibold ${
+                                            getAgeFromDob(formData.dob) === Number(formData.age) 
+                                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                        }`}>
+                                            {getAgeFromDob(formData.dob) === Number(formData.age) 
+                                                ? `✓ Age matches DOB (${getAgeFromDob(formData.dob)} years)`
+                                                : `⚠️ Age (${formData.age}) doesn't match DOB (${getAgeFromDob(formData.dob)} years) - they should be equal`
+                                            }
+                                        </div>
+                                    )}
 
                                     {/* NEW: Emergency Contact */}
                                     <div className="border-2 border-orange-200 rounded-lg p-4 bg-white">
