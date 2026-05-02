@@ -321,7 +321,7 @@ const ClientRegister = () => {
         const calculatedAge = getAgeFromDob(formData.dob);
         if (calculatedAge === null) return toast.error('Birth date is invalid.');
         if (calculatedAge !== ageNum) {
-            return toast.error(`Age and DOB mismatch. Based on DOB, age should be ${calculatedAge}.`);
+            setFormData((prev) => ({ ...prev, age: String(calculatedAge) }));
         }
         if (!formData.gender) return toast.error('Gender is required.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
@@ -352,7 +352,7 @@ const ClientRegister = () => {
         const calculatedAge = getAgeFromDob(formData.dob);
         if (calculatedAge === null) return toast.error('Enter a valid birth date.');
         if (calculatedAge !== ageNum) {
-            return toast.error(`Age and DOB mismatch. Based on DOB, age should be ${calculatedAge}.`);
+            setFormData((prev) => ({ ...prev, age: String(calculatedAge) }));
         }
         if (!formData.gender) return toast.error('Select gender.');
         // NEW: Validate security fields
