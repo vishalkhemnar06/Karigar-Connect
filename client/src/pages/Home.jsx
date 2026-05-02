@@ -13,6 +13,7 @@ import faqData from '../constants/faqData';
 import FaqAccordion from '../components/FaqAccordion';
 import GuestChatbotWidget from '../components/GuestChatbotWidget';
 import CityTicker from '../components/CityTicker';
+import { getSiteVisitorCount, recordSiteVisitor } from '../api';
 
 const Home = () => {
     const [token, setToken] = useState(null);
@@ -21,6 +22,7 @@ const Home = () => {
     const [activeTestimonial, setActiveTestimonial] = useState(0);
     const [cookieChoice, setCookieChoice] = useState('unknown');
     const [legalPreview, setLegalPreview] = useState({ open: false, title: '', path: '' });
+    const [visitorCount, setVisitorCount] = useState(null);
     const heroRef = useRef(null);
     const { scrollYProgress } = useScroll();
     const opacity = useTransform(scrollYProgress, [0, 0.2], [1, 0.8]);
@@ -44,8 +46,59 @@ const Home = () => {
         if (storedCookieChoice === 'accepted' || storedCookieChoice === 'declined') {
             setCookieChoice(storedCookieChoice);
         }
+
+        let cancelled = false;
+
+        const loadVisitorCount = async () => {
+            try {
+                const { data } = await getSiteVisitorCount();
+                if (!cancelled) setVisitorCount(Number(data?.totalVisitors) || 0);
+            } catch {
+                if (!cancelled) setVisitorCount((current) => (current === null ? 0 : current));
+            }
+        };
+
+        const syncUniqueVisitor = async () => {
+            const visitorIdKey = 'kc_unique_visitor_id_v1';
+            const recordedKey = 'kc_unique_visitor_recorded_v1';
+
+            try {
+                const alreadyRecorded = localStorage.getItem(recordedKey) === '1';
+                if (alreadyRecorded) {
+                    await loadVisitorCount();
+                    return;
+                }
+
+                let visitorId = localStorage.getItem(visitorIdKey);
+                if (!visitorId) {
+                    visitorId = typeof crypto !== 'undefined' && crypto.randomUUID
+                        ? crypto.randomUUID()
+                        : `visitor-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+                    localStorage.setItem(visitorIdKey, visitorId);
+                }
+
+                const { data } = await recordSiteVisitor({
+                    visitorId,
+                    landingPath: '/home',
+                    referrer: document.referrer || null,
+                });
+
+                if (!cancelled) {
+                    setVisitorCount(Number(data?.totalVisitors) || 0);
+                    localStorage.setItem(recordedKey, '1');
+                }
+            } catch {
+                await loadVisitorCount();
+            }
+        };
+
+        syncUniqueVisitor();
         
         setTimeout(() => setIsVisible(true), 100);
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const handleCookieChoice = (choice) => {
@@ -572,6 +625,13 @@ const Home = () => {
                         <p className="text-gray-400 text-sm">
                             &copy; {new Date().getFullYear()} KarigarConnect™. All rights reserved. | One nation, One labour chowk
                         </p>
+                        <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-white/5 px-4 py-2 text-xs sm:text-sm text-gray-300">
+                            <Shield className="w-4 h-4 text-orange-400" />
+                            <span>Unique visitors:</span>
+                            <span className="font-bold text-white">
+                                {visitorCount === null ? 'Loading...' : visitorCount.toLocaleString()}
+                            </span>
+                        </div>
                         <p className="text-gray-500 text-xs mt-4">
                             Designed & Developed with <span className="text-orange-400">❤</span> in India
                         </p>
