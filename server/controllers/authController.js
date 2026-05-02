@@ -71,9 +71,18 @@ const normalizeTravelMethod = (value = '') => {
 
 const parseBoolean = (value) => value === true || String(value).toLowerCase() === 'true';
 
+const parseDateOnly = (dateValue) => {
+    if (!dateValue || typeof dateValue !== 'string') return null;
+    const [year, month, day] = String(dateValue).split('-').map(Number);
+    if (!year || !month || !day) return null;
+    const parsed = new Date(year, month - 1, day);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+};
+
 const calculateAgeFromDob = (dobValue) => {
-    const dobDate = new Date(dobValue);
-    if (Number.isNaN(dobDate.getTime())) return null;
+    const dobDate = parseDateOnly(String(dobValue || ''));
+    if (!dobDate || Number.isNaN(dobDate.getTime())) return null;
 
     const now = new Date();
     let years = now.getFullYear() - dobDate.getFullYear();
@@ -570,28 +579,20 @@ exports.registerClient = async (req, res) => {
         if (!dob) {
             return res.status(400).json({ message: 'Birth date is required.' });
         }
-        const dobDate = new Date(dob);
-        if (Number.isNaN(dobDate.getTime())) {
+        const dobDate = parseDateOnly(dob);
+        if (!dobDate || Number.isNaN(dobDate.getTime())) {
             return res.status(400).json({ message: 'Birth date is invalid.' });
         }
         if (dobDate > new Date()) {
             return res.status(400).json({ message: 'Birth date cannot be in the future.' });
         }
 
-        const ageFromDob = (() => {
-            const now = new Date();
-            let years = now.getFullYear() - dobDate.getFullYear();
-            const m = now.getMonth() - dobDate.getMonth();
-            if (m < 0 || (m === 0 && now.getDate() < dobDate.getDate())) years--;
-            return years;
-        })();
+        const ageFromDob = calculateAgeFromDob(dob);
+        if (ageFromDob === null) {
+            return res.status(400).json({ message: 'Birth date is invalid.' });
+        }
         if (ageFromDob < 18) {
             return res.status(400).json({ message: 'Birth date indicates age below 18.' });
-        }
-        const expectedDobYear = new Date().getFullYear() - ageNum;
-        const selectedDobYear = dobDate.getFullYear();
-        if (selectedDobYear !== expectedDobYear) {
-            return res.status(400).json({ message: `DOB year must match age. For age ${ageNum}, birth year must be ${expectedDobYear}.` });
         }
 
         if (!['Male', 'Female', 'Other'].includes(gender)) {
@@ -759,7 +760,7 @@ exports.registerClient = async (req, res) => {
         const user   = await User.create({
             userId: generateUserId(),
             role: 'client', name: name.trim(), mobile, email,
-            age: ageNum,
+            age: ageFromDob,
             dob: dobDate,
             gender,
             password,
@@ -778,7 +779,7 @@ exports.registerClient = async (req, res) => {
             idProof:   { idType: idType || 'Aadhar', filePath: idProofFile?.path || null },
             
             // NEW high priority security fields
-            ageVerified: ageNum >= 18,
+            ageVerified: ageFromDob >= 18,
             emergencyContact: {
                 name: emergencyContactName?.trim() || '',
                 mobile: emergencyContactMobile?.trim() || '',
