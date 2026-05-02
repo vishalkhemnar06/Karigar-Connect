@@ -153,10 +153,23 @@ exports.verifyEmailOtp = async (req, res) => {
             return res.status(400).json({ message: 'Email or mobile and OTP are required.' });
         }
 
-        const query = email ? { email } : { mobile };
-        const shop = await Shop.findOne(query).select('+emailOtp +emailOtpExpiry');
+        // Prefer mobile so OTP verification updates the same draft shop used at submit time.
+        // Falling back to email can mark a different record if older duplicates exist.
+        let shop = null;
+        if (mobile) {
+            shop = await Shop.findOne({ mobile }).select('+emailOtp +emailOtpExpiry email mobile');
+        }
+        if (!shop && email) {
+            shop = await Shop.findOne({ email }).select('+emailOtp +emailOtpExpiry email mobile');
+        }
+
         if (!shop || !shop.emailOtp)
             return res.status(400).json({ message: 'No email OTP found.' });
+
+        if (email && String(shop.email || '').trim().toLowerCase() !== email) {
+            return res.status(400).json({ message: 'Email does not match the mobile verification session.' });
+        }
+
         if (Date.now() > new Date(shop.emailOtpExpiry).getTime())
             return res.status(400).json({ message: 'OTP expired.' });
 
