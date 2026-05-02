@@ -20,6 +20,10 @@ API.interceptors.request.use((req) => {
 // For FormData, let axios auto-detect and set Content-Type with boundary
 const mp = {};
 
+// ── PUBLIC ANALYTICS ─────────────────────────────────────────────────────────
+export const getSiteVisitorCount   = ()      => API.get('/api/analytics/visitors');
+export const recordSiteVisitor     = (body)  => API.post('/api/analytics/visitors', body);
+
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 export const sendOtp               = (d)      => API.post('/api/auth/send-otp',               d);
 export const verifyOtp             = (d)      => API.post('/api/auth/verify-otp',              d);
