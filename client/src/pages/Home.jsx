@@ -49,6 +49,41 @@ const Home = () => {
 
         let cancelled = false;
 
+        const safeParse = (value) => {
+            try {
+                return JSON.parse(value || '{}');
+            } catch {
+                return {};
+            }
+        };
+
+        const getVisitorIdentity = () => {
+            const shopToken = localStorage.getItem('shopToken');
+            const shopRole = localStorage.getItem('shopRole');
+            const roleValue = shopToken && shopRole ? 'shop' : (localStorage.getItem('role') || 'guest');
+            const user = safeParse(localStorage.getItem('user'));
+            const shop = safeParse(localStorage.getItem('shop'));
+
+            const accountId = roleValue === 'shop'
+                ? (shop?._id || shop?.id || shop?.shopId || shop?.mobile || shop?.ownerMobile)
+                : (user?._id || user?.id || user?.clientId || user?.mobile);
+
+            if (accountId) {
+                return `account:${roleValue}:${accountId}`;
+            }
+
+            const visitorIdKey = 'kc_unique_visitor_id_v1';
+            let anonymousVisitorId = localStorage.getItem(visitorIdKey);
+            if (!anonymousVisitorId) {
+                anonymousVisitorId = typeof crypto !== 'undefined' && crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `visitor-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+                localStorage.setItem(visitorIdKey, anonymousVisitorId);
+            }
+
+            return `browser:${anonymousVisitorId}`;
+        };
+
         const loadVisitorCount = async () => {
             try {
                 const { data } = await getSiteVisitorCount();
@@ -59,22 +94,14 @@ const Home = () => {
         };
 
         const syncUniqueVisitor = async () => {
-            const visitorIdKey = 'kc_unique_visitor_id_v1';
-            const recordedKey = 'kc_unique_visitor_recorded_v1';
+            const visitorId = getVisitorIdentity();
+            const recordedKey = `kc_unique_visitor_recorded_v1:${visitorId}`;
 
             try {
                 const alreadyRecorded = localStorage.getItem(recordedKey) === '1';
                 if (alreadyRecorded) {
                     await loadVisitorCount();
                     return;
-                }
-
-                let visitorId = localStorage.getItem(visitorIdKey);
-                if (!visitorId) {
-                    visitorId = typeof crypto !== 'undefined' && crypto.randomUUID
-                        ? crypto.randomUUID()
-                        : `visitor-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-                    localStorage.setItem(visitorIdKey, visitorId);
                 }
 
                 const { data } = await recordSiteVisitor({
