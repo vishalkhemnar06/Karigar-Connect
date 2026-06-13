@@ -102,8 +102,15 @@ exports.sendEmailOtp = async (req, res) => {
 
         // Send email OTP using optimized OTP send path
         try {
-            await sendOtpEmail(email, otp);
+            const emailResult = await sendOtpEmail(email, otp);
             markOtpCooldown(cooldownKey);
+            if (emailResult?.devFallback) {
+                return res.json({
+                    message: 'Email OTP bypassed in development because Brevo rejected the current IP.',
+                    expiresAt: expiry.toISOString(),
+                    devFallback: true,
+                });
+            }
             return res.json({ 
                 message: 'OTP sent to email.',
                 expiresAt: expiry.toISOString(),
@@ -336,8 +343,8 @@ exports.registerShop = async (req, res) => {
             message: 'Registration submitted. We will contact you within 24 hours.',
         });
     } catch (err) {
-        console.error('registerShop:', err);
-        return res.status(500).json({ message: err.message || 'Registration failed.' });
+        console.error('registerShop:', err?.stack || err);
+        return res.status(500).json({ message: err?.message || 'Registration failed.' });
     }
 };
 
